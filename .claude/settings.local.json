@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Admin/AppData/Roaming/helix//**)",
+      "Bash(hx --health)",
+      "Read(//d/Work_Space_2026/START_UP/IELTS-AI-Startup/.claude/**)",
+      "Read(//d/Work_Space_2026/START_UP/IELTS-AI-Startup/.claude//**)",
+      "Bash(git add:*)"
+    ]
+  }
+}
