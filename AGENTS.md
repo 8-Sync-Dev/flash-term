@@ -1,0 +1,201 @@
+# AGENTS.md
+
+Agent guidance for the WezTerm configuration repository.
+
+## Repository Overview
+
+A WezTerm terminal configuration for Windows 11. Two primary source files:
+
+- **`wezterm.lua`** — Lua config loaded directly by WezTerm (appearance, fonts, keybindings, shell launch)
+- **`wezterm-bootstrap.ps1`** — PowerShell script sourced on every new shell tab (8sync toolkit, aliases, auto-sync)
+
+Two files are **generated at runtime** and must never be committed (they are in `.gitignore`):
+- `current-bg.lua` — written by `8sync bg set`, read by `wezterm.lua`
+- `current-opacity.lua` — written by `8sync hx opacity`, read by `wezterm.lua`
+
+## Build / Lint / Test Commands
+
+There is no build system, test suite, or package manager. This is a config-only repository.
+
+### Validate the Lua config
+
+```powershell
+# Check wezterm.lua for syntax errors (requires WezTerm CLI in PATH)
+wezterm --config-file .\wezterm.lua list-clients
+
+# Reload live config (running WezTerm instance required)
+wezterm cli reload
+```
+
+### Validate the PowerShell bootstrap
+
+```powershell
+# Syntax-check only (no execution)
+$null = [System.Management.Automation.Language.Parser]::ParseFile(
+    "$PWD\wezterm-bootstrap.ps1", [ref]$null, [ref]$null
+)
+
+# Dry-run: source with -Task Status (non-destructive, shows tool state)
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ". .\wezterm-bootstrap.ps1; Show-8SyncStatus"
+
+# Dry-run: source with -Task Hint (non-destructive, prints help text)
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\wezterm-bootstrap.ps1 -Task Hint
+```
+
+### Manual end-to-end test
+
+```powershell
+# Source bootstrap in an isolated shell; confirm no errors, aliases present
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ". .\wezterm-bootstrap.ps1; ll; e --version"
+```
+
+There are no unit tests. When making changes, validate by sourcing the bootstrap in a fresh
+`pwsh` session and exercising the affected `8sync` subcommand or alias manually.
+
+## Architecture Summary
+
+```
+WezTerm start
+  └─ wezterm.lua: reads current-bg.lua + current-opacity.lua, sets config
+       └─ launches PowerShell: ". wezterm-bootstrap.ps1"
+            ├─ Ensure-PreferredPaths   (prepend scoop/shims to PATH)
+            ├─ Set-HistoryExperience   (PSReadLine + fzf Ctrl+r)
+            ├─ Set-ToolAliases         (ll, e, lg, y, cdi, 8sync …)
+            │    └─ Register-8SyncCompleter  (Tab/inline completion for 8sync)
+            └─ Start-AutoSync          (hidden background process if stale)
+```
+
+State is shared between the Lua layer and the PowerShell layer via small generated `.lua` files;
+PowerShell writes them, Lua reads them on reload. `wezterm cli reload` is called after each write.
+
+## Code Style — Lua (`wezterm.lua`)
+
+### Formatting
+- 2-space indentation. No tabs.
+- One blank line between top-level function definitions.
+- Opening brace on the same line as the construct (`function foo()`, `config.keys = {`).
+- Trailing commas on the last element of multi-line tables — consistent with existing style.
+
+### Naming
+- Local variables and functions: `snake_case` (e.g., `load_background_path`, `pane_cwd`).
+- WezTerm API objects follow the library's convention (PascalCase for actions/events).
+
+### Imports / Requires
+- `require` calls at the top of the file, before any logic.
+- Only `wezterm` is required; do not add other dependencies unless unavoidable.
+
+### Error handling
+- Wrap `dofile` / `pcall`-able calls in `pcall`; check `ok` before using the result.
+- Never raise errors for missing optional files — fall back to a default and continue.
+- Use `os.rename` to test file existence (the `file_exists` pattern already in use).
+
+### Types / values
+- Lua is dynamically typed; validate types explicitly when reading external data:
+  ```lua
+  if ok and type(value) == "string" and value ~= "" then …
+  ```
+- Color values must be hex strings matching the Catppuccin Mocha palette.
+
+### Key bindings
+- All bindings go in the `config.keys` table; do not scatter them.
+- Leader key is `Ctrl+a` (900 ms timeout). New leader-chained bindings use `mods = "LEADER"`.
+
+## Code Style — PowerShell (`wezterm-bootstrap.ps1`)
+
+### Formatting
+- 4-space indentation. No tabs.
+- Opening brace on the same line (`function Foo {`).
+- Closing brace on its own line.
+- Use `$null = …` to suppress unwanted output instead of `| Out-Null` for assignment contexts.
+
+### Naming
+- Public/exported functions: `Verb-Noun` PascalCase following PowerShell conventions
+  (e.g., `Invoke-ToolSync`, `Set-HelixThemeValue`).
+- Script-scoped variables: `$script:CamelCase` (e.g., `$script:StateDir`).
+- Local variables inside functions: `$camelCase`.
+- Boolean flags: prefix with verb (`$shouldSync`, `$found`, `$inSection`).
+
+### Function design
+- Each function has one responsibility. Decompose large operations.
+- Use `[Parameter(Mandatory)]` for required parameters.
+- Return early on precondition failures (`if (-not $scoop) { return }`).
+- Prefer `[pscustomobject]@{ … }` for structured return values.
+
+### Error handling
+- `$ErrorActionPreference = 'Continue'` at script scope — never change this.
+- Use `try/catch` around all external calls (network, file I/O, process launch).
+- Silently suppress errors in background/auto-sync code paths with empty `catch {}` blocks and a comment explaining why.
+- Use `-ErrorAction SilentlyContinue` on `Get-Command` checks; never let a missing command crash the shell.
+- Warnings to the user: `Write-Warning` for actionable problems, `Write-Host … -ForegroundColor DarkYellow` for soft informational notices.
+
+### Graceful degradation pattern
+Every alias or integration must be guarded:
+```powershell
+if (Test-CommandExists 'eza') {
+    function global:ll { eza --icons=always --group-directories-first -lah @args }
+} else {
+    function global:ll { Get-ChildItem -Force @args }
+}
+```
+Never assume a managed tool is present. Use `Test-CommandExists` before setting any alias.
+
+### Output / UX
+- Use `Write-Host` with `-ForegroundColor` for all user-visible output; do not rely on default stream output.
+- Color palette: Cyan = section headers, Yellow = action/progress, Green = success, DarkYellow = warning/missing, DarkGray = hints.
+- No `Write-Output` for user messages (it pollutes the pipeline).
+
+### Imports
+- No `Import-Module` at script scope except inside a `try/catch` (e.g., PSReadLine).
+- Check `Get-Module -ListAvailable` before importing optional modules.
+
+### State files
+- `.state/` directory holds all mutable runtime state. Ensure the directory with `Ensure-StateDir` before any read/write.
+- Serialize with `ConvertTo-Json` / `ConvertFrom-Json`; always `-Encoding UTF8`.
+- Wrap JSON reads in `try/catch` and return a safe default on parse failure.
+
+### Generated Lua files
+- `current-bg.lua` format: `return [[C:\path\to\image.jpg]]`
+- `current-opacity.lua` format: `return 0.72`
+- Always call `Try-ReloadWezTerm` after writing either file.
+
+### UI / help output
+- Help is rendered by `Show-8SyncHint` using `Write-HintRow` / `Write-HintSection` helpers.
+- `Write-HintRow` reads `$Host.UI.RawUI.WindowSize.Width` and word-wraps the description column;
+  command column is 32 chars wide. Do not revert to the old manual padding pattern.
+- Add new commands to `Show-8SyncHint` AND to the `Register-8SyncCompleter` subMap.
+
+### Tab completion
+- `Register-8SyncCompleter` registers `Register-ArgumentCompleter` for both `8sync` and `/8sync`.
+- Top-level modes list and per-mode subcommand lists live in `$modes` / `$subMap` inside that function.
+- Call `Register-8SyncCompleter` at the end of `Set-ToolAliases` (already done).
+
+### 8sync clean
+- Entry point: `Invoke-CleanCommand` → `Invoke-SystemClean`.
+- Flags: `--days N` (default 7), `--dry-run`, `--help`.
+- Safe-delete rules: uses `LastWriteTime` age filter; never deletes files without a path guard;
+  skips non-existent paths silently; PSIsContainer items are not deleted directly (only empties removed).
+- RAM flush: `EmptyWorkingSet` P/Invoke on current process + `ipconfig /flushdns` (no admin required).
+- Venv scan: `Find-VenvDirs` walks `$HOME` and common project roots up to depth 4;
+  detects Python (`pyvenv.cfg`), Node (`node_modules`), Rust (`target/`), Go (`vendor/`).
+
+## File & Directory Conventions
+
+| Path | Purpose | Committed? |
+|---|---|---|
+| `wezterm.lua` | WezTerm Lua config | Yes |
+| `wezterm-bootstrap.ps1` | Shell bootstrap + 8sync | Yes |
+| `current-bg.lua` | Generated: active wallpaper path | **No** |
+| `current-opacity.lua` | Generated: overlay opacity | **No** |
+| `bg/` | Downloaded wallpaper images | **No** |
+| `fonts/` | Bundled Nerd Font | **No** |
+| `.state/` | Runtime state (JSON) | **No** |
+| `docs/` | Reference documentation | Yes |
+
+## What NOT to Do
+
+- Do not add `Set-StrictMode` — it breaks dynamic alias creation patterns.
+- Do not use `exit` in the bootstrap — it would close the terminal tab.
+- Do not commit `current-bg.lua`, `current-opacity.lua`, `.state/`, `bg/`, or `fonts/`.
+- Do not add Lua `require` calls for modules outside the WezTerm standard library.
+- Do not add hard dependencies on tools that might not be installed; always guard with `Test-CommandExists`.
+- Do not raise unhandled errors from background sync paths — they run in hidden processes with no user-visible output.

@@ -188,107 +188,108 @@ function Get-ShellEngine {
     return 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 }
 
+function Write-HintRow {
+    param(
+        [string]$Cmd,
+        [string]$Desc,
+        [int]$CmdWidth = 32,
+        [ConsoleColor]$CmdColor = [ConsoleColor]::White,
+        [ConsoleColor]$DescColor = [ConsoleColor]::DarkGray
+    )
+    $termWidth = try { $Host.UI.RawUI.WindowSize.Width } catch { 100 }
+    if ($termWidth -lt 40) { $termWidth = 100 }
+    $descMaxWidth = $termWidth - $CmdWidth - 2
+    if ($descMaxWidth -lt 10) { $descMaxWidth = 40 }
+
+    $paddedCmd = ('  ' + $Cmd).PadRight($CmdWidth)
+    Write-Host $paddedCmd -ForegroundColor $CmdColor -NoNewline
+
+    # word-wrap description if too long
+    if ($Desc.Length -le $descMaxWidth) {
+        Write-Host $Desc -ForegroundColor $DescColor
+    } else {
+        $words = $Desc -split ' '
+        $line = ''
+        $firstLine = $true
+        foreach ($word in $words) {
+            if (($line + ' ' + $word).TrimStart().Length -gt $descMaxWidth) {
+                if ($firstLine) {
+                    Write-Host $line.TrimStart() -ForegroundColor $DescColor
+                    $firstLine = $false
+                } else {
+                    Write-Host ((' ' * $CmdWidth) + $line.TrimStart()) -ForegroundColor $DescColor
+                }
+                $line = $word
+            } else {
+                $line = ($line + ' ' + $word).TrimStart()
+            }
+        }
+        if ($line) {
+            if ($firstLine) {
+                Write-Host $line -ForegroundColor $DescColor
+            } else {
+                Write-Host ((' ' * $CmdWidth) + $line) -ForegroundColor $DescColor
+            }
+        }
+    }
+}
+
+function Write-HintSection {
+    param([string]$Title)
+    Write-Host ''
+    Write-Host ('  ' + $Title) -ForegroundColor Yellow
+}
+
 function Show-8SyncHint {
     $missing = Get-MissingPackages
     $missingText = if ($missing.Count -gt 0) { ($missing -join ', ') } else { 'none' }
 
     Write-Host ''
-    Write-Host '  8sync - WezTerm Shell Toolkit' -ForegroundColor Cyan
-    Write-Host ('  Missing tools: {0}' -f $missingText) -ForegroundColor DarkGray
-    Write-Host ''
+    Write-Host '  8sync  WezTerm Shell Toolkit' -ForegroundColor Cyan -NoNewline
+    Write-Host ('  [missing: {0}]' -f $missingText) -ForegroundColor DarkGray
 
-    Write-Host '  COMMANDS' -ForegroundColor Yellow
-    Write-Host '  8sync help' -ForegroundColor White -NoNewline
-    Write-Host '                  Show this help' -ForegroundColor DarkGray
-    Write-Host '  8sync status' -ForegroundColor White -NoNewline
-    Write-Host '                Show installed tools and last sync time' -ForegroundColor DarkGray
-    Write-Host '  8sync sync' -ForegroundColor White -NoNewline
-    Write-Host '                  Install missing tools + update all via scoop' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HintSection 'COMMANDS'
+    Write-HintRow '8sync help'              'Show this help'
+    Write-HintRow '8sync status'            'Installed tools + last sync time'
+    Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
+    Write-HintRow '8sync clean [--days N]'  'Deep clean: temp/cache/venv/RAM/disk (default: stale > 7 days)'
 
-    Write-Host '  BACKGROUND WALLPAPER' -ForegroundColor Yellow
-    Write-Host '  8sync bg search <keywords>' -ForegroundColor White -NoNewline
-    Write-Host '  Search Wallhaven for wallpapers' -ForegroundColor DarkGray
-    Write-Host '  8sync bg pick' -ForegroundColor White -NoNewline
-    Write-Host '               Pick from cached results with fzf' -ForegroundColor DarkGray
-    Write-Host '  8sync bg set <id|path|url>' -ForegroundColor White -NoNewline
-    Write-Host '   Set wallpaper by cache id, local path, or URL' -ForegroundColor DarkGray
-    Write-Host '  8sync bg open <id>' -ForegroundColor White -NoNewline
-    Write-Host '          Open wallpaper page in browser' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HintSection 'BACKGROUND'
+    Write-HintRow '8sync bg search <kw>'    'Search Wallhaven for 4K wallpapers'
+    Write-HintRow '8sync bg pick'           'Pick from cached results with fzf'
+    Write-HintRow '8sync bg set <id|path>'  'Set wallpaper by cache id, local path, or URL'
+    Write-HintRow '8sync bg open <id>'      'Open wallpaper page in browser'
 
-    Write-Host '  FILE & NAVIGATION' -ForegroundColor Yellow
-    Write-Host '  ll' -ForegroundColor White -NoNewline
-    Write-Host '                          List files with icons (eza -lah)' -ForegroundColor DarkGray
-    Write-Host '  lt' -ForegroundColor White -NoNewline
-    Write-Host '                          Tree view 2 levels (eza --tree)' -ForegroundColor DarkGray
-    Write-Host '  y' -ForegroundColor White -NoNewline
-    Write-Host '                           File manager with preview (yazi)' -ForegroundColor DarkGray
-    Write-Host '  catn <file>' -ForegroundColor White -NoNewline
-    Write-Host '                 View file with syntax highlight (bat)' -ForegroundColor DarkGray
-    Write-Host '  ff <pattern>' -ForegroundColor White -NoNewline
-    Write-Host '                Find files by name (rg --files)' -ForegroundColor DarkGray
-    Write-Host '  cdi <query>' -ForegroundColor White -NoNewline
-    Write-Host '                 Jump to directory (zoxide)' -ForegroundColor DarkGray
-    Write-Host '  mkcd <path>' -ForegroundColor White -NoNewline
-    Write-Host '                 Create directory and cd into it' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HintSection 'HELIX EDITOR'
+    Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
+    Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
+    Write-HintRow '8sync hx opacity <val>'  'Adjust background transparency: +  -  or 0.0-1.0'
+    Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
 
-    Write-Host '  EDITING & GIT' -ForegroundColor Yellow
-    Write-Host '  e <file>' -ForegroundColor White -NoNewline
-    Write-Host '                    Edit file in terminal (helix, LSP built-in)' -ForegroundColor DarkGray
-    Write-Host '  lg' -ForegroundColor White -NoNewline
-    Write-Host '                          Git TUI - stage, commit, diff (lazygit)' -ForegroundColor DarkGray
-    Write-Host '  git diff' -ForegroundColor White -NoNewline
-    Write-Host '                    Auto syntax-highlighted diffs (delta)' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HintSection 'FILE & NAVIGATION'
+    Write-HintRow 'll'                      'List files with icons (eza -lah)'
+    Write-HintRow 'lt'                      'Tree view 2 levels (eza --tree)'
+    Write-HintRow 'y [path]'                'File manager with cd-on-exit (yazi)'
+    Write-HintRow 'catn <file>'             'Syntax-highlighted view (bat)'
+    Write-HintRow 'ff <pattern>'            'Find files by name (rg --files)'
+    Write-HintRow 'cdi <query>'             'Jump to directory (zoxide)'
+    Write-HintRow 'mkcd <path>'             'Create directory and cd into it'
 
-    Write-Host '  SYSTEM & ANALYSIS' -ForegroundColor Yellow
-    Write-Host '  top' -ForegroundColor White -NoNewline
-    Write-Host '                         System monitor TUI (bottom)' -ForegroundColor DarkGray
-    Write-Host '  pss <query>' -ForegroundColor White -NoNewline
-    Write-Host '                 Process viewer with search (procs)' -ForegroundColor DarkGray
-    Write-Host '  du <path>' -ForegroundColor White -NoNewline
-    Write-Host '                   Disk usage visualizer (dust)' -ForegroundColor DarkGray
-    Write-Host '  tokei' -ForegroundColor White -NoNewline
-    Write-Host '                       Count lines of code by language' -ForegroundColor DarkGray
-    Write-Host '  hyperfine <cmd>' -ForegroundColor White -NoNewline
-    Write-Host '             Benchmark command execution time' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HintSection 'EDITING & GIT'
+    Write-HintRow 'e <file>'                'Open in Helix editor (LSP built-in)'
+    Write-HintRow 'lg'                      'Git TUI: stage, commit, diff (lazygit)'
+    Write-HintRow 'git diff'                'Auto syntax-highlighted diffs (delta)'
 
-    Write-Host '  HELIX EDITOR' -ForegroundColor Yellow
-    Write-Host '  8sync hx lang [name]' -ForegroundColor White -NoNewline
-    Write-Host '        Install language toolchain (fzf picker)' -ForegroundColor DarkGray
-    Write-Host '  8sync hx wrap' -ForegroundColor White -NoNewline
-    Write-Host '                 Toggle soft word-wrap' -ForegroundColor DarkGray
-    Write-Host '  8sync hx opacity <+|-|val>' -ForegroundColor White -NoNewline
-    Write-Host '    Adjust background transparency' -ForegroundColor DarkGray
-    Write-Host '  8sync hx theme [name]' -ForegroundColor White -NoNewline
-    Write-Host '       Pick color theme (fzf picker)' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-HintSection 'SYSTEM'
+    Write-HintRow 'top'                     'System monitor TUI (bottom)'
+    Write-HintRow 'pss <query>'             'Process viewer with search (procs)'
+    Write-HintRow 'du [path]'               'Disk usage visualizer (dust)'
+    Write-HintRow 'tokei [path]'            'Count lines of code by language'
+    Write-HintRow 'hyperfine <cmd>'         'Benchmark command execution time'
 
-    Write-Host '  KEYBINDINGS' -ForegroundColor Yellow
-    Write-Host '  Ctrl+r' -ForegroundColor White -NoNewline
-    Write-Host '                      Fuzzy search command history (fzf)' -ForegroundColor DarkGray
-    Write-Host '  Alt+c' -ForegroundColor White -NoNewline
-    Write-Host '                       Jump to directory (zoxide interactive)' -ForegroundColor DarkGray
-    Write-Host ''
-
-    Write-Host '  EXAMPLES' -ForegroundColor Yellow
-    Write-Host '  8sync sync' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '                  # install/update all managed tools' -ForegroundColor DarkGray
-    Write-Host '  e ~/.config/wezterm/wezterm.lua' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '           # edit config in helix' -ForegroundColor DarkGray
-    Write-Host '  lg' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '                          # open lazygit in current repo' -ForegroundColor DarkGray
-    Write-Host '  y ~/projects' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '                # browse files with preview' -ForegroundColor DarkGray
-    Write-Host '  tokei src/' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '                  # count code lines in src/' -ForegroundColor DarkGray
-    Write-Host '  hyperfine "fd .rs"' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '          # benchmark a command' -ForegroundColor DarkGray
-    Write-Host '  8sync bg search anime' -ForegroundColor DarkCyan -NoNewline
-    Write-Host '       # find wallpapers on Wallhaven' -ForegroundColor DarkGray
+    Write-HintSection 'KEYBINDINGS'
+    Write-HintRow 'Ctrl+r'                  'Fuzzy search command history (fzf)'
+    Write-HintRow 'Alt+c'                   'Jump to directory (zoxide interactive)'
     Write-Host ''
 }
 
@@ -457,6 +458,53 @@ function Set-HistoryExperience {
             # Ignore fzf handler errors
         }
     }
+}
+
+function Register-8SyncCompleter {
+    # Tab / inline completion for: 8sync <mode> <subcommand>
+    $completer = {
+        param($wordToComplete, $commandAst, $cursorPosition)
+
+        $tokens = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
+        $count  = $tokens.Count
+
+        # top-level modes
+        $modes = @('help','status','sync','clean','bg','hx')
+
+        # subcommands per mode
+        $subMap = @{
+            bg = @('search','pick','set','open','help')
+            hx = @('lang','wrap','opacity','theme','help')
+            clean = @('--days','--dry-run','--help')
+        }
+
+        if ($count -le 1) {
+            # still typing the command name itself — nothing to complete yet
+            return
+        }
+
+        if ($count -eq 2) {
+            # completing the mode argument
+            $partial = $tokens[1]
+            $modes | Where-Object { $_ -like "$partial*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+            return
+        }
+
+        if ($count -ge 3) {
+            $mode = $tokens[1].ToLowerInvariant()
+            $partial = $tokens[$count - 1]
+            if ($subMap.ContainsKey($mode)) {
+                $subMap[$mode] | Where-Object { $_ -like "$partial*" } |
+                    ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+            }
+        }
+    }
+
+    try {
+        Register-ArgumentCompleter -CommandName '8sync'  -ScriptBlock $completer -ErrorAction SilentlyContinue
+        Register-ArgumentCompleter -CommandName '/8sync' -ScriptBlock $completer -ErrorAction SilentlyContinue
+    } catch {}
 }
 
 function Read-BgCache {
@@ -1015,18 +1063,640 @@ function Invoke-HxLang {
 
 function Show-HxHelp {
     Write-Host ''
-    Write-Host '  Helix editor commands:' -ForegroundColor Yellow
-    Write-Host '  8sync hx help' -ForegroundColor White -NoNewline
-    Write-Host '                  Show this help' -ForegroundColor DarkGray
-    Write-Host '  8sync hx lang [name]' -ForegroundColor White -NoNewline
-    Write-Host '           Install language toolchain via scoop (fzf)' -ForegroundColor DarkGray
-    Write-Host '  8sync hx wrap' -ForegroundColor White -NoNewline
-    Write-Host '                  Toggle soft word-wrap on/off' -ForegroundColor DarkGray
-    Write-Host '  8sync hx opacity <+|-|val>' -ForegroundColor White -NoNewline
-    Write-Host '     Adjust background transparency' -ForegroundColor DarkGray
-    Write-Host '  8sync hx theme [name]' -ForegroundColor White -NoNewline
-    Write-Host '          Pick Helix color theme (fzf)' -ForegroundColor DarkGray
+    Write-HintSection 'HELIX EDITOR'
+    Write-HintRow '8sync hx help'           'Show this help'
+    Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
+    Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
+    Write-HintRow '8sync hx opacity <val>'  '+  -  or 0.0-1.0 — adjust background transparency'
+    Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
     Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+#  8sync clean — deep system / RAM / venv cleaner
+# ---------------------------------------------------------------------------
+
+function Format-Bytes {
+    param([long]$Bytes)
+    if ($Bytes -ge 1GB) { return ('{0:F2} GB' -f ($Bytes / 1GB)) }
+    if ($Bytes -ge 1MB) { return ('{0:F1} MB' -f ($Bytes / 1MB)) }
+    if ($Bytes -ge 1KB) { return ('{0:F0} KB' -f ($Bytes / 1KB)) }
+    return ('{0} B' -f $Bytes)
+}
+
+# Spinner state — shared across the clean session
+$script:CleanSpinnerFrames = @('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
+$script:CleanSpinnerIdx    = 0
+$script:CleanTotalFreed    = [long]0
+$script:CleanTotalFiles    = 0
+# True only when stdout goes to an interactive terminal (not piped/redirected/captured)
+$script:CleanIsConsole     = $Host.Name -eq 'ConsoleHost' -and
+                             -not [System.Console]::IsOutputRedirected -and
+                             -not [System.Console]::IsInputRedirected
+
+function Write-CleanSpinner {
+    param([string]$Msg, [string]$Counter = '')
+    if (-not $script:CleanIsConsole) { return }
+    $frame = $script:CleanSpinnerFrames[$script:CleanSpinnerIdx % $script:CleanSpinnerFrames.Count]
+    $script:CleanSpinnerIdx++
+    $termWidth = try { $Host.UI.RawUI.WindowSize.Width } catch { 100 }
+    if ($termWidth -lt 20) { $termWidth = 100 }
+    # Truncate long paths so line never wraps
+    $maxMsg = $termWidth - 32
+    if ($Msg.Length -gt $maxMsg -and $maxMsg -gt 8) { $Msg = '…' + $Msg.Substring($Msg.Length - ($maxMsg - 1)) }
+    $line = ('  {0} {1}  {2}' -f $frame, $Msg, $Counter).PadRight($termWidth - 1)
+    # Overwrite same line via \r — stays on one line, no scroll
+    [System.Console]::Write("`r" + $line)
+}
+
+function Clear-SpinnerLine {
+    if (-not $script:CleanIsConsole) { return }
+    $termWidth = try { $Host.UI.RawUI.WindowSize.Width } catch { 100 }
+    if ($termWidth -lt 20) { $termWidth = 100 }
+    [System.Console]::Write("`r" + (' ' * ($termWidth - 1)) + "`r")
+}
+
+function Write-CleanResult {
+    param([string]$Label, [int]$FileCount, [long]$Freed, [switch]$DryRun, [switch]$Skipped)
+    Clear-SpinnerLine
+    if ($Skipped) { return }   # path didn't exist — print nothing
+    $tag   = if ($DryRun) { ' ~' } else { '' }
+    $fStr  = if ($Freed -gt 0) { Format-Bytes $Freed } else { '—' }
+    $nStr  = if ($FileCount -gt 0) { ('{0} files' -f $FileCount) } else { '0 files' }
+    # colour: green when freed something, dry-run yellow, zero gray
+    $color = if ($Freed -gt 0 -and -not $DryRun) { 'Green' } elseif ($DryRun -and $Freed -gt 0) { 'DarkYellow' } else { 'DarkGray' }
+    Write-Host ('  {0}{1}  {2}  {3}' -f $Label, $tag, $nStr, $fStr) -ForegroundColor $color
+}
+
+# Fast recursive file scan using .NET EnumerateFiles (5-10x faster than Get-ChildItem -Recurse)
+function Invoke-CleanPath {
+    param(
+        [string]$Path,
+        [string]$Label,
+        [int]$StaleDays = 0,
+        [switch]$DryRun,
+        [switch]$Recursive
+    )
+
+    if (-not (Test-Path $Path)) {
+        Write-CleanResult -Label $Label -FileCount 0 -Freed 0 -DryRun:$DryRun -Skipped
+        return [long]0
+    }
+
+    $cutoff   = if ($StaleDays -gt 0) { (Get-Date).AddDays(-$StaleDays) } else { $null }
+    $freed    = [long]0
+    $count    = 0
+    $spinFreq = 0   # throttle spinner updates
+
+    # Show initial spinner immediately so user knows we started
+    Write-CleanSpinner -Msg $Label -Counter 'scanning…'
+
+    try {
+        $searchOpt = if ($Recursive) {
+            [System.IO.SearchOption]::AllDirectories
+        } else {
+            [System.IO.SearchOption]::TopDirectoryOnly
+        }
+
+        $files = [System.IO.Directory]::EnumerateFiles($Path, '*', $searchOpt)
+
+        foreach ($filePath in $files) {
+            # Throttle spinner: update every 500 files — 1 Console.Write per 500 iterations
+            $spinFreq++
+            if ($spinFreq -ge 500) {
+                $spinFreq = 0
+                Write-CleanSpinner -Msg $Label -Counter ('{0} files  {1}' -f $count, (Format-Bytes $freed))
+            }
+
+            try {
+                $info = [System.IO.FileInfo]::new($filePath)
+                if ($cutoff -and $info.LastWriteTime -ge $cutoff) { continue }
+                $sz = $info.Length
+                if (-not $DryRun) {
+                    [System.IO.File]::Delete($filePath)
+                }
+                $freed += $sz
+                $count++
+            } catch {}
+        }
+    } catch {}
+
+    # Remove empty leftover dirs (bottom-up, non-blocking)
+    if (-not $DryRun -and $Recursive) {
+        try {
+            [System.IO.Directory]::EnumerateDirectories($Path, '*', [System.IO.SearchOption]::AllDirectories) |
+                Sort-Object { $_.Length } -Descending |
+                ForEach-Object {
+                    try {
+                        if ([System.IO.Directory]::GetFileSystemEntries($_).Count -eq 0) {
+                            [System.IO.Directory]::Delete($_)
+                        }
+                    } catch {}
+                }
+        } catch {}
+    }
+
+    $script:CleanTotalFreed += $freed
+    $script:CleanTotalFiles += $count
+    Write-CleanResult -Label $Label -FileCount $count -Freed $freed -DryRun:$DryRun
+    return $freed
+}
+
+function Invoke-RamFlush {
+    param([switch]$DryRun)
+    Write-CleanSpinner -Msg 'flushing memory + network…'
+
+    # ── GC: flush PowerShell/.NET managed heap ───────────────────────────
+    if (-not $DryRun) {
+        try {
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect()
+        } catch {}
+    }
+
+    # ── EmptyWorkingSet: trim current process working set ────────────────
+    try {
+        if (-not ([System.Management.Automation.PSTypeName]'MemUtil').Type) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class MemUtil {
+    [DllImport("psapi.dll")]    public static extern bool EmptyWorkingSet(IntPtr hProcess);
+    [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+}
+'@ -ErrorAction SilentlyContinue
+        }
+        if (-not $DryRun) {
+            [MemUtil]::EmptyWorkingSet([MemUtil]::GetCurrentProcess()) | Out-Null
+        }
+    } catch {}
+
+    # ── Network flush (all no-admin) ─────────────────────────────────────
+    if (-not $DryRun) {
+        try { & ipconfig /flushdns   2>$null | Out-Null } catch {}  # DNS resolver cache
+        try { & nbtstat  /R          2>$null | Out-Null } catch {}  # NetBIOS name cache
+        try { & arp      -d *        2>$null | Out-Null } catch {}  # ARP table (fails silently without admin)
+    }
+
+    # ── Clipboard: clear (safe, no-admin) ────────────────────────────────
+    if (-not $DryRun) {
+        try { Set-Clipboard -Value '' -ErrorAction SilentlyContinue } catch {}
+    }
+
+    # ── Report: RAM stats + top 5 memory hogs ────────────────────────────
+    Clear-SpinnerLine
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+        if ($os) {
+            $freeMB  = [math]::Round($os.FreePhysicalMemory / 1024)
+            $totalMB = [math]::Round($os.TotalVisibleMemorySize / 1024)
+            $usedMB  = $totalMB - $freeMB
+            $pct     = [math]::Round($usedMB * 100 / $totalMB)
+            $tag     = if ($DryRun) { ' ~' } else { '' }
+            $color   = if ($pct -gt 85) { 'Yellow' } elseif ($pct -gt 65) { 'DarkYellow' } else { 'Green' }
+            $flushNote = if ($DryRun) { '' } else { '  flushed: DNS ARP NetBIOS clipboard GC' }
+            Write-Host ('  RAM{0}  {1} MB / {2} MB  ({3}% used){4}' -f $tag, $usedMB, $totalMB, $pct, $flushNote) -ForegroundColor $color
+        }
+    } catch {}
+
+    # Top 5 RAM hogs — informational only (never killed)
+    try {
+        $top = Get-Process -ErrorAction SilentlyContinue |
+            Sort-Object WorkingSet64 -Descending |
+            Select-Object -First 5 |
+            ForEach-Object {
+                $mb = [math]::Round($_.WorkingSet64 / 1MB)
+                '{0} ({1} MB)' -f $_.ProcessName, $mb
+            }
+        if ($top) {
+            Write-Host ('  top: ' + ($top -join '  ')) -ForegroundColor DarkGray
+        }
+    } catch {}
+}
+
+# ---------------------------------------------------------------------------
+#  Disk optimization — SSD TRIM / HDD defrag (requires admin for Optimize-Volume)
+# ---------------------------------------------------------------------------
+
+function Invoke-DiskOptimize {
+    param([switch]$DryRun)
+    Write-CleanSpinner -Msg 'checking disks…'
+
+    # Detect disk types via Get-PhysicalDisk — requires Storage module
+    $disks = @()
+    try {
+        $disks = Get-PhysicalDisk -ErrorAction SilentlyContinue |
+            Where-Object { $_.BusType -ne 'USB' } |    # skip USB drives
+            ForEach-Object {
+                [pscustomobject]@{
+                    Name      = $_.FriendlyName
+                    MediaType = $_.MediaType             # SSD, HDD, Unspecified
+                    BusType   = $_.BusType               # NVMe, SATA, SAS
+                    SizeGB    = [math]::Round($_.Size / 1GB)
+                    Health    = $_.HealthStatus
+                }
+            }
+    } catch {
+        # Storage module not available — skip disk optimization
+        Clear-SpinnerLine
+        Write-Host '  disk info unavailable' -ForegroundColor DarkGray
+        return
+    }
+
+    if ($disks.Count -eq 0) {
+        Clear-SpinnerLine
+        Write-Host '  no disks found' -ForegroundColor DarkGray
+        return
+    }
+
+    Clear-SpinnerLine
+    foreach ($disk in $disks) {
+        $type  = if ($disk.MediaType -eq 'SSD') { 'SSD' } elseif ($disk.MediaType -eq 'HDD') { 'HDD' } else { '???' }
+        $bus   = if ($disk.BusType) { $disk.BusType } else { '' }
+        $health = if ($disk.Health -ne 'Healthy') { "  $($disk.Health)" } else { '' }
+        $color  = if ($disk.Health -ne 'Healthy') { 'Yellow' } else { 'DarkGray' }
+
+        # Attempt Optimize-Volume (requires admin — will fail gracefully without)
+        $action = ''
+        if (-not $DryRun) {
+            try {
+                # Get volumes on this physical disk
+                $volumes = Get-Volume -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' }
+                foreach ($vol in $volumes) {
+                    Write-CleanSpinner -Msg ('optimizing ' + $vol.DriveLetter + ':')
+                    try {
+                        if ($disk.MediaType -eq 'SSD') {
+                            Optimize-Volume -DriveLetter $vol.DriveLetter -ReTrim -ErrorAction Stop
+                            $action = 'TRIM'
+                        } elseif ($disk.MediaType -eq 'HDD') {
+                            Optimize-Volume -DriveLetter $vol.DriveLetter -Defrag -ErrorAction Stop
+                            $action = 'defrag'
+                        }
+                    } catch {
+                        # Access denied without admin — that's expected
+                        $action = 'skipped (needs admin)'
+                    }
+                }
+            } catch {
+                $action = 'skipped (needs admin)'
+            }
+        } else {
+            $action = if ($disk.MediaType -eq 'SSD') { 'would TRIM' } elseif ($disk.MediaType -eq 'HDD') { 'would defrag' } else { 'skip' }
+        }
+
+        Clear-SpinnerLine
+        Write-Host ('  {0}  {1} {2} {3}GB  {4}{5}' -f $disk.Name, $type, $bus, $disk.SizeGB, $action, $health) -ForegroundColor $color
+    }
+}
+
+function Test-IsPythonVenv {
+    # Quick check: dir has Scripts\python.exe (Windows) or bin/python (Unix-style)
+    # OR contains pyvenv.cfg — any of these = it's a Python env
+    param([string]$Dir)
+    return (
+        [System.IO.File]::Exists([System.IO.Path]::Combine($Dir, 'pyvenv.cfg')) -or
+        [System.IO.File]::Exists([System.IO.Path]::Combine($Dir, 'Scripts', 'python.exe')) -or
+        [System.IO.File]::Exists([System.IO.Path]::Combine($Dir, 'Scripts', 'python3.exe')) -or
+        [System.IO.File]::Exists([System.IO.Path]::Combine($Dir, 'bin', 'python')) -or
+        [System.IO.File]::Exists([System.IO.Path]::Combine($Dir, 'bin', 'python3'))
+    )
+}
+
+function Find-VenvDirs {
+    param([string[]]$SearchRoots, [int]$StaleDays)
+    $cutoff = (Get-Date).AddDays(-$StaleDays)
+    $found  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    # Helper: add dir to found if it exists and is stale
+    $tryAdd = {
+        param([string]$dir)
+        if ([System.IO.Directory]::Exists($dir)) {
+            $lw = [System.IO.Directory]::GetLastWriteTime($dir)
+            if ($lw -lt $cutoff) { $null = $found.Add($dir) }
+        }
+    }
+
+    $enumOpts = [System.IO.EnumerationOptions]::new()
+    $enumOpts.RecurseSubdirectories = $true
+    $enumOpts.MaxRecursionDepth     = 5
+    $enumOpts.IgnoreInaccessible    = $true
+    $enumOpts.AttributesToSkip      = [System.IO.FileAttributes]::ReparsePoint
+
+    # ── Track 1: pyvenv.cfg — standard venv / uv / virtualenv (modern) ────────
+    # pyvenv.cfg lives INSIDE the env dir, so its parent IS the env.
+    # Catches: python -m venv .venv, uv venv, virtualenv, hatch, pdm, pyenv-virtualenv
+    # ──────────────────────────────────────────────────────────────────────────
+    foreach ($root in $SearchRoots) {
+        if (-not (Test-Path $root)) { continue }
+        Write-CleanSpinner -Msg ('scanning ' + $root)
+        try {
+            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'pyvenv.cfg', $enumOpts)) {
+                $dir = [System.IO.Path]::GetDirectoryName($f)
+                Write-CleanSpinner -Msg $dir
+                & $tryAdd $dir
+            }
+        } catch {}
+    }
+
+    # ── Track 2: directory-name patterns — conda, old virtualenv, custom names ─
+    # .venv / venv / .env / env / virtualenv / .virtualenv — verify it's Python
+    # by checking for Scripts\python.exe (no pyvenv.cfg in old virtualenv / conda)
+    # ──────────────────────────────────────────────────────────────────────────
+    $pyDirPatterns = @('.venv', 'venv', '.env', 'env', 'virtualenv', '.virtualenv')
+    foreach ($root in $SearchRoots) {
+        if (-not (Test-Path $root)) { continue }
+        foreach ($pattern in $pyDirPatterns) {
+            try {
+                foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, $pattern, $enumOpts)) {
+                    Write-CleanSpinner -Msg $d
+                    if (Test-IsPythonVenv -Dir $d) {
+                        & $tryAdd $d
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    # ── Track 3: conda / mamba named envs ──────────────────────────────────────
+    # Conda stores named envs in fixed locations, not inside project dirs.
+    # Each env subdir contains Scripts\python.exe (Windows).
+    # ──────────────────────────────────────────────────────────────────────────
+    $condaRoots = @(
+        (Join-Path $HOME '.conda\envs'),
+        (Join-Path $HOME 'miniconda3\envs'),
+        (Join-Path $HOME 'miniforge3\envs'),
+        (Join-Path $HOME 'mambaforge\envs'),
+        (Join-Path $HOME 'anaconda3\envs'),
+        (Join-Path $HOME 'anaconda\envs'),
+        (Join-Path $env:LOCALAPPDATA 'conda\conda\envs'),
+        (Join-Path $env:USERPROFILE 'AppData\Local\miniconda3\envs')
+    ) | Select-Object -Unique
+    foreach ($condaRoot in $condaRoots) {
+        if (-not [System.IO.Directory]::Exists($condaRoot)) { continue }
+        Write-CleanSpinner -Msg ('conda envs: ' + $condaRoot)
+        try {
+            foreach ($envDir in [System.IO.Directory]::EnumerateDirectories($condaRoot)) {
+                if (Test-IsPythonVenv -Dir $envDir) {
+                    & $tryAdd $envDir
+                }
+            }
+        } catch {}
+    }
+
+    # ── Track 4: uv tool installs ─────────────────────────────────────────────
+    # `uv tool install` creates isolated envs in %APPDATA%\uv\tools\<package>
+    # These are not project venvs but are safe to remove if stale (reinstallable)
+    # ──────────────────────────────────────────────────────────────────────────
+    $uvToolsRoot = Join-Path $env:APPDATA 'uv\tools'
+    if ([System.IO.Directory]::Exists($uvToolsRoot)) {
+        Write-CleanSpinner -Msg ('uv tools: ' + $uvToolsRoot)
+        try {
+            foreach ($toolDir in [System.IO.Directory]::EnumerateDirectories($uvToolsRoot)) {
+                if (Test-IsPythonVenv -Dir $toolDir) {
+                    & $tryAdd $toolDir
+                }
+            }
+        } catch {}
+    }
+
+    # ── Track 5: Rust target/ dirs ────────────────────────────────────────────
+    foreach ($root in $SearchRoots) {
+        if (-not (Test-Path $root)) { continue }
+        try {
+            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'Cargo.toml', $enumOpts)) {
+                $targetDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'target'
+                & $tryAdd $targetDir
+            }
+        } catch {}
+    }
+
+    # ── Track 6: Go vendor/ dirs ──────────────────────────────────────────────
+    foreach ($root in $SearchRoots) {
+        if (-not (Test-Path $root)) { continue }
+        try {
+            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'go.mod', $enumOpts)) {
+                $vendorDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'vendor'
+                & $tryAdd $vendorDir
+            }
+        } catch {}
+    }
+
+    # ── Track 7: node_modules ─────────────────────────────────────────────────
+    foreach ($root in $SearchRoots) {
+        if (-not (Test-Path $root)) { continue }
+        try {
+            foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, 'node_modules', $enumOpts)) {
+                $lw = [System.IO.Directory]::GetLastWriteTime($d)
+                if ($lw -lt $cutoff) { $null = $found.Add($d) }
+            }
+        } catch {}
+    }
+
+    return @($found)
+}
+
+function Remove-VenvDir {
+    param([string]$Path, [switch]$DryRun)
+    Write-CleanSpinner -Msg ('sizing ' + [System.IO.Path]::GetFileName($Path) + '…')
+    try {
+        $size = [long]0
+        foreach ($f in [System.IO.Directory]::EnumerateFiles($Path, '*', [System.IO.SearchOption]::AllDirectories)) {
+            try { $size += [System.IO.FileInfo]::new($f).Length } catch {}
+        }
+        Clear-SpinnerLine
+        $tag   = if ($DryRun) { ' ~' } else { '' }
+        $color = if ($size -gt 0 -and -not $DryRun) { 'Green' } elseif ($DryRun -and $size -gt 0) { 'DarkYellow' } else { 'DarkGray' }
+        $name  = [System.IO.Path]::GetFileName($Path)
+        $parent= [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($Path))
+        Write-Host ('  {0}/{1}{2}  {3}' -f $parent, $name, $tag, (Format-Bytes $size)) -ForegroundColor $color
+        if (-not $DryRun) {
+            Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        $script:CleanTotalFreed += $size
+        return $size
+    } catch {
+        Clear-SpinnerLine
+        return [long]0
+    }
+}
+
+function Invoke-SystemClean {
+    param(
+        [int]$StaleDays = 7,
+        [switch]$DryRun
+    )
+
+    # Reset session counters
+    $script:CleanTotalFreed  = [long]0
+    $script:CleanTotalFiles  = 0
+    $script:CleanSpinnerIdx  = 0
+
+    $sw    = [System.Diagnostics.Stopwatch]::StartNew()
+    $dTag  = if ($DryRun) { '  dry-run' } else { '' }
+
+    Write-Host ''
+    Write-Host ('  8sync clean  >{0}d stale{1}' -f $StaleDays, $dTag) -ForegroundColor Cyan
+    Write-Host ''
+
+    # ── Temp ──────────────────────────────────────────────────────────────
+    Write-Host '  TEMP' -ForegroundColor Yellow
+    $tempPaths = @($env:TEMP, $env:TMP, (Join-Path $env:SystemRoot 'Temp'), (Join-Path $env:LOCALAPPDATA 'Temp')) |
+        Select-Object -Unique
+    foreach ($p in $tempPaths) {
+        $shortLabel = if ($p -like "$HOME*") { '~' + $p.Substring($HOME.Length) } else { $p }
+        Invoke-CleanPath -Path $p -Label $shortLabel -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
+    }
+
+    # ── App caches ──────────────────────────────────────────────────────
+    Write-Host ''
+    Write-Host '  APP CACHES' -ForegroundColor Yellow
+    $cachePaths = @(
+        # ── Browsers ──
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Cache');       Label = 'Chrome' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Code Cache');  Label = 'Chrome/code' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data\Default\Cache');      Label = 'Edge' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data\Default\Code Cache'); Label = 'Edge/code' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Mozilla\Firefox\Profiles');                    Label = 'Firefox' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data\Default\Cache'); Label = 'Brave' }
+        # ── Dev tools ──
+        @{ Path = (Join-Path $env:APPDATA 'Code\User\workspaceStorage');                       Label = 'VSCode/workspace' }
+        @{ Path = (Join-Path $env:APPDATA 'Code\logs');                                        Label = 'VSCode/logs' }
+        @{ Path = (Join-Path $env:APPDATA 'Code\CachedExtensionVSIXs');                        Label = 'VSCode/vsix' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'npm-cache');                                   Label = 'npm' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'pip\cache');                                   Label = 'pip' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'uv\cache');                                    Label = 'uv' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'go\pkg\mod\cache');                            Label = 'go/mod' }
+        @{ Path = (Join-Path $HOME '.cargo\registry\cache');                                   Label = 'cargo' }
+        @{ Path = (Join-Path $HOME '.gradle\caches');                                          Label = 'gradle' }
+        @{ Path = (Join-Path $HOME '.m2\repository');                                          Label = 'maven' }
+        @{ Path = (Join-Path $HOME '.nuget\packages');                                         Label = 'nuget' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Yarn\Cache');                                  Label = 'yarn' }
+        @{ Path = (Join-Path $HOME 'scoop\cache');                                             Label = 'scoop' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'pnpm\store');                                  Label = 'pnpm' }
+        @{ Path = (Join-Path $env:APPDATA 'Bun\install\cache');                                Label = 'bun' }
+        # ── Communication apps ──
+        @{ Path = (Join-Path $env:APPDATA 'Microsoft\Teams\Cache');                            Label = 'Teams' }
+        @{ Path = (Join-Path $env:APPDATA 'Microsoft\Teams\blob_storage');                     Label = 'Teams/blob' }
+        @{ Path = (Join-Path $env:APPDATA 'Microsoft\Teams\databases');                        Label = 'Teams/db' }
+        @{ Path = (Join-Path $env:APPDATA 'discord\Cache');                                    Label = 'Discord' }
+        @{ Path = (Join-Path $env:APPDATA 'discord\Code Cache');                               Label = 'Discord/code' }
+        @{ Path = (Join-Path $env:APPDATA 'Slack\Cache');                                      Label = 'Slack' }
+        @{ Path = (Join-Path $env:APPDATA 'Slack\Code Cache');                                 Label = 'Slack/code' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Spotify\Storage');                             Label = 'Spotify' }
+    )
+    foreach ($entry in $cachePaths) {
+        Invoke-CleanPath -Path $entry.Path -Label $entry.Label -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
+    }
+
+    # ── Windows caches ──────────────────────────────────────────────────
+    Write-Host ''
+    Write-Host '  WINDOWS' -ForegroundColor Yellow
+    $winCaches = @(
+        # ── System caches (some need admin — fail silently) ──
+        @{ Path = (Join-Path $env:SystemRoot 'SoftwareDistribution\Download'); Label = 'WU/download' }
+        @{ Path = (Join-Path $env:SystemRoot 'Prefetch');                       Label = 'Prefetch' }
+        # ── User-space caches (no admin) ──
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'CrashDumps');                   Label = 'CrashDumps' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\INetCache');  Label = 'INetCache' }
+        @{ Path = (Join-Path $env:APPDATA 'Microsoft\Windows\Recent');          Label = 'Recent' }
+        @{ Path = (Join-Path $env:APPDATA 'Microsoft\Windows\Recent\AutomaticDestinations');   Label = 'JumpLists' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\WER');        Label = 'ErrorReports' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Explorer');   Label = 'Thumbnails' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'D3DSCache');                    Label = 'D3DShader' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'NVIDIA\DXCache');               Label = 'NVIDIA/DXCache' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'NVIDIA\GLCache');               Label = 'NVIDIA/GLCache' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'AMD\DxCache');                  Label = 'AMD/DxCache' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'AMD\GLCache');                  Label = 'AMD/GLCache' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Intel\ShaderCache');            Label = 'Intel/Shader' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\ActionCenterCache'); Label = 'ActionCenter' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Caches');     Label = 'WinCaches' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\WebCache');   Label = 'WebCache' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'IconCache.db');                 Label = 'IconCache' }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.Windows.Search_cw5n1h2txyewy\LocalState\ConstraintIndex'); Label = 'SearchIdx' }
+    )
+    foreach ($entry in $winCaches) {
+        Invoke-CleanPath -Path $entry.Path -Label $entry.Label -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
+    }
+
+    # ── Stale envs ──────────────────────────────────────────────────────
+    Write-Host ''
+    Write-Host ('  STALE ENVS  (>{0}d)' -f $StaleDays) -ForegroundColor Yellow
+    $searchRoots = @(
+        $HOME,
+        (Join-Path $HOME 'projects'), (Join-Path $HOME 'dev'),  (Join-Path $HOME 'code'),
+        (Join-Path $HOME 'repos'),    (Join-Path $HOME 'workspace'), (Join-Path $HOME 'Documents')
+    ) | Where-Object { Test-Path $_ }
+
+    if ($searchRoots.Count -gt 0) {
+        $venvDirs = Find-VenvDirs -SearchRoots $searchRoots -StaleDays $StaleDays
+        Clear-SpinnerLine
+        if ($venvDirs.Count -gt 0) {
+            foreach ($venv in $venvDirs) {
+                Remove-VenvDir -Path $venv -DryRun:$DryRun | Out-Null
+            }
+        } else {
+            Write-Host '  no stale envs' -ForegroundColor DarkGray
+        }
+    }
+
+    # ── RAM + network flush ────────────────────────────────────────────
+    Write-Host ''
+    Write-Host '  MEMORY & NETWORK' -ForegroundColor Yellow
+    Invoke-RamFlush -DryRun:$DryRun
+
+    # ── Disk optimization ───────────────────────────────────────────────
+    Write-Host ''
+    Write-Host '  DISK' -ForegroundColor Yellow
+    Invoke-DiskOptimize -DryRun:$DryRun
+
+    # ── Summary ──────────────────────────────────────────────────────────
+    $sw.Stop()
+    $elapsed = if ($sw.Elapsed.TotalSeconds -ge 60) {
+        ('{0}m {1}s' -f [int]$sw.Elapsed.TotalMinutes, $sw.Elapsed.Seconds)
+    } else {
+        ('{0:F1}s' -f $sw.Elapsed.TotalSeconds)
+    }
+    Write-Host ''
+    $summaryColor = if ($DryRun) { 'DarkYellow' } else { 'Green' }
+    $verb         = if ($DryRun) { 'would free' } else { 'freed' }
+    Write-Host ('  ✓ {0} {1}  {2} files  {3}' -f $verb, (Format-Bytes $script:CleanTotalFreed), $script:CleanTotalFiles, $elapsed) -ForegroundColor $summaryColor
+    if ($DryRun) { Write-Host '  run without --dry-run to apply' -ForegroundColor DarkGray }
+    Write-Host ''
+}
+
+function Invoke-CleanCommand {
+    param([string[]]$Rest)
+
+    $dryRun    = $false
+    $staleDays = 7
+
+    foreach ($arg in $Rest) {
+        switch ($arg.ToLowerInvariant()) {
+            '--dry-run' { $dryRun = $true }
+            '--help'    {
+                Write-Host ''
+                Write-HintSection 'CLEAN — deep system / cache / venv / RAM / disk optimizer'
+                Write-HintRow '8sync clean'             'Full clean + optimize (stale > 7 days)'
+                Write-HintRow '8sync clean --days N'    'Custom stale threshold (e.g. --days 14)'
+                Write-HintRow '8sync clean --dry-run'   'Preview — nothing deleted or optimized'
+                Write-Host ''
+                return
+            }
+        }
+    }
+
+    for ($i = 0; $i -lt $Rest.Count; $i++) {
+        if ($Rest[$i] -in '--days', '-d') {
+            $parsed = 0
+            if ($i + 1 -lt $Rest.Count -and [int]::TryParse($Rest[$i + 1], [ref]$parsed) -and $parsed -gt 0) {
+                $staleDays = $parsed
+            }
+        }
+    }
+
+    Invoke-SystemClean -StaleDays $staleDays -DryRun:$dryRun
 }
 
 function Invoke-HxCommand {
@@ -1147,6 +1817,7 @@ function Set-ToolAliases {
             'hint'   { Show-8SyncHint }
             'status' { Show-8SyncStatus }
             'sync'   { Invoke-ToolSync }
+            'clean'  { Invoke-CleanCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
             default  { Show-8SyncHint }
@@ -1154,7 +1825,9 @@ function Set-ToolAliases {
     }
 
     Set-Alias -Name '/8sync' -Value Invoke-8Sync -Scope Global -Force
-    Set-Alias -Name '8sync' -Value Invoke-8Sync -Scope Global -Force
+    Set-Alias -Name '8sync'  -Value Invoke-8Sync -Scope Global -Force
+
+    Register-8SyncCompleter
 }
 
 function Start-WezTermShell {
