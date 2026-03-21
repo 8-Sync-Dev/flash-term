@@ -252,7 +252,10 @@ function Show-8SyncHint {
     Write-HintRow '8sync help'              'Show this help'
     Write-HintRow '8sync status'            'Installed tools + last sync time'
     Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
-    Write-HintRow '8sync clean [--days N]'  'Deep clean: temp/cache/venv/RAM/disk (default: stale > 7 days)'
+    Write-HintRow '8sync clean [--days N]'         'Deep clean: temp/cache/venv/RAM/disk (default: stale > 7 days)'
+    Write-HintRow '8sync clean --projects [--all]' 'Stale git repo picker -- fzf multi-select to delete'
+    Write-HintRow '8sync clean --deep'             'Report stale MCP/npm/pip/cargo/go dev artifacts'
+    Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
 
     Write-HintSection 'BACKGROUND'
     Write-HintRow '8sync bg search <kw>'    'Search Wallhaven for 4K wallpapers'
@@ -514,11 +517,11 @@ function Register-8SyncCompleter {
         $subMap = @{
             bg = @('search','pick','set','open','help')
             hx = @('lang','wrap','opacity','theme','help')
-            clean = @('--days','--dry-run','--help')
+            clean = @('--days','--dry-run','--projects','--all','--deep','--scan','--help')
         }
 
         if ($count -le 1) {
-            # still typing the command name itself — nothing to complete yet
+            # still typing the command name itself -- nothing to complete yet
             return
         }
 
@@ -1106,13 +1109,13 @@ function Show-HxHelp {
     Write-HintRow '8sync hx help'           'Show this help'
     Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
     Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
-    Write-HintRow '8sync hx opacity <val>'  '+  -  or 0.0-1.0 — adjust background transparency'
+    Write-HintRow '8sync hx opacity <val>'  '+  -  or 0.0-1.0 -- adjust background transparency'
     Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
     Write-Host ''
 }
 
 # ---------------------------------------------------------------------------
-#  8sync clean — deep system / RAM / venv cleaner
+#  8sync clean -- deep system / RAM / venv cleaner
 # ---------------------------------------------------------------------------
 
 function Format-Bytes {
@@ -1123,8 +1126,8 @@ function Format-Bytes {
     return ('{0} B' -f $Bytes)
 }
 
-# Spinner state — shared across the clean session
-$script:CleanSpinnerFrames = @('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
+# Spinner state -- shared across the clean session
+$script:CleanSpinnerFrames = @('-','\\','|','/')
 $script:CleanSpinnerIdx    = 0
 $script:CleanTotalFreed    = [long]0
 $script:CleanTotalFiles    = 0
@@ -1142,9 +1145,9 @@ function Write-CleanSpinner {
     if ($termWidth -lt 20) { $termWidth = 100 }
     # Truncate long paths so line never wraps
     $maxMsg = $termWidth - 32
-    if ($Msg.Length -gt $maxMsg -and $maxMsg -gt 8) { $Msg = '…' + $Msg.Substring($Msg.Length - ($maxMsg - 1)) }
+    if ($Msg.Length -gt $maxMsg -and $maxMsg -gt 8) { $Msg = '...' + $Msg.Substring($Msg.Length - ($maxMsg - 3)) }
     $line = ('  {0} {1}  {2}' -f $frame, $Msg, $Counter).PadRight($termWidth - 1)
-    # Overwrite same line via \r — stays on one line, no scroll
+    # Overwrite same line via \r -- stays on one line, no scroll
     [System.Console]::Write("`r" + $line)
 }
 
@@ -1158,9 +1161,9 @@ function Clear-SpinnerLine {
 function Write-CleanResult {
     param([string]$Label, [int]$FileCount, [long]$Freed, [switch]$DryRun, [switch]$Skipped)
     Clear-SpinnerLine
-    if ($Skipped) { return }   # path didn't exist — print nothing
+    if ($Skipped) { return }   # path didn't exist -- print nothing
     $tag   = if ($DryRun) { ' ~' } else { '' }
-    $fStr  = if ($Freed -gt 0) { Format-Bytes $Freed } else { '—' }
+    $fStr  = if ($Freed -gt 0) { Format-Bytes $Freed } else { '--' }
     $nStr  = if ($FileCount -gt 0) { ('{0} files' -f $FileCount) } else { '0 files' }
     # colour: green when freed something, dry-run yellow, zero gray
     $color = if ($Freed -gt 0 -and -not $DryRun) { 'Green' } elseif ($DryRun -and $Freed -gt 0) { 'DarkYellow' } else { 'DarkGray' }
@@ -1188,7 +1191,7 @@ function Invoke-CleanPath {
     $spinFreq = 0   # throttle spinner updates
 
     # Show initial spinner immediately so user knows we started
-    Write-CleanSpinner -Msg $Label -Counter 'scanning…'
+    Write-CleanSpinner -Msg $Label -Counter 'scanning...'
 
     try {
         $searchOpt = if ($Recursive) {
@@ -1200,7 +1203,7 @@ function Invoke-CleanPath {
         $files = [System.IO.Directory]::EnumerateFiles($Path, '*', $searchOpt)
 
         foreach ($filePath in $files) {
-            # Throttle spinner: update every 500 files — 1 Console.Write per 500 iterations
+            # Throttle spinner: update every 500 files -- 1 Console.Write per 500 iterations
             $spinFreq++
             if ($spinFreq -ge 500) {
                 $spinFreq = 0
@@ -1243,9 +1246,9 @@ function Invoke-CleanPath {
 
 function Invoke-RamFlush {
     param([switch]$DryRun)
-    Write-CleanSpinner -Msg 'flushing memory + network…'
+    Write-CleanSpinner -Msg 'flushing memory + network...'
 
-    # ── GC: flush PowerShell/.NET managed heap ───────────────────────────
+    # -- GC: flush PowerShell/.NET managed heap ---------------------------
     if (-not $DryRun) {
         try {
             [System.GC]::Collect()
@@ -1254,7 +1257,7 @@ function Invoke-RamFlush {
         } catch {}
     }
 
-    # ── EmptyWorkingSet: trim current process working set ────────────────
+    # -- EmptyWorkingSet: trim current process working set ----------------
     try {
         if (-not ([System.Management.Automation.PSTypeName]'MemUtil').Type) {
             Add-Type -TypeDefinition @'
@@ -1271,19 +1274,19 @@ public class MemUtil {
         }
     } catch {}
 
-    # ── Network flush (all no-admin) ─────────────────────────────────────
+    # -- Network flush (all no-admin) -------------------------------------
     if (-not $DryRun) {
         try { & ipconfig /flushdns   2>$null | Out-Null } catch {}  # DNS resolver cache
         try { & nbtstat  /R          2>$null | Out-Null } catch {}  # NetBIOS name cache
         try { & arp      -d *        2>$null | Out-Null } catch {}  # ARP table (fails silently without admin)
     }
 
-    # ── Clipboard: clear (safe, no-admin) ────────────────────────────────
+    # -- Clipboard: clear (safe, no-admin) --------------------------------
     if (-not $DryRun) {
         try { Set-Clipboard -Value '' -ErrorAction SilentlyContinue } catch {}
     }
 
-    # ── Report: RAM stats + top 5 memory hogs ────────────────────────────
+    # -- Report: RAM stats + top 5 memory hogs ----------------------------
     Clear-SpinnerLine
     try {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
@@ -1299,7 +1302,7 @@ public class MemUtil {
         }
     } catch {}
 
-    # Top 5 RAM hogs — informational only (never killed)
+    # Top 5 RAM hogs -- informational only (never killed)
     try {
         $top = Get-Process -ErrorAction SilentlyContinue |
             Sort-Object WorkingSet64 -Descending |
@@ -1315,14 +1318,14 @@ public class MemUtil {
 }
 
 # ---------------------------------------------------------------------------
-#  Disk optimization — SSD TRIM / HDD defrag (requires admin for Optimize-Volume)
+#  Disk optimization -- SSD TRIM / HDD defrag (requires admin for Optimize-Volume)
 # ---------------------------------------------------------------------------
 
 function Invoke-DiskOptimize {
     param([switch]$DryRun)
-    Write-CleanSpinner -Msg 'checking disks…'
+    Write-CleanSpinner -Msg 'checking disks...'
 
-    # Detect disk types via Get-PhysicalDisk — requires Storage module
+    # Detect disk types via Get-PhysicalDisk -- requires Storage module
     $disks = @()
     try {
         $disks = Get-PhysicalDisk -ErrorAction SilentlyContinue |
@@ -1337,7 +1340,7 @@ function Invoke-DiskOptimize {
                 }
             }
     } catch {
-        # Storage module not available — skip disk optimization
+        # Storage module not available -- skip disk optimization
         Clear-SpinnerLine
         Write-Host '  disk info unavailable' -ForegroundColor DarkGray
         return
@@ -1356,7 +1359,7 @@ function Invoke-DiskOptimize {
         $health = if ($disk.Health -ne 'Healthy') { "  $($disk.Health)" } else { '' }
         $color  = if ($disk.Health -ne 'Healthy') { 'Yellow' } else { 'DarkGray' }
 
-        # Attempt Optimize-Volume (requires admin — will fail gracefully without)
+        # Attempt Optimize-Volume (requires admin -- will fail gracefully without)
         $action = ''
         if (-not $DryRun) {
             try {
@@ -1374,7 +1377,7 @@ function Invoke-DiskOptimize {
                             $action = 'defrag'
                         }
                     } catch {
-                        # Access denied without admin — that's expected
+                        # Access denied without admin -- that's expected
                         $action = 'skipped (needs admin)'
                     }
                 }
@@ -1392,7 +1395,7 @@ function Invoke-DiskOptimize {
 
 function Test-IsPythonVenv {
     # Quick check: dir has Scripts\python.exe (Windows) or bin/python (Unix-style)
-    # OR contains pyvenv.cfg — any of these = it's a Python env
+    # OR contains pyvenv.cfg -- any of these = it's a Python env
     param([string]$Dir)
     return (
         [System.IO.File]::Exists([System.IO.Path]::Combine($Dir, 'pyvenv.cfg')) -or
@@ -1423,10 +1426,10 @@ function Find-VenvDirs {
     $enumOpts.IgnoreInaccessible    = $true
     $enumOpts.AttributesToSkip      = [System.IO.FileAttributes]::ReparsePoint
 
-    # ── Track 1: pyvenv.cfg — standard venv / uv / virtualenv (modern) ────────
+    # -- Track 1: pyvenv.cfg -- standard venv / uv / virtualenv (modern) --------
     # pyvenv.cfg lives INSIDE the env dir, so its parent IS the env.
     # Catches: python -m venv .venv, uv venv, virtualenv, hatch, pdm, pyenv-virtualenv
-    # ──────────────────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------------
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         Write-CleanSpinner -Msg ('scanning ' + $root)
@@ -1439,10 +1442,10 @@ function Find-VenvDirs {
         } catch {}
     }
 
-    # ── Track 2: directory-name patterns — conda, old virtualenv, custom names ─
-    # .venv / venv / .env / env / virtualenv / .virtualenv — verify it's Python
+    # -- Track 2: directory-name patterns -- conda, old virtualenv, custom names -
+    # .venv / venv / .env / env / virtualenv / .virtualenv -- verify it's Python
     # by checking for Scripts\python.exe (no pyvenv.cfg in old virtualenv / conda)
-    # ──────────────────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------------
     $pyDirPatterns = @('.venv', 'venv', '.env', 'env', 'virtualenv', '.virtualenv')
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
@@ -1458,10 +1461,10 @@ function Find-VenvDirs {
         }
     }
 
-    # ── Track 3: conda / mamba named envs ──────────────────────────────────────
+    # -- Track 3: conda / mamba named envs --------------------------------------
     # Conda stores named envs in fixed locations, not inside project dirs.
     # Each env subdir contains Scripts\python.exe (Windows).
-    # ──────────────────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------------
     $condaRoots = @(
         (Join-Path $HOME '.conda\envs'),
         (Join-Path $HOME 'miniconda3\envs'),
@@ -1484,10 +1487,10 @@ function Find-VenvDirs {
         } catch {}
     }
 
-    # ── Track 4: uv tool installs ─────────────────────────────────────────────
+    # -- Track 4: uv tool installs ---------------------------------------------
     # `uv tool install` creates isolated envs in %APPDATA%\uv\tools\<package>
     # These are not project venvs but are safe to remove if stale (reinstallable)
-    # ──────────────────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------------
     $uvToolsRoot = Join-Path $env:APPDATA 'uv\tools'
     if ([System.IO.Directory]::Exists($uvToolsRoot)) {
         Write-CleanSpinner -Msg ('uv tools: ' + $uvToolsRoot)
@@ -1500,7 +1503,7 @@ function Find-VenvDirs {
         } catch {}
     }
 
-    # ── Track 5: Rust target/ dirs ────────────────────────────────────────────
+    # -- Track 5: Rust target/ dirs --------------------------------------------
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
@@ -1511,7 +1514,7 @@ function Find-VenvDirs {
         } catch {}
     }
 
-    # ── Track 6: Go vendor/ dirs ──────────────────────────────────────────────
+    # -- Track 6: Go vendor/ dirs ----------------------------------------------
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
@@ -1522,7 +1525,7 @@ function Find-VenvDirs {
         } catch {}
     }
 
-    # ── Track 7: node_modules ─────────────────────────────────────────────────
+    # -- Track 7: node_modules -------------------------------------------------
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
@@ -1538,7 +1541,7 @@ function Find-VenvDirs {
 
 function Remove-VenvDir {
     param([string]$Path, [switch]$DryRun)
-    Write-CleanSpinner -Msg ('sizing ' + [System.IO.Path]::GetFileName($Path) + '…')
+    Write-CleanSpinner -Msg ('sizing ' + [System.IO.Path]::GetFileName($Path) + '...')
     try {
         $size = [long]0
         foreach ($f in [System.IO.Directory]::EnumerateFiles($Path, '*', [System.IO.SearchOption]::AllDirectories)) {
@@ -1561,6 +1564,457 @@ function Remove-VenvDir {
     }
 }
 
+# ---------------------------------------------------------------------------
+#  Stale project scanner
+# ---------------------------------------------------------------------------
+
+function Get-DirSizeBytes {
+    param([string]$Path)
+    $size = [long]0
+    try {
+        foreach ($f in [System.IO.Directory]::EnumerateFiles($Path, '*', [System.IO.SearchOption]::AllDirectories)) {
+            try { $size += [System.IO.FileInfo]::new($f).Length } catch {}
+        }
+    } catch {}
+    return $size
+}
+
+function Find-StaleProjects {
+    param([int]$StaleDays = 90)
+
+    $cutoff = (Get-Date).AddDays(-$StaleDays)
+    $found  = [System.Collections.Generic.List[object]]::new()
+
+    $searchRoots = @(
+        $HOME,
+        (Join-Path $HOME 'projects'),
+        (Join-Path $HOME 'dev'),
+        (Join-Path $HOME 'code'),
+        (Join-Path $HOME 'repos'),
+        (Join-Path $HOME 'workspace'),
+        (Join-Path $HOME 'Documents'),
+        (Join-Path $HOME 'src'),
+        (Join-Path $HOME 'work')
+    ) | Where-Object { [System.IO.Directory]::Exists($_) } | Select-Object -Unique
+
+    $enumOpts = [System.IO.EnumerationOptions]::new()
+    $enumOpts.RecurseSubdirectories = $false   # only top-level dirs per root
+    $enumOpts.IgnoreInaccessible    = $true
+    $enumOpts.AttributesToSkip      = [System.IO.FileAttributes]::ReparsePoint
+
+    foreach ($root in $searchRoots) {
+        Write-CleanSpinner -Msg ('scanning ' + $root)
+        try {
+            foreach ($dir in [System.IO.Directory]::EnumerateDirectories($root, '*', $enumOpts)) {
+                $gitDir = Join-Path $dir '.git'
+                if (-not [System.IO.Directory]::Exists($gitDir)) { continue }
+
+                # Get last commit date via git log (fast  reads packfile header only)
+                $lastCommit = $null
+                try {
+                    $ts = & git -C $dir log -1 --format='%ct' 2>$null
+                    if ($ts -and $ts -match '^\d+$') {
+                        $lastCommit = [System.DateTimeOffset]::FromUnixTimeSeconds([long]$ts).LocalDateTime
+                    }
+                } catch {}
+
+                # Fall back to filesystem mtime of .git/COMMIT_EDITMSG
+                if (-not $lastCommit) {
+                    $editmsg = Join-Path $gitDir 'COMMIT_EDITMSG'
+                    if ([System.IO.File]::Exists($editmsg)) {
+                        $lastCommit = [System.IO.File]::GetLastWriteTime($editmsg)
+                    } else {
+                        $lastCommit = [System.IO.Directory]::GetLastWriteTime($gitDir)
+                    }
+                }
+
+                if ($lastCommit -ge $cutoff) { continue }   # active  skip
+
+                Write-CleanSpinner -Msg ('sizing ' + [System.IO.Path]::GetFileName($dir) + '...')
+                $sizeBytes = Get-DirSizeBytes -Path $dir
+
+                $null = $found.Add([pscustomobject]@{
+                    Path        = $dir
+                    Name        = [System.IO.Path]::GetFileName($dir)
+                    LastCommit  = $lastCommit
+                    SizeBytes   = $sizeBytes
+                    SizeDisplay = Format-Bytes $sizeBytes
+                    DaysOld     = [int]([datetime]::Now - $lastCommit).TotalDays
+                })
+            }
+        } catch {}
+    }
+
+    Clear-SpinnerLine
+    return @($found | Sort-Object SizeBytes -Descending)
+}
+
+# ---------------------------------------------------------------------------
+#  Interactive project picker (fzf multi-select)
+# ---------------------------------------------------------------------------
+
+function Invoke-ProjectPicker {
+    param(
+        [int]$StaleDays = 90,
+        [switch]$All,
+        [switch]$DryRun
+    )
+
+    Write-Host ''
+    Write-Host ('  8sync clean --projects  stale > {0}d{1}' -f $StaleDays, $(if ($DryRun) { '  dry-run' } else { '' })) -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Scanning for stale git repos...' -ForegroundColor Yellow
+
+    $projects = Find-StaleProjects -StaleDays $StaleDays
+    Clear-SpinnerLine
+
+    if ($projects.Count -eq 0) {
+        Write-Host ('  No stale projects found (threshold: {0} days).' -f $StaleDays) -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ('  Found {0} stale project(s):' -f $projects.Count) -ForegroundColor Yellow
+    Write-Host ''
+
+    $toDelete = @()
+
+    if ($All) {
+        # --all: show list then delete without picker
+        foreach ($p in $projects) {
+            Write-Host ('  {0,-40} {1,8}  {2}d ago' -f $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor DarkGray
+        }
+        $toDelete = $projects
+    } elseif (Test-CommandExists 'fzf') {
+        # Build fzf input: name | size | days | path (path hidden from display)
+        $lines = $projects | ForEach-Object {
+            '{0,-40} {1,8}  {2,4}d ago  {3}' -f $_.Name, $_.SizeDisplay, $_.DaysOld, $_.Path
+        }
+
+        Write-Host '  [TAB=select  ENTER=confirm  ESC=cancel  Ctrl+A=select all]' -ForegroundColor DarkGray
+        Write-Host ''
+        $selected = $lines | fzf `
+            --multi `
+            --header='Select projects to DELETE (TAB to mark, ENTER to confirm)' `
+            --height=70% `
+            --layout=reverse `
+            --border `
+            --prompt='Delete> ' `
+            --bind='ctrl-a:select-all'
+
+        if (-not $selected) {
+            Write-Host '  Cancelled.' -ForegroundColor DarkGray
+            Write-Host ''
+            return
+        }
+
+        # Extract paths from selected lines (last tab-delimited field)
+        $selectedPaths = @($selected | ForEach-Object { $_.Trim() -replace '^.{55}\s+', '' }) # crude trim
+        # More reliable: match against project paths
+        $toDelete = $projects | Where-Object {
+            $p = $_
+            $selected | Where-Object { $_ -like ('*' + $p.Name + '*') } | Select-Object -First 1
+        }
+    } else {
+        # No fzf  plain numbered list, ask for input
+        $i = 1
+        foreach ($p in $projects) {
+            Write-Host ('  [{0,2}] {1,-40} {2,8}  {3}d ago' -f $i, $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor White
+            $i++
+        }
+        Write-Host ''
+        Write-Host '  Enter numbers to delete (e.g. 1,3,5 or "all" or ENTER to cancel): ' -ForegroundColor Yellow -NoNewline
+        $input = Read-Host
+        if (-not $input -or $input.Trim() -eq '') {
+            Write-Host '  Cancelled.' -ForegroundColor DarkGray
+            Write-Host ''
+            return
+        }
+        if ($input.Trim().ToLowerInvariant() -eq 'all') {
+            $toDelete = $projects
+        } else {
+            $indices = $input -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ - 1 }
+            $toDelete = $indices | Where-Object { $_ -ge 0 -and $_ -lt $projects.Count } | ForEach-Object { $projects[$_] }
+        }
+    }
+
+    if (-not $toDelete -or @($toDelete).Count -eq 0) {
+        Write-Host '  Nothing selected.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    Write-Host ('  Deleting {0} project(s)...' -f @($toDelete).Count) -ForegroundColor Yellow
+    $totalFreed = [long]0
+    foreach ($p in @($toDelete)) {
+        $tag = if ($DryRun) { ' ~' } else { '' }
+        Write-Host ('  {0}{1}  {2}' -f $p.Name, $tag, $p.SizeDisplay) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
+        if (-not $DryRun) {
+            try {
+                Remove-Item -Path $p.Path -Recurse -Force -ErrorAction SilentlyContinue
+            } catch {}
+        }
+        $totalFreed += $p.SizeBytes
+    }
+
+    Write-Host ''
+    $verb = if ($DryRun) { 'would free' } else { 'freed' }
+    Write-Host ('  >> {0} {1} from {2} project(s)' -f $verb, (Format-Bytes $totalFreed), @($toDelete).Count) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
+    if ($DryRun) { Write-Host '  run without --dry-run to apply' -ForegroundColor DarkGray }
+    Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+#  Deep dev artifact scanner (MCP, npm globals, pip globals, cargo, go)
+# ---------------------------------------------------------------------------
+
+function Find-OrphanedDevArtifacts {
+    param([int]$StaleDays = 30)
+
+    $cutoff  = (Get-Date).AddDays(-$StaleDays)
+    $results = [System.Collections.Generic.List[object]]::new()
+
+    $addEntry = {
+        param([string]$Type, [string]$Name, [string]$Path, [datetime]$LastWrite, [long]$Size)
+        $null = $results.Add([pscustomobject]@{
+            Type        = $Type
+            Name        = $Name
+            Path        = $Path
+            LastWrite   = $LastWrite
+            DaysOld     = [int]([datetime]::Now - $LastWrite).TotalDays
+            SizeBytes   = $Size
+            SizeDisplay = Format-Bytes $Size
+        })
+    }
+
+    # -- MCP server caches & data ----------------------------------------
+    $mcpRoots = @(
+        (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json'),   # Claude Desktop
+        (Join-Path $HOME '.config\claude'),
+        (Join-Path $env:APPDATA 'Code\User\globalStorage\saoudrizwan.claude-dev'),  # Cline/Claude VSCode ext
+        (Join-Path $env:LOCALAPPDATA 'npm-cache\_npx')                  # npx-cached MCP servers
+    )
+    foreach ($p in $mcpRoots) {
+        if (-not (Test-Path $p)) { continue }
+        Write-CleanSpinner -Msg ('MCP: ' + $p)
+        try {
+            # npx cache entries older than threshold
+            if ($p -like '*_npx*') {
+                foreach ($d in [System.IO.Directory]::EnumerateDirectories($p)) {
+                    $lw = [System.IO.Directory]::GetLastWriteTime($d)
+                    if ($lw -lt $cutoff) {
+                        $sz = Get-DirSizeBytes $d
+                        & $addEntry 'npx-cache' ([System.IO.Path]::GetFileName($d)) $d $lw $sz
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    # -- npm global packages ---------------------------------------------
+    $npmGlobalDirs = @(
+        (Join-Path $env:APPDATA 'npm\node_modules'),
+        (Join-Path $HOME 'scoop\apps\nodejs\current\node_modules'),
+        (Join-Path $env:PROGRAMFILES 'nodejs\node_modules')
+    )
+    foreach ($ngDir in $npmGlobalDirs) {
+        if (-not [System.IO.Directory]::Exists($ngDir)) { continue }
+        Write-CleanSpinner -Msg ('npm globals: ' + $ngDir)
+        try {
+            foreach ($pkg in [System.IO.Directory]::EnumerateDirectories($ngDir)) {
+                $lw = [System.IO.Directory]::GetLastWriteTime($pkg)
+                if ($lw -lt $cutoff) {
+                    $name = [System.IO.Path]::GetFileName($pkg)
+                    if ($name -eq 'npm') { continue }   # never remove npm itself
+                    $sz = Get-DirSizeBytes $pkg
+                    & $addEntry 'npm-global' $name $pkg $lw $sz
+                }
+            }
+        } catch {}
+        break   # only scan the first found npm global dir
+    }
+
+    # -- pip / uv global site-packages -----------------------------------
+    $pipGlobalDirs = @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python*\Lib\site-packages'),
+        (Join-Path $HOME 'scoop\apps\python\current\Lib\site-packages'),
+        (Join-Path $env:APPDATA 'Python\Python*\site-packages')
+    )
+    foreach ($pattern in $pipGlobalDirs) {
+        $resolved = try { (Resolve-Path $pattern -ErrorAction SilentlyContinue) } catch { $null }
+        if (-not $resolved) { continue }
+        foreach ($dir in @($resolved)) {
+            if (-not [System.IO.Directory]::Exists($dir.Path)) { continue }
+            Write-CleanSpinner -Msg ('pip site-packages: ' + $dir.Path)
+            try {
+                foreach ($pkg in [System.IO.Directory]::EnumerateDirectories($dir.Path)) {
+                    $lw = [System.IO.Directory]::GetLastWriteTime($pkg)
+                    if ($lw -lt $cutoff) {
+                        $name = [System.IO.Path]::GetFileName($pkg)
+                        if ($name -match '(pip|setuptools|wheel|distutils)') { continue }
+                        $sz = Get-DirSizeBytes $pkg
+                        & $addEntry 'pip-global' $name $pkg $lw $sz
+                    }
+                }
+            } catch {}
+            break
+        }
+    }
+
+    # -- cargo installed bins --------------------------------------------
+    $cargoBin = Join-Path $HOME '.cargo\bin'
+    if ([System.IO.Directory]::Exists($cargoBin)) {
+        Write-CleanSpinner -Msg 'cargo bin...'
+        try {
+            foreach ($bin in [System.IO.Directory]::EnumerateFiles($cargoBin, '*.exe')) {
+                $info = [System.IO.FileInfo]::new($bin)
+                if ($info.LastWriteTime -lt $cutoff) {
+                    & $addEntry 'cargo-bin' $info.Name $bin $info.LastWriteTime $info.Length
+                }
+            }
+        } catch {}
+    }
+
+    # -- go installed bins -----------------------------------------------
+    $goBin = Join-Path $HOME 'go\bin'
+    if ([System.IO.Directory]::Exists($goBin)) {
+        Write-CleanSpinner -Msg 'go bin...'
+        try {
+            foreach ($bin in [System.IO.Directory]::EnumerateFiles($goBin, '*.exe')) {
+                $info = [System.IO.FileInfo]::new($bin)
+                if ($info.LastWriteTime -lt $cutoff) {
+                    & $addEntry 'go-bin' $info.Name $bin $info.LastWriteTime $info.Length
+                }
+            }
+        } catch {}
+    }
+
+    Clear-SpinnerLine
+    return @($results | Sort-Object SizeBytes -Descending)
+}
+
+function Show-DevArtifactReport {
+    param([int]$StaleDays = 30)
+
+    Write-Host ''
+    Write-Host ('  8sync clean --deep  dev artifacts > {0}d old' -f $StaleDays) -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Scanning dev artifacts (MCP, npm, pip, cargo, go)...' -ForegroundColor Yellow
+
+    $artifacts = Find-OrphanedDevArtifacts -StaleDays $StaleDays
+    Clear-SpinnerLine
+
+    if ($artifacts.Count -eq 0) {
+        Write-Host ('  No stale dev artifacts found (threshold: {0} days).' -f $StaleDays) -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # Group by type
+    $grouped = $artifacts | Group-Object Type
+    foreach ($group in $grouped) {
+        $totalSz = ($group.Group | Measure-Object SizeBytes -Sum).Sum
+        Write-Host ('  {0}  ({1} items  {2})' -f $group.Name.ToUpper(), $group.Count, (Format-Bytes $totalSz)) -ForegroundColor Yellow
+        foreach ($item in $group.Group | Select-Object -First 10) {
+            Write-Host ('    {0,-45} {1,8}  {2}d ago' -f $item.Name, $item.SizeDisplay, $item.DaysOld) -ForegroundColor DarkGray
+        }
+        if ($group.Group.Count -gt 10) {
+            Write-Host ('    ... and {0} more' -f ($group.Group.Count - 10)) -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    }
+
+    $totalAll = ($artifacts | Measure-Object SizeBytes -Sum).Sum
+    Write-Host ('  Total stale dev artifacts: {0} items  {1}' -f $artifacts.Count, (Format-Bytes $totalAll)) -ForegroundColor DarkYellow
+    Write-Host '  These are reported only  remove manually or with your package manager.' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+#  Windows Defender quick scan
+# ---------------------------------------------------------------------------
+
+function Invoke-DefenderScan {
+    param([string[]]$TargetPaths)
+
+    Write-Host ''
+    Write-Host '  8sync clean --scan  Windows Defender scan' -ForegroundColor Cyan
+    Write-Host ''
+
+    # Locate MpCmdRun.exe
+    $mpCmd = $null
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Windows Defender\MpCmdRun.exe'),
+        (Join-Path $env:ProgramData 'Microsoft\Windows Defender\Platform\*\MpCmdRun.exe')
+    )
+    foreach ($c in $candidates) {
+        $resolved = try { (Resolve-Path $c -ErrorAction SilentlyContinue) } catch { $null }
+        if ($resolved) {
+            $mpCmd = @($resolved)[0].Path
+            break
+        }
+    }
+
+    if (-not $mpCmd -or -not (Test-Path $mpCmd)) {
+        Write-Host '  Windows Defender MpCmdRun.exe not found. Skipping scan.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ('  Defender: {0}' -f $mpCmd) -ForegroundColor DarkGray
+
+    if ($TargetPaths -and $TargetPaths.Count -gt 0) {
+        # Custom path scan
+        foreach ($path in $TargetPaths | Where-Object { Test-Path $_ }) {
+            Write-Host ('  Scanning: {0}' -f $path) -ForegroundColor Yellow
+            try {
+                $result = & $mpCmd -Scan -ScanType 3 -File $path 2>&1
+                $threat = $result | Select-String -Pattern 'threat|found|infected' -CaseSensitive:$false
+                if ($threat) {
+                    Write-Host ('  [!] THREATS DETECTED in {0}' -f $path) -ForegroundColor Red
+                    $threat | ForEach-Object { Write-Host ('      ' + $_) -ForegroundColor Red }
+                } else {
+                    Write-Host ('  [OK] Clean: {0}' -f $path) -ForegroundColor Green
+                }
+            } catch {
+                Write-Host ('  Scan failed for {0}: {1}' -f $path, $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+        }
+    } else {
+        # Quick scan (ScanType 1)  non-blocking, Defender runs in background
+        Write-Host '  Running quick scan (ScanType 1)...' -ForegroundColor Yellow
+        Write-Host '  Note: scan runs in background. Check Windows Security for results.' -ForegroundColor DarkGray
+        try {
+            Start-Process -FilePath $mpCmd -ArgumentList @('-Scan', '-ScanType', '1') -WindowStyle Hidden -ErrorAction Stop
+            Write-Host '  [OK] Quick scan started.' -ForegroundColor Green
+        } catch {
+            Write-Host ('  Failed to start scan: {0}' -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+
+        # Also scan common dev artifact roots (targeted, foreground)
+        $devRoots = @(
+            (Join-Path $env:LOCALAPPDATA 'npm-cache\_npx'),
+            (Join-Path $HOME 'scoop\apps'),
+            (Join-Path $HOME '.cargo\bin')
+        ) | Where-Object { Test-Path $_ }
+
+        if ($devRoots.Count -gt 0) {
+            Write-Host '  Targeted scan on dev tool directories...' -ForegroundColor Yellow
+            foreach ($root in $devRoots) {
+                Write-Host ('  Scanning: {0}' -f $root) -ForegroundColor DarkGray
+                try {
+                    & $mpCmd -Scan -ScanType 3 -File $root 2>&1 | Out-Null
+                    Write-Host ('  [OK] {0}' -f $root) -ForegroundColor Green
+                } catch {}
+            }
+        }
+    }
+
+    Write-Host ''
+}
+
 function Invoke-SystemClean {
     param(
         [int]$StaleDays = 7,
@@ -1579,7 +2033,7 @@ function Invoke-SystemClean {
     Write-Host ('  8sync clean  >{0}d stale{1}' -f $StaleDays, $dTag) -ForegroundColor Cyan
     Write-Host ''
 
-    # ── Temp ──────────────────────────────────────────────────────────────
+    # -- Temp --------------------------------------------------------------
     Write-Host '  TEMP' -ForegroundColor Yellow
     $tempPaths = @($env:TEMP, $env:TMP, (Join-Path $env:SystemRoot 'Temp'), (Join-Path $env:LOCALAPPDATA 'Temp')) |
         Select-Object -Unique
@@ -1588,18 +2042,18 @@ function Invoke-SystemClean {
         Invoke-CleanPath -Path $p -Label $shortLabel -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
     }
 
-    # ── App caches ──────────────────────────────────────────────────────
+    # -- App caches ------------------------------------------------------
     Write-Host ''
     Write-Host '  APP CACHES' -ForegroundColor Yellow
     $cachePaths = @(
-        # ── Browsers ──
+        # -- Browsers --
         @{ Path = (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Cache');       Label = 'Chrome' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\Default\Code Cache');  Label = 'Chrome/code' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data\Default\Cache');      Label = 'Edge' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data\Default\Code Cache'); Label = 'Edge/code' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'Mozilla\Firefox\Profiles');                    Label = 'Firefox' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data\Default\Cache'); Label = 'Brave' }
-        # ── Dev tools ──
+        # -- Dev tools --
         @{ Path = (Join-Path $env:APPDATA 'Code\User\workspaceStorage');                       Label = 'VSCode/workspace' }
         @{ Path = (Join-Path $env:APPDATA 'Code\logs');                                        Label = 'VSCode/logs' }
         @{ Path = (Join-Path $env:APPDATA 'Code\CachedExtensionVSIXs');                        Label = 'VSCode/vsix' }
@@ -1615,7 +2069,7 @@ function Invoke-SystemClean {
         @{ Path = (Join-Path $HOME 'scoop\cache');                                             Label = 'scoop' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'pnpm\store');                                  Label = 'pnpm' }
         @{ Path = (Join-Path $env:APPDATA 'Bun\install\cache');                                Label = 'bun' }
-        # ── Communication apps ──
+        # -- Communication apps --
         @{ Path = (Join-Path $env:APPDATA 'Microsoft\Teams\Cache');                            Label = 'Teams' }
         @{ Path = (Join-Path $env:APPDATA 'Microsoft\Teams\blob_storage');                     Label = 'Teams/blob' }
         @{ Path = (Join-Path $env:APPDATA 'Microsoft\Teams\databases');                        Label = 'Teams/db' }
@@ -1629,14 +2083,14 @@ function Invoke-SystemClean {
         Invoke-CleanPath -Path $entry.Path -Label $entry.Label -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
     }
 
-    # ── Windows caches ──────────────────────────────────────────────────
+    # -- Windows caches --------------------------------------------------
     Write-Host ''
     Write-Host '  WINDOWS' -ForegroundColor Yellow
     $winCaches = @(
-        # ── System caches (some need admin — fail silently) ──
+        # -- System caches (some need admin -- fail silently) --
         @{ Path = (Join-Path $env:SystemRoot 'SoftwareDistribution\Download'); Label = 'WU/download' }
         @{ Path = (Join-Path $env:SystemRoot 'Prefetch');                       Label = 'Prefetch' }
-        # ── User-space caches (no admin) ──
+        # -- User-space caches (no admin) --
         @{ Path = (Join-Path $env:LOCALAPPDATA 'CrashDumps');                   Label = 'CrashDumps' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\INetCache');  Label = 'INetCache' }
         @{ Path = (Join-Path $env:APPDATA 'Microsoft\Windows\Recent');          Label = 'Recent' }
@@ -1659,7 +2113,7 @@ function Invoke-SystemClean {
         Invoke-CleanPath -Path $entry.Path -Label $entry.Label -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
     }
 
-    # ── Stale envs ──────────────────────────────────────────────────────
+    # -- Stale envs ------------------------------------------------------
     Write-Host ''
     Write-Host ('  STALE ENVS  (>{0}d)' -f $StaleDays) -ForegroundColor Yellow
     $searchRoots = @(
@@ -1680,17 +2134,17 @@ function Invoke-SystemClean {
         }
     }
 
-    # ── RAM + network flush ────────────────────────────────────────────
+    # -- RAM + network flush --------------------------------------------
     Write-Host ''
     Write-Host '  MEMORY & NETWORK' -ForegroundColor Yellow
     Invoke-RamFlush -DryRun:$DryRun
 
-    # ── Disk optimization ───────────────────────────────────────────────
+    # -- Disk optimization -----------------------------------------------
     Write-Host ''
     Write-Host '  DISK' -ForegroundColor Yellow
     Invoke-DiskOptimize -DryRun:$DryRun
 
-    # ── Summary ──────────────────────────────────────────────────────────
+    # -- Summary ----------------------------------------------------------
     $sw.Stop()
     $elapsed = if ($sw.Elapsed.TotalSeconds -ge 60) {
         ('{0}m {1}s' -f [int]$sw.Elapsed.TotalMinutes, $sw.Elapsed.Seconds)
@@ -1700,7 +2154,7 @@ function Invoke-SystemClean {
     Write-Host ''
     $summaryColor = if ($DryRun) { 'DarkYellow' } else { 'Green' }
     $verb         = if ($DryRun) { 'would free' } else { 'freed' }
-    Write-Host ('  ✓ {0} {1}  {2} files  {3}' -f $verb, (Format-Bytes $script:CleanTotalFreed), $script:CleanTotalFiles, $elapsed) -ForegroundColor $summaryColor
+    Write-Host ('  >> {0} {1}  {2} files  {3}' -f $verb, (Format-Bytes $script:CleanTotalFreed), $script:CleanTotalFiles, $elapsed) -ForegroundColor $summaryColor
     if ($DryRun) { Write-Host '  run without --dry-run to apply' -ForegroundColor DarkGray }
     Write-Host ''
 }
@@ -1708,18 +2162,31 @@ function Invoke-SystemClean {
 function Invoke-CleanCommand {
     param([string[]]$Rest)
 
-    $dryRun    = $false
-    $staleDays = 7
+    $dryRun      = $false
+    $staleDays   = 7
+    $doProjects  = $false
+    $projectsAll = $false
+    $doDeep      = $false
+    $doScan      = $false
+    $scanPaths   = @()
 
     foreach ($arg in $Rest) {
         switch ($arg.ToLowerInvariant()) {
-            '--dry-run' { $dryRun = $true }
-            '--help'    {
+            '--dry-run'  { $dryRun = $true }
+            '--projects' { $doProjects = $true }
+            '--all'      { $projectsAll = $true }
+            '--deep'     { $doDeep = $true }
+            '--scan'     { $doScan = $true }
+            '--help'     {
                 Write-Host ''
-                Write-HintSection 'CLEAN — deep system / cache / venv / RAM / disk optimizer'
-                Write-HintRow '8sync clean'             'Full clean + optimize (stale > 7 days)'
-                Write-HintRow '8sync clean --days N'    'Custom stale threshold (e.g. --days 14)'
-                Write-HintRow '8sync clean --dry-run'   'Preview — nothing deleted or optimized'
+                Write-HintSection 'CLEAN -- deep system / cache / venv / RAM / disk / project optimizer'
+                Write-HintRow '8sync clean'                  'Full clean + optimize (stale > 7 days)'
+                Write-HintRow '8sync clean --days N'         'Custom stale threshold (e.g. --days 14)'
+                Write-HintRow '8sync clean --dry-run'        'Preview -- nothing deleted or optimized'
+                Write-HintRow '8sync clean --projects'       'Stale git repos picker (fzf multi-select)'
+                Write-HintRow '8sync clean --projects --all' 'Delete ALL stale git repos without picker'
+                Write-HintRow '8sync clean --deep'           'Report stale MCP/npm/pip/cargo/go artifacts'
+                Write-HintRow '8sync clean --scan'           'Windows Defender quick + dev-folder scan'
                 Write-Host ''
                 return
             }
@@ -1733,6 +2200,28 @@ function Invoke-CleanCommand {
                 $staleDays = $parsed
             }
         }
+        # --scan <path1> <path2> ...  (optional path args after --scan)
+        if ($Rest[$i].ToLowerInvariant() -eq '--scan') {
+            for ($j = $i + 1; $j -lt $Rest.Count; $j++) {
+                if ($Rest[$j] -like '--*') { break }
+                $scanPaths += $Rest[$j]
+            }
+        }
+    }
+
+    if ($doProjects) {
+        Invoke-ProjectPicker -StaleDays ([Math]::Max($staleDays, 30)) -All:$projectsAll -DryRun:$dryRun
+        return
+    }
+
+    if ($doDeep) {
+        Show-DevArtifactReport -StaleDays $staleDays
+        return
+    }
+
+    if ($doScan) {
+        Invoke-DefenderScan -TargetPaths $scanPaths
+        return
     }
 
     Invoke-SystemClean -StaleDays $staleDays -DryRun:$dryRun
