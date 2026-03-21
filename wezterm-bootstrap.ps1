@@ -1420,11 +1420,7 @@ function Find-VenvDirs {
         }
     }
 
-    $enumOpts = [System.IO.EnumerationOptions]::new()
-    $enumOpts.RecurseSubdirectories = $true
-    $enumOpts.MaxRecursionDepth     = 5
-    $enumOpts.IgnoreInaccessible    = $true
-    $enumOpts.AttributesToSkip      = [System.IO.FileAttributes]::ReparsePoint
+    $recurseOpt = [System.IO.SearchOption]::AllDirectories
 
     # -- Track 1: pyvenv.cfg -- standard venv / uv / virtualenv (modern) --------
     # pyvenv.cfg lives INSIDE the env dir, so its parent IS the env.
@@ -1434,10 +1430,12 @@ function Find-VenvDirs {
         if (-not (Test-Path $root)) { continue }
         Write-CleanSpinner -Msg ('scanning ' + $root)
         try {
-            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'pyvenv.cfg', $enumOpts)) {
-                $dir = [System.IO.Path]::GetDirectoryName($f)
-                Write-CleanSpinner -Msg $dir
-                & $tryAdd $dir
+            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'pyvenv.cfg', $recurseOpt)) {
+                try {
+                    $dir = [System.IO.Path]::GetDirectoryName($f)
+                    Write-CleanSpinner -Msg $dir
+                    & $tryAdd $dir
+                } catch {}
             }
         } catch {}
     }
@@ -1451,11 +1449,13 @@ function Find-VenvDirs {
         if (-not (Test-Path $root)) { continue }
         foreach ($pattern in $pyDirPatterns) {
             try {
-                foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, $pattern, $enumOpts)) {
-                    Write-CleanSpinner -Msg $d
-                    if (Test-IsPythonVenv -Dir $d) {
-                        & $tryAdd $d
-                    }
+                foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, $pattern, $recurseOpt)) {
+                    try {
+                        Write-CleanSpinner -Msg $d
+                        if (Test-IsPythonVenv -Dir $d) {
+                            & $tryAdd $d
+                        }
+                    } catch {}
                 }
             } catch {}
         }
@@ -1507,9 +1507,11 @@ function Find-VenvDirs {
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
-            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'Cargo.toml', $enumOpts)) {
-                $targetDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'target'
-                & $tryAdd $targetDir
+            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'Cargo.toml', $recurseOpt)) {
+                try {
+                    $targetDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'target'
+                    & $tryAdd $targetDir
+                } catch {}
             }
         } catch {}
     }
@@ -1518,9 +1520,11 @@ function Find-VenvDirs {
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
-            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'go.mod', $enumOpts)) {
-                $vendorDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'vendor'
-                & $tryAdd $vendorDir
+            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'go.mod', $recurseOpt)) {
+                try {
+                    $vendorDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'vendor'
+                    & $tryAdd $vendorDir
+                } catch {}
             }
         } catch {}
     }
@@ -1529,9 +1533,11 @@ function Find-VenvDirs {
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
-            foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, 'node_modules', $enumOpts)) {
-                $lw = [System.IO.Directory]::GetLastWriteTime($d)
-                if ($lw -lt $cutoff) { $null = $found.Add($d) }
+            foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, 'node_modules', $recurseOpt)) {
+                try {
+                    $lw = [System.IO.Directory]::GetLastWriteTime($d)
+                    if ($lw -lt $cutoff) { $null = $found.Add($d) }
+                } catch {}
             }
         } catch {}
     }
@@ -1597,15 +1603,12 @@ function Find-StaleProjects {
         (Join-Path $HOME 'work')
     ) | Where-Object { [System.IO.Directory]::Exists($_) } | Select-Object -Unique
 
-    $enumOpts = [System.IO.EnumerationOptions]::new()
-    $enumOpts.RecurseSubdirectories = $false   # only top-level dirs per root
-    $enumOpts.IgnoreInaccessible    = $true
-    $enumOpts.AttributesToSkip      = [System.IO.FileAttributes]::ReparsePoint
+    $topOnlyOpt = [System.IO.SearchOption]::TopDirectoryOnly
 
     foreach ($root in $searchRoots) {
         Write-CleanSpinner -Msg ('scanning ' + $root)
         try {
-            foreach ($dir in [System.IO.Directory]::EnumerateDirectories($root, '*', $enumOpts)) {
+            foreach ($dir in [System.IO.Directory]::EnumerateDirectories($root, '*', $topOnlyOpt)) {
                 $gitDir = Join-Path $dir '.git'
                 if (-not [System.IO.Directory]::Exists($gitDir)) { continue }
 
