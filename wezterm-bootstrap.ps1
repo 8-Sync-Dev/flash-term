@@ -305,6 +305,30 @@ function Show-8SyncStatus {
     Write-Host ''
 }
 
+function Ensure-ScoopBuckets {
+    param(
+        [Parameter(Mandatory)] [object]$Scoop,
+        [string[]]$Buckets = @('extras')
+    )
+
+    try {
+        $existing = & $Scoop.Source bucket list 2>$null | ForEach-Object { "$_".Trim() }
+    } catch {
+        $existing = @()
+    }
+
+    foreach ($bucket in $Buckets) {
+        if ($existing -notcontains $bucket) {
+            Write-Host ("Adding Scoop bucket: {0}" -f $bucket) -ForegroundColor Yellow
+            try {
+                & $Scoop.Source bucket add $bucket 2>&1 | Out-Host
+            } catch {
+                Write-Warning ("Failed to add bucket '{0}': {1}" -f $bucket, $_.Exception.Message)
+            }
+        }
+    }
+}
+
 function Invoke-ToolSync {
     param([switch]$Quiet)
 
@@ -326,19 +350,34 @@ function Invoke-ToolSync {
 
     Set-Content -Path $script:SyncLockPath -Value ([datetime]::UtcNow.ToString('o')) -Encoding ASCII
     try {
+        # Ensure required buckets exist before install (lazygit lives in extras)
+        Ensure-ScoopBuckets -Scoop $scoop -Buckets @('extras')
+
         $missingPackages = Get-MissingPackages
         if ($missingPackages.Count -gt 0) {
             if (-not $Quiet) {
                 Write-Host ('Installing missing packages: {0}' -f ($missingPackages -join ', ')) -ForegroundColor Yellow
             }
             & $scoop.Source install @missingPackages | Out-Host
+
+            # Refresh PATH so newly installed shims are visible to scoop update
+            Ensure-PreferredPaths
         }
 
-        $allPackages = $script:ToolPackages.Values | Select-Object -Unique
-        if (-not $Quiet) {
-            Write-Host ('Updating managed packages: {0}' -f ($allPackages -join ', ')) -ForegroundColor Yellow
+        # Only update packages that are now actually installed
+        $installedPackages = $script:ToolPackages.GetEnumerator() |
+            Where-Object { Test-CommandExists $_.Key } |
+            ForEach-Object { $_.Value } |
+            Select-Object -Unique
+
+        if ($installedPackages.Count -gt 0) {
+            if (-not $Quiet) {
+                Write-Host ('Updating managed packages: {0}' -f ($installedPackages -join ', ')) -ForegroundColor Yellow
+            }
+            & $scoop.Source update @installedPackages | Out-Host
+        } elseif (-not $Quiet) {
+            Write-Host 'No installed packages to update.' -ForegroundColor DarkGray
         }
-        & $scoop.Source update @allPackages | Out-Host
 
         Write-State -LastSyncUtc ([datetime]::UtcNow)
         if (-not $Quiet) {
