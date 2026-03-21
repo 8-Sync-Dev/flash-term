@@ -1599,8 +1599,12 @@ function Find-StaleProjects {
         (Join-Path $HOME 'repos'),
         (Join-Path $HOME 'workspace'),
         (Join-Path $HOME 'Documents'),
+        (Join-Path $HOME 'Desktop'),
+        (Join-Path $HOME 'Downloads'),
         (Join-Path $HOME 'src'),
-        (Join-Path $HOME 'work')
+        (Join-Path $HOME 'work'),
+        (Join-Path $HOME 'github'),
+        (Join-Path $HOME 'lab')
     ) | Where-Object { [System.IO.Directory]::Exists($_) } | Select-Object -Unique
 
     $topOnlyOpt = [System.IO.SearchOption]::TopDirectoryOnly
@@ -1680,20 +1684,38 @@ function Invoke-ProjectPicker {
     Write-Host ('  Found {0} stale project(s):' -f $projects.Count) -ForegroundColor Yellow
     Write-Host ''
 
+    # Build display table for all paths
+    # Format: "<name padded> | <size> | <days> || <path>" -- path after "||" is the safe key
+    $lines = $projects | ForEach-Object {
+        '{0,-42} {1,8}  {2,4}d ago  || {3}' -f $_.Name, $_.SizeDisplay, $_.DaysOld, $_.Path
+    }
+
+    # Build a lookup: path -> project object (avoids any name-matching ambiguity)
+    $pathIndex = @{}
+    foreach ($p in $projects) { $pathIndex[$p.Path] = $p }
+
     $toDelete = @()
 
     if ($All) {
-        # --all: show list then delete without picker
+        # --all: show full list, then require explicit confirmation before deleting
+        Write-Host '  Projects to delete:' -ForegroundColor Yellow
         foreach ($p in $projects) {
-            Write-Host ('  {0,-40} {1,8}  {2}d ago' -f $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor DarkGray
+            Write-Host ('  {0,-42} {1,8}  {2}d ago' -f $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor White
+        }
+        Write-Host ''
+        if (-not $DryRun) {
+            Write-Host ('  About to delete ALL {0} listed project(s). This cannot be undone.' -f $projects.Count) -ForegroundColor Red
+            Write-Host '  Type YES to confirm, or press ENTER to cancel: ' -ForegroundColor Yellow -NoNewline
+            $confirm = Read-Host
+            if ($confirm.Trim() -ne 'YES') {
+                Write-Host '  Cancelled.' -ForegroundColor DarkGray
+                Write-Host ''
+                return
+            }
         }
         $toDelete = $projects
-    } elseif (Test-CommandExists 'fzf') {
-        # Build fzf input: name | size | days | path (path hidden from display)
-        $lines = $projects | ForEach-Object {
-            '{0,-40} {1,8}  {2,4}d ago  {3}' -f $_.Name, $_.SizeDisplay, $_.DaysOld, $_.Path
-        }
 
+    } elseif (Test-CommandExists 'fzf') {
         Write-Host '  [TAB=select  ENTER=confirm  ESC=cancel  Ctrl+A=select all]' -ForegroundColor DarkGray
         Write-Host ''
         $selected = $lines | fzf `
@@ -1703,7 +1725,8 @@ function Invoke-ProjectPicker {
             --layout=reverse `
             --border `
             --prompt='Delete> ' `
-            --bind='ctrl-a:select-all'
+            --bind='ctrl-a:select-all' `
+            --with-nth='1,2,3,4,5'
 
         if (-not $selected) {
             Write-Host '  Cancelled.' -ForegroundColor DarkGray
@@ -1711,33 +1734,37 @@ function Invoke-ProjectPicker {
             return
         }
 
-        # Extract paths from selected lines (last tab-delimited field)
-        $selectedPaths = @($selected | ForEach-Object { $_.Trim() -replace '^.{55}\s+', '' }) # crude trim
-        # More reliable: match against project paths
-        $toDelete = $projects | Where-Object {
-            $p = $_
-            $selected | Where-Object { $_ -like ('*' + $p.Name + '*') } | Select-Object -First 1
-        }
+        # Extract path from after "|| " separator -- exact match, no name ambiguity
+        $toDelete = @($selected | ForEach-Object {
+            if ($_ -match '\|\|\s+(.+)$') {
+                $path = $Matches[1].Trim()
+                if ($pathIndex.ContainsKey($path)) { $pathIndex[$path] }
+            }
+        } | Where-Object { $_ })
+
     } else {
-        # No fzf  plain numbered list, ask for input
+        # No fzf -- plain numbered list
         $i = 1
         foreach ($p in $projects) {
-            Write-Host ('  [{0,2}] {1,-40} {2,8}  {3}d ago' -f $i, $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor White
+            Write-Host ('  [{0,2}] {1,-42} {2,8}  {3}d ago' -f $i, $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor White
             $i++
         }
         Write-Host ''
-        Write-Host '  Enter numbers to delete (e.g. 1,3,5 or "all" or ENTER to cancel): ' -ForegroundColor Yellow -NoNewline
-        $input = Read-Host
-        if (-not $input -or $input.Trim() -eq '') {
+        Write-Host '  Enter numbers to delete (e.g. 1,3,5  or "all"  or ENTER to cancel): ' -ForegroundColor Yellow -NoNewline
+        $rawInput = Read-Host
+        if (-not $rawInput -or $rawInput.Trim() -eq '') {
             Write-Host '  Cancelled.' -ForegroundColor DarkGray
             Write-Host ''
             return
         }
-        if ($input.Trim().ToLowerInvariant() -eq 'all') {
+        if ($rawInput.Trim().ToLowerInvariant() -eq 'all') {
             $toDelete = $projects
         } else {
-            $indices = $input -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ - 1 }
-            $toDelete = $indices | Where-Object { $_ -ge 0 -and $_ -lt $projects.Count } | ForEach-Object { $projects[$_] }
+            $indices = $rawInput -split '[,\s]+' |
+                Where-Object { $_ -match '^\d+$' } |
+                ForEach-Object { [int]$_ - 1 } |
+                Where-Object { $_ -ge 0 -and $_ -lt $projects.Count }
+            $toDelete = @($indices | ForEach-Object { $projects[$_] })
         }
     }
 
@@ -1747,24 +1774,43 @@ function Invoke-ProjectPicker {
         return
     }
 
+    # Final summary + safety confirmation before actual delete
     Write-Host ''
-    Write-Host ('  Deleting {0} project(s)...' -f @($toDelete).Count) -ForegroundColor Yellow
+    Write-Host ('  Selected {0} project(s) to delete:' -f @($toDelete).Count) -ForegroundColor Yellow
     $totalFreed = [long]0
     foreach ($p in @($toDelete)) {
-        $tag = if ($DryRun) { ' ~' } else { '' }
-        Write-Host ('  {0}{1}  {2}' -f $p.Name, $tag, $p.SizeDisplay) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
-        if (-not $DryRun) {
-            try {
-                Remove-Item -Path $p.Path -Recurse -Force -ErrorAction SilentlyContinue
-            } catch {}
-        }
+        Write-Host ('    {0,-42} {1,8}' -f $p.Name, $p.SizeDisplay) -ForegroundColor White
         $totalFreed += $p.SizeBytes
+    }
+    Write-Host ('  Total: {0}' -f (Format-Bytes $totalFreed)) -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($DryRun) {
+        Write-Host ('  >> would free {0} from {1} project(s)' -f (Format-Bytes $totalFreed), @($toDelete).Count) -ForegroundColor DarkYellow
+        Write-Host '  run without --dry-run to apply' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host '  Type YES to confirm permanent deletion, or press ENTER to cancel: ' -ForegroundColor Red -NoNewline
+    $confirm = Read-Host
+    if ($confirm.Trim() -ne 'YES') {
+        Write-Host '  Cancelled. Nothing deleted.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
     }
 
     Write-Host ''
-    $verb = if ($DryRun) { 'would free' } else { 'freed' }
-    Write-Host ('  >> {0} {1} from {2} project(s)' -f $verb, (Format-Bytes $totalFreed), @($toDelete).Count) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
-    if ($DryRun) { Write-Host '  run without --dry-run to apply' -ForegroundColor DarkGray }
+    Write-Host ('  Deleting {0} project(s)...' -f @($toDelete).Count) -ForegroundColor Yellow
+    foreach ($p in @($toDelete)) {
+        Write-Host ('  {0}  {1}' -f $p.Name, $p.SizeDisplay) -ForegroundColor Green
+        try {
+            Remove-Item -Path $p.Path -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+
+    Write-Host ''
+    Write-Host ('  >> freed {0} from {1} project(s)' -f (Format-Bytes $totalFreed), @($toDelete).Count) -ForegroundColor Green
     Write-Host ''
 }
 
@@ -2217,7 +2263,9 @@ function Invoke-CleanCommand {
     }
 
     if ($doProjects) {
-        Invoke-ProjectPicker -StaleDays ([Math]::Max($staleDays, 30)) -All:$projectsAll -DryRun:$dryRun
+        # Use explicit --days N if provided, otherwise default 90d for projects
+        $projectDays = if ($Rest -contains '--days' -or $Rest -contains '-d') { $staleDays } else { 90 }
+        Invoke-ProjectPicker -StaleDays $projectDays -All:$projectsAll -DryRun:$dryRun
         return
     }
 
