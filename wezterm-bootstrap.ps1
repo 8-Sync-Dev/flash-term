@@ -1131,18 +1131,37 @@ $script:CleanSpinnerFrames = @('-','\\','|','/')
 $script:CleanSpinnerIdx    = 0
 $script:CleanTotalFreed    = [long]0
 $script:CleanTotalFiles    = 0
-# True only when stdout goes to an interactive terminal (not piped/redirected/captured)
-$script:CleanIsConsole     = $Host.Name -eq 'ConsoleHost' -and
-                             -not [System.Console]::IsOutputRedirected -and
-                             -not [System.Console]::IsInputRedirected
+
+# Spinner guard: only use \r-overwrite trick on a real interactive console.
+# Extra checks beyond ConsoleHost:
+#   - Width must be readable and sane (20..300) -- rules out SSH/tmux/redir
+#   - Not output-redirected (pipe, file, capture)
+#   - WindowSize must not throw (non-interactive hosts do)
+$script:CleanIsConsole = $false
+if ($Host.Name -eq 'ConsoleHost' -and
+    -not [System.Console]::IsOutputRedirected -and
+    -not [System.Console]::IsInputRedirected) {
+    try {
+        $w = $Host.UI.RawUI.WindowSize.Width
+        if ($w -ge 20 -and $w -le 300) {
+            $script:CleanIsConsole = $true
+        }
+    } catch {}
+}
+
+function Get-SafeTermWidth {
+    $w = 80
+    try { $w = $Host.UI.RawUI.WindowSize.Width } catch {}
+    if ($w -lt 20 -or $w -gt 300) { $w = 80 }
+    return $w
+}
 
 function Write-CleanSpinner {
     param([string]$Msg, [string]$Counter = '')
     if (-not $script:CleanIsConsole) { return }
     $frame = $script:CleanSpinnerFrames[$script:CleanSpinnerIdx % $script:CleanSpinnerFrames.Count]
     $script:CleanSpinnerIdx++
-    $termWidth = try { $Host.UI.RawUI.WindowSize.Width } catch { 100 }
-    if ($termWidth -lt 20) { $termWidth = 100 }
+    $termWidth = Get-SafeTermWidth
     # Truncate long paths so line never wraps
     $maxMsg = $termWidth - 32
     if ($Msg.Length -gt $maxMsg -and $maxMsg -gt 8) { $Msg = '...' + $Msg.Substring($Msg.Length - ($maxMsg - 3)) }
@@ -1153,8 +1172,7 @@ function Write-CleanSpinner {
 
 function Clear-SpinnerLine {
     if (-not $script:CleanIsConsole) { return }
-    $termWidth = try { $Host.UI.RawUI.WindowSize.Width } catch { 100 }
-    if ($termWidth -lt 20) { $termWidth = 100 }
+    $termWidth = Get-SafeTermWidth
     [System.Console]::Write("`r" + (' ' * ($termWidth - 1)) + "`r")
 }
 
