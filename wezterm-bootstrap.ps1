@@ -517,7 +517,7 @@ function Register-8SyncCompleter {
         $subMap = @{
             bg = @('search','pick','set','open','help')
             hx = @('lang','wrap','opacity','theme','help')
-            clean = @('--days','--dry-run','--projects','--all','--deep','--scan','--help')
+            clean = @('help','--days','--dry-run','--projects','--all','--deep','--scan','--help')
         }
 
         if ($count -le 1) {
@@ -2180,16 +2180,20 @@ function Invoke-CleanCommand {
             '--all'      { $projectsAll = $true }
             '--deep'     { $doDeep = $true }
             '--scan'     { $doScan = $true }
-            '--help'     {
+            { $_ -in '--help', 'help', '-h' } {
                 Write-Host ''
                 Write-HintSection 'CLEAN -- deep system / cache / venv / RAM / disk / project optimizer'
-                Write-HintRow '8sync clean'                  'Full clean + optimize (stale > 7 days)'
-                Write-HintRow '8sync clean --days N'         'Custom stale threshold (e.g. --days 14)'
-                Write-HintRow '8sync clean --dry-run'        'Preview -- nothing deleted or optimized'
-                Write-HintRow '8sync clean --projects'       'Stale git repos picker (fzf multi-select)'
-                Write-HintRow '8sync clean --projects --all' 'Delete ALL stale git repos without picker'
-                Write-HintRow '8sync clean --deep'           'Report stale MCP/npm/pip/cargo/go artifacts'
-                Write-HintRow '8sync clean --scan'           'Windows Defender quick + dev-folder scan'
+                Write-HintRow '8sync clean'                          'Full clean: temp/cache/venv/RAM/disk (stale > 7d)'
+                Write-HintRow '8sync clean --days N'                 'Custom stale threshold  e.g. --days 14'
+                Write-HintRow '8sync clean --dry-run'                'Preview only -- nothing deleted'
+                Write-HintRow '8sync clean --projects'               'Pick stale git repos to delete (fzf multi-select)'
+                Write-HintRow '8sync clean --projects --all'         'Delete ALL stale git repos, no picker'
+                Write-HintRow '8sync clean --projects --days N'      'Stale threshold for projects (default: 90d)'
+                Write-HintRow '8sync clean --projects --dry-run'     'Preview project deletions only'
+                Write-HintRow '8sync clean --deep'                   'Report stale MCP/npm/pip/cargo/go artifacts'
+                Write-HintRow '8sync clean --deep --days N'          'Custom threshold for artifact scan'
+                Write-HintRow '8sync clean --scan'                   'Windows Defender quick + dev-folder scan'
+                Write-HintRow '8sync clean --scan <path>'            'Targeted Defender scan on specific path'
                 Write-Host ''
                 return
             }
