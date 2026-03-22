@@ -29,6 +29,8 @@ $script:ToolPackages = [ordered]@{
 $script:StateDir = Join-Path $PSScriptRoot '.state'
 $script:StatePath = Join-Path $script:StateDir 'tool-state.json'
 $script:SyncLockPath = Join-Path $script:StateDir 'sync.lock'
+$script:MissingCachePath = Join-Path $script:StateDir 'missing-cache.json'
+$script:MissingCacheTtlSeconds = 300   # 5 minutes
 $script:SyncIntervalHours = 72
 $script:BgCacheLimit = 50
 $script:BgCachePath = Join-Path $script:StateDir 'bg-cache.json'
@@ -118,13 +120,46 @@ function Get-ManagedToolStatus {
 }
 
 function Get-MissingPackages {
+    # Check cache first -- avoids 16x Get-Command on every tab open when tools are installed.
+    # Cache is invalidated after MissingCacheTtlSeconds (default 5min) or when scoop runs.
+    Ensure-StateDir
+    if (Test-Path $script:MissingCachePath) {
+        try {
+            $cached = Get-Content -Raw $script:MissingCachePath | ConvertFrom-Json
+            if ($cached -and $cached.generatedUtc) {
+                $age = ([datetime]::UtcNow - [datetime]$cached.generatedUtc).TotalSeconds
+                if ($age -lt $script:MissingCacheTtlSeconds) {
+                    # Return cached list as Generic.List to match callers' .Count/.Add expectations
+                    $list = New-Object System.Collections.Generic.List[string]
+                    foreach ($item in $cached.missing) { $list.Add($item) }
+                    return $list
+                }
+            }
+        } catch {}
+    }
+
+    # Cache miss or expired -- do the real scan
     $missing = New-Object System.Collections.Generic.List[string]
     foreach ($pair in $script:ToolPackages.GetEnumerator()) {
         if (-not (Test-CommandExists $pair.Key)) {
             $missing.Add($pair.Value)
         }
     }
+
+    # Persist result
+    try {
+        [pscustomobject]@{
+            generatedUtc = [datetime]::UtcNow.ToString('o')
+            missing      = @($missing)
+        } | ConvertTo-Json | Set-Content -Path $script:MissingCachePath -Encoding UTF8
+    } catch {}
+
     return $missing
+}
+
+function Clear-MissingCache {
+    # Call after any install/update so next Get-MissingPackages re-scans
+    Remove-Item $script:MissingCachePath -Force -ErrorAction SilentlyContinue
 }
 
 function Ensure-StateDir {
@@ -383,6 +418,7 @@ function Invoke-ToolSync {
         }
 
         Write-State -LastSyncUtc ([datetime]::UtcNow)
+        Clear-MissingCache   # force re-scan on next tab open
         if (-not $Quiet) {
             Write-Host 'Tool sync completed.' -ForegroundColor Green
         }
@@ -447,17 +483,12 @@ function Start-AutoSync {
 }
 
 function Set-HistoryExperience {
-    if (-not (Get-Module -ListAvailable -Name PSReadLine)) {
-        return
-    }
+    # PSReadLine is already loaded in PS 5.1+ by default; skip the slow
+    # Get-Module -ListAvailable scan and just try to configure it directly.
+    # If it isn't present the try/catch swallows the error silently.
 
     try {
-        Import-Module PSReadLine -ErrorAction Stop
-    } catch {
-        return
-    }
-
-    try {
+        # Basic readline options -- fast path, no module scan needed
         Set-PSReadLineOption -EditMode Windows -ErrorAction Stop
         Set-PSReadLineOption -PredictionSource History -ErrorAction Stop
         Set-PSReadLineOption -PredictionViewStyle ListView -ErrorAction Stop
@@ -473,22 +504,16 @@ function Set-HistoryExperience {
         Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward -ErrorAction Stop
         Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward -ErrorAction Stop
     } catch {
-        # Silently ignore PSReadLine errors - console may not support all features
+        # PSReadLine not available or console doesn't support all features -- silent
     }
 
     if (Test-CommandExists 'fzf') {
         try {
             Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock {
                 $historyPath = (Get-PSReadLineOption).HistorySavePath
-                if (-not (Test-Path $historyPath)) {
-                    return
-                }
-
+                if (-not (Test-Path $historyPath)) { return }
                 $history = Get-Content $historyPath -ErrorAction SilentlyContinue
-                if (-not $history) {
-                    return
-                }
-
+                if (-not $history) { return }
                 [array]::Reverse($history)
                 $selected = $history | fzf --height=45% --layout=reverse --border --prompt='History> ' --no-sort
                 if ($selected) {
@@ -496,9 +521,7 @@ function Set-HistoryExperience {
                     [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
                 }
             } -ErrorAction Stop
-        } catch {
-            # Ignore fzf handler errors
-        }
+        } catch {}
     }
 }
 
