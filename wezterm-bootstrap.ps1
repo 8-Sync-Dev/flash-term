@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 [CmdletBinding()]
 param(
     [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync')]
@@ -1681,6 +1682,12 @@ function Find-StaleProjects {
                 Write-CleanSpinner -Msg ('sizing ' + [System.IO.Path]::GetFileName($dir) + '...')
                 $sizeBytes = Get-DirSizeBytes -Path $dir
 
+                $remote = ''
+                try {
+                    $r = & git -C $dir remote get-url origin 2>$null
+                    if ($r) { $remote = $r.Trim() }
+                } catch {}
+
                 $null = $found.Add([pscustomobject]@{
                     Path        = $dir
                     Name        = [System.IO.Path]::GetFileName($dir)
@@ -1688,6 +1695,7 @@ function Find-StaleProjects {
                     SizeBytes   = $sizeBytes
                     SizeDisplay = Format-Bytes $sizeBytes
                     DaysOld     = [int]([datetime]::Now - $lastCommit).TotalDays
+                    Remote      = $remote
                 })
             }
         } catch {}
@@ -1728,7 +1736,11 @@ function Invoke-ProjectPicker {
     # Build display table for all paths
     # Format: "<name padded> | <size> | <days> || <path>" -- path after "||" is the safe key
     $lines = $projects | ForEach-Object {
-        '{0,-42} {1,8}  {2,4}d ago  || {3}' -f $_.Name, $_.SizeDisplay, $_.DaysOld, $_.Path
+        $remote = if ($_.Remote) {
+            $r = $_.Remote -replace '^https?://(www\.)?', '' -replace '^git@([^:]+):', '$1/'
+            if ($r.Length -gt 32) { $r.Substring(0, 29) + '...' } else { $r }
+        } else { '' }
+        '{0,-36} {1,7}  {2,3}d  {3,-34}  || {4}' -f $_.Name, $_.SizeDisplay, $_.DaysOld, $remote, $_.Path
     }
 
     # Build a lookup: path -> project object (avoids any name-matching ambiguity)
@@ -2351,23 +2363,27 @@ function Invoke-HxCommand {
     }
 }
 
-function Set-ToolAliases {
+function Register-ShellEngineInits {
+    # Run zoxide and starship init AFTER all aliases are registered.
+    # Both spawn an external process and Invoke-Expression the output --
+    # typically 50-150ms each. Moving them here means the prompt appears
+    # with all aliases ready before the engines hook in.
+    # zoxide: registers z / __zoxide_hook. cdi alias already points to z.
+    # starship: overrides PROMPT_COMMAND / prompt function.
     if (Test-CommandExists 'zoxide') {
         try {
             Invoke-Expression (& zoxide init powershell | Out-String)
-        } catch {
-            # Ignore zoxide init errors
-        }
+        } catch {}
     }
 
     if (Test-CommandExists 'starship') {
         try {
             Invoke-Expression (& starship init powershell)
-        } catch {
-            # Ignore starship init errors
-        }
+        } catch {}
     }
+}
 
+function Set-ToolAliases {
     if (Test-CommandExists 'eza') {
         function global:ll { eza --icons=always --group-directories-first -lah @args }
         function global:lt { eza --icons=always --group-directories-first -lah --tree --level=2 @args }
@@ -2429,6 +2445,17 @@ function Set-ToolAliases {
         Set-Location $Path
     }
 
+    Register-8SyncAlias
+
+    # Engine inits last -- these are the slowest external calls (50-150ms each)
+    # All aliases/completers are already registered before this runs
+    Register-ShellEngineInits
+}
+
+function Register-8SyncAlias {
+    # 8sync command dispatcher + aliases + tab completion.
+    # Extracted from Set-ToolAliases so it can be tested/reloaded independently.
+
     function global:Invoke-8Sync {
         param(
             [string]$Mode = 'help',
@@ -2455,6 +2482,13 @@ function Set-ToolAliases {
 }
 
 function Start-WezTermShell {
+    # Runtime PS version check -- warn but never abort the shell
+    $psVer = $PSVersionTable.PSVersion
+    if ($psVer.Major -lt 5 -or ($psVer.Major -eq 5 -and $psVer.Minor -lt 1)) {
+        Write-Warning ('[8sync] PowerShell {0}.{1} detected. Minimum supported: 5.1. Some features may not work.' -f $psVer.Major, $psVer.Minor)
+        Write-Warning '[8sync] Install pwsh 7+: scoop install powershell  or  https://aka.ms/powershell'
+    }
+
     Ensure-PreferredPaths
     $env:TERM_PROGRAM = 'WezTerm'
     if ($Host.UI -and $Host.UI.RawUI) {
