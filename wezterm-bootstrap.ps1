@@ -2631,37 +2631,57 @@ function Register-8SyncAlias {
     Register-8SyncCompleter
 }
 
-function Ensure-NerdFont {
-    $fontName = 'JetBrainsMono NF'
-    $installed = $false
-    try {
-        $fonts = [System.Drawing.FontFamily]::Families | ForEach-Object { $_.Name }
-        $installed = ($fonts -contains 'JetBrainsMono Nerd Font') -or ($fonts -contains 'JetBrainsMono NF')
-    } catch {
+function Test-NerdFontInstalled {
+    # Check 1: scoop manifest present (fastest, no assembly needed)
+    $scoop = Get-ScoopCommand
+    if ($scoop) {
         try {
-            $regFonts = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' -ErrorAction SilentlyContinue
-            if ($regFonts) {
-                $installed = ($regFonts.PSObject.Properties.Name | Where-Object { $_ -like '*JetBrainsMono*Nerd*' }).Count -gt 0
+            $info = & $scoop.Source info JetBrainsMono-NF 2>$null | Out-String
+            if ($info -match 'Installed') { return $true }
+        } catch {}
+    }
+
+    # Check 2: font files exist in user or system font folder
+    $fontDirs = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'),
+        'C:\Windows\Fonts',
+        (Join-Path $HOME 'scoop\apps\JetBrainsMono-NF\current')
+    )
+    foreach ($dir in $fontDirs) {
+        if ((Test-Path $dir) -and (Get-ChildItem $dir -Filter '*JetBrainsMono*' -ErrorAction SilentlyContinue)) {
+            return $true
+        }
+    }
+
+    # Check 3: registry (HKCU user fonts, no admin needed)
+    foreach ($regPath in @(
+        'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts',
+        'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+    )) {
+        try {
+            $regFonts = Get-ItemProperty $regPath -ErrorAction SilentlyContinue
+            if ($regFonts -and ($regFonts.PSObject.Properties.Name | Where-Object { $_ -like '*JetBrainsMono*' })) {
+                return $true
             }
         } catch {}
     }
 
-    if ($installed) { return }
-
-    $scoop = Get-ScoopCommand
-    if (-not $scoop) { return }
-
-    Write-Host '[8sync] Installing JetBrainsMono Nerd Font via scoop...' -ForegroundColor Yellow
+    # Check 4: System.Drawing (requires explicit assembly load in PS 5.1)
     try {
-        $buckets = & $scoop.Source bucket list 2>$null | ForEach-Object { "$_".Trim() }
-        if ($buckets -notcontains 'nerd-fonts') {
-            & $scoop.Source bucket add nerd-fonts 2>&1 | Out-Null
+        Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+        $families = [System.Drawing.FontFamily]::Families | ForEach-Object { $_.Name }
+        if (($families -contains 'JetBrainsMono Nerd Font') -or ($families -contains 'JetBrainsMono NF')) {
+            return $true
         }
-        & $scoop.Source install JetBrainsMono-NF 2>&1 | Out-Host
-        Write-Host '[8sync] Font installed. Restart WezTerm to apply.' -ForegroundColor Green
-    } catch {
-        Write-Host '[8sync] Font install failed. Install manually: scoop install JetBrainsMono-NF' -ForegroundColor DarkYellow
-    }
+    } catch {}
+
+    return $false
+}
+
+function Ensure-NerdFont {
+    if (Test-NerdFontInstalled) { return }
+    Write-Host '[8sync] JetBrainsMono Nerd Font not found.' -ForegroundColor DarkYellow
+    Write-Host '  To install: scoop bucket add nerd-fonts && scoop install JetBrainsMono-NF' -ForegroundColor DarkGray
 }
 
 function Start-WezTermShell {
