@@ -32,4 +32,6 @@ Examples:
 ## Index
 | File | Version | Status | Summary |
 |------|---------|--------|---------|
-| `20260322-v0.3.0-stability-perf-ux.md` | v0.3.0 | in-progress | P0-6 PS warn, P1-2 lazy init, P2-4 remote col, P3-1 dispatch refactor, P3-4 keys split |
+| `20260322-v0.3.0-stability-perf-ux.md` | v0.3.0 | done | P0-6 PS warn, P1-2 lazy init, P2-4 remote col, P3-1 dispatch refactor, P3-4 keys split |
+| `20260322-v0.4.0-gpu-bg-status-docs.md` | v0.4.0 | done | WebGpu, bg rotate, disk in status, troubleshooting doc |
+| `20260322-v0.5.0-gpu-clean-security.md` | v0.5.0 | pending | GPU smart adapter, animation_fps=1, deep clean cargo/go/docker, --audit ecosystem, G7 hx health |
