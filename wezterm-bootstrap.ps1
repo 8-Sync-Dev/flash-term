@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync')]
+    [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync', 'BgRotate')]
     [string]$Task = 'Shell'
 )
 
@@ -35,6 +35,8 @@ $script:MissingCacheTtlSeconds = 300   # 5 minutes
 $script:SyncIntervalHours = 72
 $script:BgCacheLimit = 50
 $script:BgCachePath = Join-Path $script:StateDir 'bg-cache.json'
+$script:BgRotatePath = Join-Path $script:StateDir 'bg-rotate.json'
+$script:BgRotateDefaultMinutes = 30
 $script:BackgroundDir = Join-Path $PSScriptRoot 'bg'
 $script:CurrentBgLuaPath = Join-Path $PSScriptRoot 'current-bg.lua'
 
@@ -294,10 +296,11 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
 
     Write-HintSection 'BACKGROUND'
-    Write-HintRow '8sync bg search <kw>'    'Search Wallhaven for 4K wallpapers'
-    Write-HintRow '8sync bg pick'           'Pick from cached results with fzf'
-    Write-HintRow '8sync bg set <id|path>'  'Set wallpaper by cache id, local path, or URL'
-    Write-HintRow '8sync bg open <id>'      'Open wallpaper page in browser'
+    Write-HintRow '8sync bg search <kw>'         'Search Wallhaven for 4K wallpapers'
+    Write-HintRow '8sync bg pick'                'Pick from cached results with fzf'
+    Write-HintRow '8sync bg set <id|path>'       'Set wallpaper by cache id, local path, or URL'
+    Write-HintRow '8sync bg open <id>'           'Open wallpaper page in browser'
+    Write-HintRow '8sync bg rotate [on N|off]'   'Auto-rotate wallpaper every N min (default 30)'
 
     Write-HintSection 'HELIX EDITOR'
     Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
@@ -339,8 +342,40 @@ function Show-8SyncStatus {
     Write-Host ''
     Write-Host 'Managed tool status' -ForegroundColor Cyan
     Get-ManagedToolStatus | Format-Table -AutoSize
-    Write-Host ''
     Write-Host ('Last sync UTC: {0}' -f ($(if ($lastSync) { $lastSync.ToString('u') } else { 'never' }))) -ForegroundColor DarkGray
+
+    Write-Host ''
+    Write-Host 'Config disk usage' -ForegroundColor Cyan
+
+    $configDir = $PSScriptRoot
+    $diskEntries = @(
+        @{ Label = '.state/';  Path = $script:StateDir }
+        @{ Label = 'bg/';      Path = $script:BackgroundDir }
+        @{ Label = 'fonts/';   Path = (Join-Path $configDir 'fonts') }
+    )
+
+    $totalBytes = [long]0
+    foreach ($entry in $diskEntries) {
+        if ([System.IO.Directory]::Exists($entry.Path)) {
+            $sz = [long]0
+            try {
+                foreach ($f in [System.IO.Directory]::EnumerateFiles($entry.Path, '*', [System.IO.SearchOption]::AllDirectories)) {
+                    try { $sz += [System.IO.FileInfo]::new($f).Length } catch {}
+                }
+            } catch {}
+            $totalBytes += $sz
+            Write-Host ('  {0,-12} {1}' -f $entry.Label, (Format-Bytes $sz)) -ForegroundColor DarkGray
+        } else {
+            Write-Host ('  {0,-12} --' -f $entry.Label) -ForegroundColor DarkGray
+        }
+    }
+    Write-Host ('  {0,-12} {1}' -f 'total', (Format-Bytes $totalBytes)) -ForegroundColor DarkGray
+    Write-Host ''
+
+    $rotateSt = Read-BgRotateState
+    $rotateStr = if ($rotateSt.enabled) { 'ON  every {0}min' -f $rotateSt.intervalMinutes } else { 'OFF' }
+    $rotateColor = if ($rotateSt.enabled) { 'Green' } else { 'DarkGray' }
+    Write-Host ('bg rotate: {0}' -f $rotateStr) -ForegroundColor $rotateColor
     Write-Host ''
 }
 
@@ -492,7 +527,7 @@ function Set-HistoryExperience {
         # Basic readline options -- fast path, no module scan needed
         Set-PSReadLineOption -EditMode Windows -ErrorAction Stop
         Set-PSReadLineOption -PredictionSource History -ErrorAction Stop
-        Set-PSReadLineOption -PredictionViewStyle ListView -ErrorAction Stop
+        Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction Stop
         Set-PSReadLineOption -BellStyle None -ErrorAction Stop
         Set-PSReadLineOption -HistoryNoDuplicates -ErrorAction Stop
         Set-PSReadLineOption -MaximumHistoryCount 20000 -ErrorAction Stop
@@ -539,7 +574,7 @@ function Register-8SyncCompleter {
 
         # subcommands per mode
         $subMap = @{
-            bg = @('search','pick','set','open','help')
+            bg = @('search','pick','set','open','rotate','help')
             hx = @('lang','wrap','opacity','theme','help')
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--scan','--help')
         }
@@ -647,6 +682,119 @@ function Search-Wallhaven {
     return $items
 }
 
+function Read-BgRotateState {
+    Ensure-StateDir
+    if (-not (Test-Path $script:BgRotatePath)) {
+        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:BgRotateDefaultMinutes; lastRotatedUtc = $null }
+    }
+    try {
+        return Get-Content -Raw $script:BgRotatePath | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:BgRotateDefaultMinutes; lastRotatedUtc = $null }
+    }
+}
+
+function Write-BgRotateState {
+    param([bool]$Enabled, [int]$IntervalMinutes, [string]$LastRotatedUtc = '')
+    Ensure-StateDir
+    $state = Read-BgRotateState
+    if ($LastRotatedUtc -eq '') { $LastRotatedUtc = $state.lastRotatedUtc }
+    [pscustomobject]@{
+        enabled         = $Enabled
+        intervalMinutes = $IntervalMinutes
+        lastRotatedUtc  = $LastRotatedUtc
+    } | ConvertTo-Json | Set-Content -Path $script:BgRotatePath -Encoding UTF8
+}
+
+function Invoke-BgRotateNow {
+    $cache = Read-BgCache
+    if (-not $cache -or $cache.Count -eq 0) {
+        Write-Host '  No cached wallpapers. Run "8sync bg search <keywords>" first.' -ForegroundColor DarkYellow
+        return
+    }
+
+    $currentPath = ''
+    if (Test-Path $script:CurrentBgLuaPath) {
+        try {
+            $raw = Get-Content -Raw $script:CurrentBgLuaPath -ErrorAction SilentlyContinue
+            if ($raw -match '\[\[(.+)\]\]') { $currentPath = $Matches[1].Trim() }
+        } catch {}
+    }
+
+    $candidates = @($cache | Where-Object {
+        $fileName = 'wallhaven-{0}.jpg' -f $_.id
+        $localPath = Join-Path $script:BackgroundDir $fileName
+        $localPath -ne $currentPath
+    })
+
+    if ($candidates.Count -eq 0) { $candidates = @($cache) }
+
+    $pick = $candidates[(Get-Random -Maximum $candidates.Count)]
+    Write-Host ('  Rotating to: {0}' -f $pick.id) -ForegroundColor Cyan
+    Invoke-BgSet -Value $pick.id
+
+    $state = Read-BgRotateState
+    Write-BgRotateState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes `
+        -LastRotatedUtc ([datetime]::UtcNow.ToString('o'))
+}
+
+function Start-BgRotateCheck {
+    $state = Read-BgRotateState
+    if (-not $state.enabled) { return }
+
+    $lastUtc = if ($state.lastRotatedUtc) { [datetime]$state.lastRotatedUtc } else { [datetime]::MinValue }
+    $minutesSince = ([datetime]::UtcNow - $lastUtc).TotalMinutes
+    if ($minutesSince -lt $state.intervalMinutes) { return }
+
+    $engine = Get-ShellEngine
+    if (-not (Test-Path $engine)) { return }
+
+    $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                   '-File', $PSCommandPath, '-Task', 'BgRotate')
+    try {
+        Start-Process -FilePath $engine -ArgumentList $arguments -WindowStyle Hidden -ErrorAction Stop | Out-Null
+    } catch {}
+}
+
+function Invoke-BgRotateCommand {
+    param([string[]]$Rest)
+
+    $sub = if ($Rest -and $Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
+
+    switch ($sub) {
+        'on' {
+            $mins = $script:BgRotateDefaultMinutes
+            if ($Rest.Count -ge 2) {
+                $parsed = 0
+                if ([int]::TryParse($Rest[1], [ref]$parsed) -and $parsed -gt 0) { $mins = $parsed }
+            }
+            Write-BgRotateState -Enabled $true -IntervalMinutes $mins
+            Write-Host ('  bg rotate: ON  every {0} min' -f $mins) -ForegroundColor Green
+        }
+        'off' {
+            $state = Read-BgRotateState
+            Write-BgRotateState -Enabled $false -IntervalMinutes $state.intervalMinutes
+            Write-Host '  bg rotate: OFF' -ForegroundColor DarkGray
+        }
+        'now' {
+            Invoke-BgRotateNow
+        }
+        'status' {
+            $state = Read-BgRotateState
+            $lastUtc = if ($state.lastRotatedUtc) { [datetime]$state.lastRotatedUtc } else { $null }
+            $statusStr = if ($state.enabled) { 'ON' } else { 'OFF' }
+            $color = if ($state.enabled) { 'Green' } else { 'DarkGray' }
+            Write-Host ''
+            Write-Host ('  bg rotate: {0}  every {1} min' -f $statusStr, $state.intervalMinutes) -ForegroundColor $color
+            Write-Host ('  last rotated: {0}' -f $(if ($lastUtc) { $lastUtc.ToString('u') } else { 'never' })) -ForegroundColor DarkGray
+            Write-Host ''
+        }
+        default {
+            Write-Host '  Usage: 8sync bg rotate [on [N] | off | now | status]' -ForegroundColor DarkYellow
+        }
+    }
+}
+
 function Show-BgHelp {
     Write-Host ''
     Write-Host 'Background commands:' -ForegroundColor Yellow
@@ -655,6 +803,7 @@ function Show-BgHelp {
     Write-Host '  8sync bg pick'
     Write-Host '  8sync bg set <id|path|url>'
     Write-Host '  8sync bg open <id>'
+    Write-Host '  8sync bg rotate [on [N] | off | now | status]'
     Write-Host ''
 }
 
@@ -868,6 +1017,7 @@ function Invoke-BgCommand {
             }
             Invoke-BgOpen -Id $Rest[1]
         }
+        'rotate' { Invoke-BgRotateCommand -Rest ($Rest | Select-Object -Skip 1) }
         default  { Show-BgHelp }
     }
 }
@@ -2481,8 +2631,40 @@ function Register-8SyncAlias {
     Register-8SyncCompleter
 }
 
+function Ensure-NerdFont {
+    $fontName = 'JetBrainsMono NF'
+    $installed = $false
+    try {
+        $fonts = [System.Drawing.FontFamily]::Families | ForEach-Object { $_.Name }
+        $installed = ($fonts -contains 'JetBrainsMono Nerd Font') -or ($fonts -contains 'JetBrainsMono NF')
+    } catch {
+        try {
+            $regFonts = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' -ErrorAction SilentlyContinue
+            if ($regFonts) {
+                $installed = ($regFonts.PSObject.Properties.Name | Where-Object { $_ -like '*JetBrainsMono*Nerd*' }).Count -gt 0
+            }
+        } catch {}
+    }
+
+    if ($installed) { return }
+
+    $scoop = Get-ScoopCommand
+    if (-not $scoop) { return }
+
+    Write-Host '[8sync] Installing JetBrainsMono Nerd Font via scoop...' -ForegroundColor Yellow
+    try {
+        $buckets = & $scoop.Source bucket list 2>$null | ForEach-Object { "$_".Trim() }
+        if ($buckets -notcontains 'nerd-fonts') {
+            & $scoop.Source bucket add nerd-fonts 2>&1 | Out-Null
+        }
+        & $scoop.Source install JetBrainsMono-NF 2>&1 | Out-Host
+        Write-Host '[8sync] Font installed. Restart WezTerm to apply.' -ForegroundColor Green
+    } catch {
+        Write-Host '[8sync] Font install failed. Install manually: scoop install JetBrainsMono-NF' -ForegroundColor DarkYellow
+    }
+}
+
 function Start-WezTermShell {
-    # Runtime PS version check -- warn but never abort the shell
     $psVer = $PSVersionTable.PSVersion
     if ($psVer.Major -lt 5 -or ($psVer.Major -eq 5 -and $psVer.Minor -lt 1)) {
         Write-Warning ('[8sync] PowerShell {0}.{1} detected. Minimum supported: 5.1. Some features may not work.' -f $psVer.Major, $psVer.Minor)
@@ -2490,6 +2672,7 @@ function Start-WezTermShell {
     }
 
     Ensure-PreferredPaths
+    Ensure-NerdFont
     $env:TERM_PROGRAM = 'WezTerm'
     if ($Host.UI -and $Host.UI.RawUI) {
         try {
@@ -2501,6 +2684,7 @@ function Start-WezTermShell {
     Set-HistoryExperience
     Set-ToolAliases
     Start-AutoSync
+    Start-BgRotateCheck
 
     $missingPackages = Get-MissingPackages
     if ($missingPackages.Count -gt 0) {
@@ -2526,6 +2710,10 @@ try {
         }
         'Sync' {
             Invoke-ToolSync
+            break
+        }
+        'BgRotate' {
+            Invoke-BgRotateNow
             break
         }
         default {

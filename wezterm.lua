@@ -97,9 +97,10 @@ config.automatically_reload_config = true
 config.window_close_confirmation = "NeverPrompt"
 
 config.font = wezterm.font_with_fallback({
-  { family = "JetBrainsMono Nerd Font", weight = "Medium" },
-  { family = "JetBrainsMono NF", weight = "Medium" },
-  { family = "CaskaydiaMono Nerd Font" },
+  { family = "JetBrainsMono Nerd Font", weight = "Regular" },
+  { family = "JetBrainsMono NF", weight = "Regular" },
+  { family = "CaskaydiaMono Nerd Font", weight = "Regular" },
+  { family = "Cascadia Mono", weight = "Regular" },
   { family = "Consolas" },
 })
 config.font_size = 12.5
@@ -139,6 +140,9 @@ if active_bg_path then
   }
 end
 
+config.front_end = "WebGpu"
+config.webgpu_power_preference = "HighPerformance"
+
 config.hide_tab_bar_if_only_one_tab = true
 config.use_fancy_tab_bar = false
 config.tab_bar_at_bottom = true
@@ -151,6 +155,8 @@ config.max_fps = 120
 config.enable_scroll_bar = false
 config.audible_bell = "Disabled"
 config.check_for_updates = false
+config.enable_kitty_keyboard = false
+config.enable_csi_u_key_encoding = false
 
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 900 }
 
