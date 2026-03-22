@@ -527,7 +527,7 @@ function Set-HistoryExperience {
         # Basic readline options -- fast path, no module scan needed
         Set-PSReadLineOption -EditMode Windows -ErrorAction Stop
         Set-PSReadLineOption -PredictionSource History -ErrorAction Stop
-        Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction Stop
+        Set-PSReadLineOption -PredictionViewStyle ListView -ErrorAction Stop
         Set-PSReadLineOption -BellStyle None -ErrorAction Stop
         Set-PSReadLineOption -HistoryNoDuplicates -ErrorAction Stop
         Set-PSReadLineOption -MaximumHistoryCount 20000 -ErrorAction Stop
@@ -2594,6 +2594,30 @@ function Set-ToolAliases {
         $null = New-Item -ItemType Directory -Path $Path -Force
         Set-Location $Path
     }
+
+    function global:Reset-TerminalState {
+        # Resets all terminal modes that TUI apps (OpenCode, vim, etc.) may leave
+        # behind when they crash or exit uncleanly:
+        #   - Mouse tracking off (normal, button, any-event, SGR extended)
+        #   - Bracketed paste off
+        #   - Alternative screen off
+        #   - Cursor visible, not blinking
+        #   - Application keypad mode off
+        [System.Console]::Write(
+            "`e[?1000l" +   # mouse tracking off
+            "`e[?1002l" +   # button-event mouse off
+            "`e[?1003l" +   # any-event mouse off
+            "`e[?1006l" +   # SGR extended mouse off
+            "`e[?1015l" +   # URXVT extended mouse off
+            "`e[?2004l" +   # bracketed paste off
+            "`e[?1049l" +   # exit alt screen
+            "`e[?25h"   +   # cursor visible
+            "`e[0m"         # reset all SGR attributes
+        )
+        [System.Console]::WriteLine()
+        Write-Host 'Terminal state reset.' -ForegroundColor Green
+    }
+    Set-Alias -Name fix -Value Reset-TerminalState -Scope Global -Force
 
     Register-8SyncAlias
 

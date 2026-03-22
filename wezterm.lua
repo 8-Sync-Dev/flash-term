@@ -97,10 +97,8 @@ config.automatically_reload_config = true
 config.window_close_confirmation = "NeverPrompt"
 
 config.font = wezterm.font_with_fallback({
-  { family = "JetBrainsMono Nerd Font", weight = "Regular" },
   { family = "JetBrainsMono NF", weight = "Regular" },
-  { family = "CaskaydiaMono Nerd Font", weight = "Regular" },
-  { family = "Cascadia Mono", weight = "Regular" },
+  { family = "JetBrainsMono NFM", weight = "Regular" },
   { family = "Consolas" },
 })
 config.font_size = 12.5
