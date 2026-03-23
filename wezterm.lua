@@ -101,9 +101,9 @@ config.font = wezterm.font_with_fallback({
   { family = "JetBrainsMono NFM", weight = "Regular" },
   { family = "Consolas" },
 })
-config.font_size = 12.5
+config.font_size = 14
 config.line_height = 1.08
-config.freetype_load_target = "Light"
+config.freetype_load_target = "Normal"
 config.freetype_render_target = "HorizontalLcd"
 
 config.window_decorations = "TITLE | RESIZE"
@@ -139,7 +139,42 @@ if active_bg_path then
 end
 
 config.front_end = "WebGpu"
-config.webgpu_power_preference = "HighPerformance"
+
+-- Auto-select GPU: discrete when available, else integrated
+local ok_gpus, gpus = pcall(wezterm.gui.enumerate_gpus)
+if ok_gpus and gpus and #gpus > 0 then
+  local preferred = nil
+  for _, gpu in ipairs(gpus) do
+    if gpu.device_type == "DiscreteGpu" then
+      preferred = gpu
+      break
+    end
+  end
+  if not preferred then
+    for _, gpu in ipairs(gpus) do
+      if gpu.device_type == "IntegratedGpu" then
+        preferred = gpu
+        break
+      end
+    end
+  end
+  if preferred then
+    config.webgpu_preferred_adapter = preferred
+  end
+else
+  config.webgpu_power_preference = "HighPerformance"
+end
+
+config.window_frame = {
+  border_left_width    = "2px",
+  border_right_width   = "2px",
+  border_top_height    = "2px",
+  border_bottom_height = "2px",
+  border_left_color    = "#00e5ff",
+  border_right_color   = "#00e5ff",
+  border_top_color     = "#00e5ff",
+  border_bottom_color  = "#00e5ff",
+}
 
 config.hide_tab_bar_if_only_one_tab = true
 config.use_fancy_tab_bar = false
@@ -148,13 +183,34 @@ config.show_new_tab_button_in_tab_bar = false
 config.scrollback_lines = 12000
 config.default_cursor_style = "BlinkingBar"
 config.cursor_blink_rate = 650
-config.animation_fps = 60
+config.animation_fps = 1
 config.max_fps = 120
+config.status_update_interval = 1000
 config.enable_scroll_bar = false
 config.audible_bell = "Disabled"
 config.check_for_updates = false
 config.enable_kitty_keyboard = false
 config.enable_csi_u_key_encoding = false
+
+config.bypass_mouse_reporting_modifiers = "SHIFT"
+
+config.mouse_bindings = {
+  {
+    event   = { Down = { streak = 1, button = "Left" } },
+    mods    = "SHIFT",
+    action  = wezterm.action.SelectTextAtMouseCursor("Cell"),
+  },
+  {
+    event   = { Drag = { streak = 1, button = "Left" } },
+    mods    = "SHIFT",
+    action  = wezterm.action.ExtendSelectionToMouseCursor("Cell"),
+  },
+  {
+    event   = { Up = { streak = 1, button = "Left" } },
+    mods    = "SHIFT",
+    action  = wezterm.action.CompleteSelectionOrOpenLinkAtMouseCursor("Clipboard"),
+  },
+}
 
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 900 }
 
