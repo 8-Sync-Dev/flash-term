@@ -65,19 +65,45 @@ local function basename(path)
   return path:match("([^\\]+)$") or path
 end
 
+local function truncate_text(text, max_len)
+  if max_len <= 0 then
+    return ""
+  end
+  if #text <= max_len then
+    return text
+  end
+  if max_len <= 2 then
+    return text:sub(1, max_len)
+  end
+  return text:sub(1, max_len - 2) .. ".."
+end
+
 wezterm.on("update-status", function(window, pane)
   local cwd = pane_cwd(pane)
   local process = basename(pane:get_foreground_process_name() or "")
-  local workspace = window:active_workspace()
+  local workspace = truncate_text(window:active_workspace(), 12)
+  local cwd_label = truncate_text(cwd ~= "" and basename(cwd) or "~", 18)
+  local process_label = truncate_text(process, 16)
 
   window:set_right_status(wezterm.format({
     { Foreground = { Color = "#a6adc8" } },
     { Text = "  " .. workspace .. "  " },
     { Foreground = { Color = "#89b4fa" } },
-    { Text = cwd ~= "" and basename(cwd) or "~" },
+    { Text = cwd_label },
     { Foreground = { Color = "#6c7086" } },
-    { Text = "  " .. process .. "  " },
+    { Text = "  " .. process_label .. "  " },
   }))
+end)
+
+wezterm.on("format-window-title", function(tab, pane)
+  local cwd = pane_cwd(pane)
+  local process = basename(pane:get_foreground_process_name() or "")
+  local cwd_label = truncate_text(cwd ~= "" and basename(cwd) or "~", 20)
+  local process_label = truncate_text(process, 14)
+  if tab.is_active then
+    return cwd_label .. "  " .. process_label
+  end
+  return cwd_label
 end)
 
 config.default_prog = {
@@ -106,7 +132,7 @@ config.line_height = 1.08
 config.freetype_load_target = "Normal"
 config.freetype_render_target = "HorizontalLcd"
 
-config.window_decorations = "TITLE | RESIZE"
+config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
 config.win32_system_backdrop = "Acrylic"
 config.window_padding = { left = 10, right = 10, top = 8, bottom = 8 }
 config.initial_cols = 150
@@ -166,18 +192,33 @@ else
 end
 
 config.window_frame = {
+  active_titlebar_bg = "#0b1220",
+  inactive_titlebar_bg = "#0a0f1a",
+  active_titlebar_fg = "#8ffbff",
+  inactive_titlebar_fg = "#5c6b86",
+  active_titlebar_border_bottom = "#1d3b5f",
+  inactive_titlebar_border_bottom = "#111b2e",
+  button_fg = "#8ffbff",
+  button_bg = "#101c2f",
+  button_hover_fg = "#0b1220",
+  button_hover_bg = "#00e5ff",
   border_left_width    = "2px",
   border_right_width   = "2px",
   border_top_height    = "2px",
   border_bottom_height = "2px",
   border_left_color    = "#00e5ff",
-  border_right_color   = "#00e5ff",
+  border_right_color   = "#7c3aed",
   border_top_color     = "#00e5ff",
-  border_bottom_color  = "#00e5ff",
+  border_bottom_color  = "#7c3aed",
 }
 
+config.integrated_title_buttons = { "Hide", "Maximize", "Close" }
+config.integrated_title_button_style = "Windows"
+config.integrated_title_button_alignment = "Right"
+config.integrated_title_button_color = "#00e5ff"
+
 config.hide_tab_bar_if_only_one_tab = true
-config.use_fancy_tab_bar = false
+config.use_fancy_tab_bar = true
 config.tab_bar_at_bottom = true
 config.show_new_tab_button_in_tab_bar = false
 config.scrollback_lines = 12000
