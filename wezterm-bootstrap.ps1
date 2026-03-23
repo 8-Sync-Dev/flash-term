@@ -3002,6 +3002,32 @@ function Invoke-SystemClean {
         }
     }
 
+    # go module cache: go clean -modcache (safe, but slow rebuilds)
+    if (Test-CommandExists 'go') {
+        Write-CleanSpinner -Msg 'go module cache...'
+        try {
+            $goModCache = & go env GOMODCACHE 2>$null
+            if ($goModCache -and [System.IO.Directory]::Exists($goModCache)) {
+                $goModSize = (Get-ChildItem $goModCache -Recurse -Force -ErrorAction SilentlyContinue |
+                    Measure-Object -Property Length -Sum).Sum
+                Clear-SpinnerLine
+                if (-not $DryRun) {
+                    & go clean -modcache 2>$null
+                    Write-Host ('  [go/mod]      {0,-48} freed ~{1}' -f $goModCache, (Format-Bytes ([long]$goModSize))) -ForegroundColor Green
+                    $script:CleanTotalFreed += [long]$goModSize
+                } else {
+                    Write-Host ('  [go/mod]      {0,-48} would free ~{1}' -f $goModCache, (Format-Bytes ([long]$goModSize))) -ForegroundColor DarkYellow
+                }
+            } else {
+                Clear-SpinnerLine
+                Write-Host '  [go/mod]      cache empty or not found' -ForegroundColor DarkGray
+            }
+        } catch {
+            Clear-SpinnerLine
+            Write-Host '  [go/mod]      skipped (error)' -ForegroundColor DarkGray
+        }
+    }
+
     # docker system prune: safe to remove stopped containers, dangling images, build cache
     if (Test-CommandExists 'docker') {
         Write-CleanSpinner -Msg 'docker prune...'
