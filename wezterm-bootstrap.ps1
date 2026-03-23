@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync', 'BgRotate')]
+    [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync', 'BgRotate', 'CleanLoop')]
     [string]$Task = 'Shell'
 )
 
@@ -38,6 +38,8 @@ $script:BgCachePath = Join-Path $script:StateDir 'bg-cache.json'
 $script:BgRotatePath = Join-Path $script:StateDir 'bg-rotate.json'
 $script:BgRotateDefaultMinutes = 30
 $script:BackgroundDir = Join-Path $PSScriptRoot 'bg'
+$script:CleanLoopPath = Join-Path $script:StateDir 'clean-loop.json'
+$script:CleanLoopDefaultMinutes = 5
 $script:CurrentBgLuaPath = Join-Path $PSScriptRoot 'current-bg.lua'
 
 $script:HelixConfigDir = Join-Path $env:APPDATA 'helix'
@@ -290,10 +292,13 @@ function Show-8SyncHint {
     Write-HintRow '8sync help'              'Show this help'
     Write-HintRow '8sync status'            'Installed tools + last sync time'
     Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
+    Write-HintRow '8sync sync --check'     'Dry-run: show missing + available updates, no changes'
     Write-HintRow '8sync clean [--days N]'         'Deep clean: temp/cache/venv/RAM/disk (default: stale > 7 days)'
     Write-HintRow '8sync clean --projects [--all]' 'Stale git repo picker -- fzf multi-select to delete'
     Write-HintRow '8sync clean --deep'             'Report stale MCP/npm/pip/cargo/go dev artifacts'
     Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
+    Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
+    Write-HintRow '8sync clean --loop on [N]'      'Background RAM/DNS flush every N min (default 5)'
 
     Write-HintSection 'BACKGROUND'
     Write-HintRow '8sync bg search <kw>'         'Search Wallhaven for 4K wallpapers'
@@ -304,6 +309,7 @@ function Show-8SyncHint {
 
     Write-HintSection 'HELIX EDITOR'
     Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
+    Write-HintRow '8sync hx health'         'Parse hx --health: show LSP status, suggest missing'
     Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
     Write-HintRow '8sync hx opacity <val>'  'Adjust background transparency: +  -  or 0.0-1.0'
     Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
@@ -404,13 +410,79 @@ function Ensure-ScoopBuckets {
 }
 
 function Invoke-ToolSync {
-    param([switch]$Quiet)
+    param(
+        [switch]$Quiet,
+        [switch]$Check
+    )
 
     $scoop = Get-ScoopCommand
     if (-not $scoop) {
         if (-not $Quiet) {
             Write-Warning 'Scoop was not found. Install Scoop first, then run /8sync sync.'
         }
+        return
+    }
+
+    # --check: dry-run report of missing + outdated, no install/update
+    if ($Check) {
+        Write-Host ''
+        Write-Host '  8sync sync --check  (dry-run — no changes made)' -ForegroundColor Cyan
+        Write-Host ''
+
+        # Missing tools
+        $missingPackages = Get-MissingPackages
+        if ($missingPackages.Count -gt 0) {
+            Write-Host '  MISSING' -ForegroundColor Yellow
+            foreach ($pkg in $missingPackages) {
+                $cmd = ($script:ToolPackages.GetEnumerator() | Where-Object { $_.Value -eq $pkg } | Select-Object -First 1).Key
+                Write-Host ('    {0,-20} scoop install {1}' -f $pkg, $pkg) -ForegroundColor DarkGray
+            }
+            Write-Host ''
+        } else {
+            Write-Host '  All managed tools are installed.' -ForegroundColor DarkGray
+            Write-Host ''
+        }
+
+        # Outdated tools via scoop status
+        Write-Host '  Checking for updates via scoop status...' -ForegroundColor Yellow
+        try {
+            $statusOut = & $scoop.Source status 2>&1 | Out-String
+            # Parse scoop status output: lines with "Name  Installed  Latest"
+            $lines = $statusOut -split "`n" | Where-Object { $_ -match '\S' }
+            # Find data lines (skip header, separator lines)
+            $dataLines = $lines | Where-Object {
+                $_ -notmatch '^[-\s]+$' -and
+                $_ -notmatch '^Name\s' -and
+                $_ -notmatch '^Scoop is up to date' -and
+                $_ -notmatch '^Updates are available' -and
+                $_ -notmatch '^\s*$'
+            }
+            # Filter to only managed packages
+            $managedNames = @($script:ToolPackages.Values | Select-Object -Unique)
+            $outdated = $dataLines | Where-Object {
+                $name = ($_ -split '\s+')[0].Trim()
+                $managedNames -contains $name
+            }
+            if ($outdated.Count -gt 0) {
+                Write-Host '  UPDATES AVAILABLE' -ForegroundColor Yellow
+                Write-Host ('    {0,-20} {1,-12} {2}' -f 'Package', 'Installed', 'Latest') -ForegroundColor DarkGray
+                Write-Host ('    {0,-20} {1,-12} {2}' -f ('-' * 18), ('-' * 10), ('-' * 10)) -ForegroundColor DarkGray
+                foreach ($line in $outdated) {
+                    $parts = $line -split '\s+' | Where-Object { $_ -ne '' }
+                    if ($parts.Count -ge 3) {
+                        Write-Host ('    {0,-20} {1,-12} {2}' -f $parts[0], $parts[1], $parts[2]) -ForegroundColor White
+                    }
+                }
+                Write-Host ''
+                Write-Host '  Run: 8sync sync  to apply updates.' -ForegroundColor DarkGray
+            } else {
+                Write-Host '  All installed tools are up to date.' -ForegroundColor Green
+            }
+        } catch {
+            Write-Host '  Could not retrieve scoop status.' -ForegroundColor DarkYellow
+        }
+
+        Write-Host ''
         return
     }
 
@@ -574,9 +646,10 @@ function Register-8SyncCompleter {
 
         # subcommands per mode
         $subMap = @{
-            bg = @('search','pick','set','open','rotate','help')
-            hx = @('lang','wrap','opacity','theme','help')
-            clean = @('help','--days','--dry-run','--projects','--all','--deep','--scan','--help')
+            bg    = @('search','pick','set','open','rotate','help')
+            hx    = @('lang','wrap','opacity','theme','health','help')
+            sync  = @('--check','--help')
+            clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','--help')
         }
 
         if ($count -le 1) {
@@ -1282,9 +1355,127 @@ function Show-HxHelp {
     Write-HintSection 'HELIX EDITOR'
     Write-HintRow '8sync hx help'           'Show this help'
     Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
+    Write-HintRow '8sync hx health'         'Parse hx --health: show LSP status, suggest missing'
     Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
     Write-HintRow '8sync hx opacity <val>'  '+  -  or 0.0-1.0 -- adjust background transparency'
     Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
+    Write-Host ''
+}
+
+function Invoke-HxHealth {
+    if (-not (Test-CommandExists 'hx')) {
+        Write-Host ''
+        Write-Host '  Helix (hx) not found. Run: 8sync sync' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  8sync hx health  LSP server status' -ForegroundColor Cyan
+    Write-Host ''
+
+    try {
+        $raw = & hx --health 2>&1 | Out-String
+    } catch {
+        Write-Host '  Failed to run hx --health' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    $lines = $raw -split "`n"
+
+    # Collect language rows — lines that start with a language name (not header/section lines)
+    # hx --health output format (per language section):
+    #   Configured language servers:   <name>  ✓/<path> or ✘ not found
+    # Full health output has a flat table:
+    #   Language  LSP  DAP  Formatter  ...
+    # We want lines that have ✘ or mention "not found" / "None"
+
+    $missing  = [System.Collections.Generic.List[string]]::new()
+    $ok       = [System.Collections.Generic.List[string]]::new()
+    $partial  = [System.Collections.Generic.List[string]]::new()
+
+    $inTable  = $false
+    $headers  = @()
+
+    foreach ($line in $lines) {
+        $trimmed = $line.TrimEnd()
+        if (-not $trimmed) { continue }
+
+        # Detect header row
+        if ($trimmed -match '^Language\s') {
+            $inTable = $true
+            $headers = $trimmed -split '\s{2,}'
+            continue
+        }
+        if (-not $inTable) { continue }
+        # Skip separator lines
+        if ($trimmed -match '^[-=]+') { continue }
+
+        # Data row: first token is language name
+        $cols = $trimmed -split '\s{2,}'
+        if ($cols.Count -lt 2) { continue }
+        $lang = $cols[0].Trim()
+        if (-not $lang -or $lang -match '^[-=]') { continue }
+
+        # Check columns for ✘ or "None" indicating missing tools
+        $rowText = $trimmed
+        $hasCheck = $rowText -match '✓'
+        $hasCross = $rowText -match '✘'
+        $hasNone  = $rowText -match '\bNone\b'
+
+        if ($hasCross -and -not $hasCheck) {
+            $null = $missing.Add($lang)
+        } elseif ($hasCross -or $hasNone) {
+            $null = $partial.Add($lang)
+        } else {
+            $null = $ok.Add($lang)
+        }
+    }
+
+    # If table parse yielded nothing, fall back to raw line scan
+    if ($ok.Count -eq 0 -and $missing.Count -eq 0 -and $partial.Count -eq 0) {
+        foreach ($line in $lines) {
+            if ($line -match '✘') {
+                # Try to extract language/tool name — first word-like token before ✘
+                $m = [regex]::Match($line, '^\s*(\S+)')
+                if ($m.Success) { $null = $missing.Add($m.Groups[1].Value) }
+            }
+        }
+    }
+
+    # Print results
+    if ($ok.Count -gt 0) {
+        Write-Host '  OK' -ForegroundColor Green
+        foreach ($l in $ok) {
+            Write-Host ('    ✓  {0}' -f $l) -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    }
+
+    if ($partial.Count -gt 0) {
+        Write-Host '  PARTIAL (some tools missing)' -ForegroundColor Yellow
+        foreach ($l in $partial) {
+            Write-Host ('    ~  {0}' -f $l) -ForegroundColor Yellow
+            Write-Host ('       Run: 8sync hx lang {0}' -f $l) -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    }
+
+    if ($missing.Count -gt 0) {
+        Write-Host '  MISSING' -ForegroundColor Red
+        foreach ($l in $missing) {
+            Write-Host ('    ✘  {0}' -f $l) -ForegroundColor Red
+            Write-Host ('       Run: 8sync hx lang {0}' -f $l) -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    }
+
+    if ($ok.Count -eq 0 -and $partial.Count -eq 0 -and $missing.Count -eq 0) {
+        # Could not parse — just dump raw output
+        Write-Host $raw -ForegroundColor DarkGray
+    }
+
     Write-Host ''
 }
 
@@ -1473,11 +1664,6 @@ public class MemUtil {
         try { & arp      -d *        2>$null | Out-Null } catch {}  # ARP table (fails silently without admin)
     }
 
-    # -- Clipboard: clear (safe, no-admin) --------------------------------
-    if (-not $DryRun) {
-        try { Set-Clipboard -Value '' -ErrorAction SilentlyContinue } catch {}
-    }
-
     # -- Report: RAM stats + top 5 memory hogs ----------------------------
     Clear-SpinnerLine
     try {
@@ -1598,17 +1784,78 @@ function Test-IsPythonVenv {
     )
 }
 
+function Test-IsInsideGitRepo {
+    # Returns $true if $Path itself, or any ancestor up to $HOME, contains a .git directory.
+    # This prevents accidental deletion of build artifacts inside active git repos.
+    param([Parameter(Mandatory)][string]$Path)
+    $current = $Path
+    $home    = $HOME.TrimEnd('\','/')
+    while ($current -and $current.Length -ge $home.Length) {
+        if ([System.IO.Directory]::Exists((Join-Path $current '.git'))) { return $true }
+        $parent = [System.IO.Path]::GetDirectoryName($current)
+        if (-not $parent -or $parent -eq $current) { break }
+        $current = $parent
+    }
+    return $false
+}
+
 function Find-VenvDirs {
     param([string[]]$SearchRoots, [int]$StaleDays)
     $cutoff = (Get-Date).AddDays(-$StaleDays)
     $found  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-    # Helper: add dir to found if it exists and is stale
+    # Helper: add dir to found if it exists, is stale, and is safe to delete.
+    # Safety rules:
+    #   1. Must not be inside a git repo at all (catches target/, vendor/, .venv/ in repos)
+    #   2. Exception: node_modules/ inside a git repo WITH no recent git activity (>30d)
+    #      is allowed — handled by Track 7 separately with its own package.json check.
+    #   The $tryAdd used by Tracks 1-6 simply skips anything inside any git repo.
     $tryAdd = {
         param([string]$dir)
         if ([System.IO.Directory]::Exists($dir)) {
             $lw = [System.IO.Directory]::GetLastWriteTime($dir)
-            if ($lw -lt $cutoff) { $null = $found.Add($dir) }
+            if ($lw -ge $cutoff) { return }
+
+            # Block if inside a git repo that has been active in the last 30 days
+            $current = $dir
+            $home    = $HOME.TrimEnd('\','/')
+            while ($current -and $current.Length -ge $home.Length) {
+                $gitDir = Join-Path $current '.git'
+                if ([System.IO.Directory]::Exists($gitDir)) {
+                    # Git repo found — check last commit date
+                    $recentActivity = $false
+                    try {
+                        $ts = & git -C $current log -1 --format='%ct' 2>$null
+                        if ($ts -and $ts -match '^\d+$') {
+                            $lastCommit = [System.DateTimeOffset]::FromUnixTimeSeconds([long]$ts).LocalDateTime
+                            if (([datetime]::Now - $lastCommit).TotalDays -lt 30) {
+                                $recentActivity = $true
+                            }
+                        }
+                    } catch {}
+                    # If no git log available, treat as active (safe default)
+                    if (-not $recentActivity) {
+                        # Try COMMIT_EDITMSG fallback
+                        $editmsg = Join-Path $gitDir 'COMMIT_EDITMSG'
+                        if ([System.IO.File]::Exists($editmsg)) {
+                            $mtime = [System.IO.File]::GetLastWriteTime($editmsg)
+                            if (([datetime]::Now - $mtime).TotalDays -lt 30) {
+                                $recentActivity = $true
+                            }
+                        } else {
+                            # No commit history at all — treat as active to be safe
+                            $recentActivity = $true
+                        }
+                    }
+                    if ($recentActivity) { return }   # Skip: repo is active
+                    break   # Repo found but inactive — allow deletion
+                }
+                $parent = [System.IO.Path]::GetDirectoryName($current)
+                if (-not $parent -or $parent -eq $current) { break }
+                $current = $parent
+            }
+
+            $null = $found.Add($dir)
         }
     }
 
@@ -1722,13 +1969,25 @@ function Find-VenvDirs {
     }
 
     # -- Track 7: node_modules -------------------------------------------------
+    # Safety rules:
+    #   1. Parent dir MUST have package.json (proves it's a project root, not nested dep)
+    #   2. node_modules/ itself must not be inside a git repo (guard in $tryAdd)
+    #   3. Max depth 4 from search root to avoid deep nested hits
     foreach ($root in $SearchRoots) {
         if (-not (Test-Path $root)) { continue }
         try {
             foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, 'node_modules', $recurseOpt)) {
                 try {
+                    # Depth check: count path separators relative to root
+                    $relDepth = ($d.Substring($root.Length).TrimStart('\','/') -split '[/\\]').Count
+                    if ($relDepth -gt 4) { continue }
+
+                    # Parent must have package.json — proves this is a project root
+                    $parent = [System.IO.Path]::GetDirectoryName($d)
+                    if (-not [System.IO.File]::Exists([System.IO.Path]::Combine($parent, 'package.json'))) { continue }
+
                     $lw = [System.IO.Directory]::GetLastWriteTime($d)
-                    if ($lw -lt $cutoff) { $null = $found.Add($d) }
+                    if ($lw -lt $cutoff) { & $tryAdd $d }   # $tryAdd also checks git repo guard
                 } catch {}
             }
         } catch {}
@@ -1752,6 +2011,11 @@ function Remove-VenvDir {
         $parent= [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($Path))
         Write-Host ('  {0}/{1}{2}  {3}' -f $parent, $name, $tag, (Format-Bytes $size)) -ForegroundColor $color
         if (-not $DryRun) {
+            # Final safety: never remove if inside a git repo
+            if (Test-IsInsideGitRepo -Path $Path) {
+                Write-Host ('  skipped (git repo): {0}' -f $Path) -ForegroundColor DarkGray
+                return 0
+            }
             Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
         }
         $script:CleanTotalFreed += $size
@@ -2181,6 +2445,250 @@ function Show-DevArtifactReport {
     Write-Host ('  Total stale dev artifacts: {0} items  {1}' -f $artifacts.Count, (Format-Bytes $totalAll)) -ForegroundColor DarkYellow
     Write-Host '  These are reported only  remove manually or with your package manager.' -ForegroundColor DarkGray
     Write-Host ''
+
+    return $artifacts
+}
+
+function Invoke-DeleteDevArtifacts {
+    param(
+        [object[]]$Artifacts,
+        [switch]$All,
+        [switch]$DryRun
+    )
+
+    if (-not $Artifacts -or $Artifacts.Count -eq 0) { return }
+
+    $grouped    = $Artifacts | Group-Object Type
+    $totalFreed = [long]0
+    $totalFiles = 0
+
+    foreach ($group in $grouped) {
+        $typeName = $group.Name
+        $items    = @($group.Group)
+        $typeSz   = ($items | Measure-Object SizeBytes -Sum).Sum
+
+        if (-not $All) {
+            Write-Host ''
+            $prompt = ('  Delete {0} {1} package(s) ({2})? [y/N] ' -f $items.Count, $typeName, (Format-Bytes $typeSz))
+            $answer = Read-Host $prompt
+            if ($answer -notmatch '^[Yy]$') {
+                Write-Host ('  Skipped {0}.' -f $typeName) -ForegroundColor DarkGray
+                continue
+            }
+        }
+
+        foreach ($item in $items) {
+            # Safety: never touch anything inside a git repo
+            if (Test-IsInsideGitRepo -Path $item.Path) {
+                Write-Host ('  skipped (git repo): {0}' -f $item.Path) -ForegroundColor DarkGray
+                continue
+            }
+
+            if ($DryRun) {
+                Write-Host ('  [dry-run] would remove: {0}' -f $item.Path) -ForegroundColor DarkYellow
+                $totalFreed += $item.SizeBytes
+                $totalFiles++
+            } else {
+                try {
+                    if (Test-Path $item.Path -PathType Container) {
+                        Remove-Item $item.Path -Recurse -Force -ErrorAction Stop
+                    } elseif (Test-Path $item.Path -PathType Leaf) {
+                        Remove-Item $item.Path -Force -ErrorAction Stop
+                    }
+                    Write-Host ('  removed: {0}  ({1})' -f $item.Name, $item.SizeDisplay) -ForegroundColor Green
+                    $totalFreed += $item.SizeBytes
+                    $totalFiles++
+                } catch {
+                    Write-Host ('  failed:  {0} — {1}' -f $item.Name, $_.Exception.Message) -ForegroundColor DarkYellow
+                }
+            }
+        }
+    }
+
+    Write-Host ''
+    $verb = if ($DryRun) { 'would free' } else { 'freed' }
+    Write-Host ('  >> {0} {1}  {2} items removed' -f $verb, (Format-Bytes $totalFreed), $totalFiles) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
+    Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+#  Ecosystem security audit (npm, cargo, pip + postinstall scanner)
+# ---------------------------------------------------------------------------
+
+function Invoke-EcosystemAudit {
+    Write-Host ''
+    Write-Host '  8sync clean --audit  ecosystem vulnerability scan' -ForegroundColor Cyan
+    Write-Host ''
+
+    $anyFound = $false
+
+    # -- npm audit -----------------------------------------------------------
+    if (Test-CommandExists 'npm') {
+        Write-Host '  NPM AUDIT' -ForegroundColor Yellow
+
+        # Find package.json roots up to depth 3 under HOME
+        $pkgRoots = [System.Collections.Generic.List[string]]::new()
+        $searchRoots = @($HOME, (Join-Path $HOME 'projects'), (Join-Path $HOME 'dev'),
+                         (Join-Path $HOME 'code'), (Join-Path $HOME 'repos'),
+                         (Join-Path $HOME 'workspace'), (Join-Path $HOME 'Documents')) |
+            Where-Object { Test-Path $_ }
+
+        foreach ($root in $searchRoots) {
+            try {
+                Get-ChildItem $root -Filter 'package.json' -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -notmatch '\\node_modules\\' } |
+                    ForEach-Object { $null = $pkgRoots.Add($_.DirectoryName) }
+            } catch {}
+        }
+        $pkgRoots = @($pkgRoots | Select-Object -Unique)
+
+        if ($pkgRoots.Count -gt 0) {
+            foreach ($dir in $pkgRoots) {
+                $nmDir = Join-Path $dir 'node_modules'
+                if (-not (Test-Path $nmDir)) { continue }   # skip if not installed
+                try {
+                    $auditOut = & npm audit --json --prefix $dir 2>$null | Out-String
+                    $auditData = $auditOut | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    if ($auditData -and $auditData.metadata) {
+                        $vulns = $auditData.metadata.vulnerabilities
+                        $critical = if ($vulns.critical) { [int]$vulns.critical } else { 0 }
+                        $high     = if ($vulns.high)     { [int]$vulns.high }     else { 0 }
+                        if ($critical -gt 0 -or $high -gt 0) {
+                            $anyFound = $true
+                            $shortDir = if ($dir -like "$HOME*") { '~' + $dir.Substring($HOME.Length) } else { $dir }
+                            Write-Host ('    [!] {0,-50} critical:{1}  high:{2}' -f $shortDir, $critical, $high) -ForegroundColor Red
+                        } else {
+                            $shortDir = if ($dir -like "$HOME*") { '~' + $dir.Substring($HOME.Length) } else { $dir }
+                            Write-Host ('    [OK] {0}' -f $shortDir) -ForegroundColor DarkGray
+                        }
+                    }
+                } catch {}
+            }
+        } else {
+            Write-Host '    no package.json with node_modules found' -ForegroundColor DarkGray
+        }
+        Write-Host ''
+
+        # -- postinstall script scanner (red flag: network calls in postinstall) --
+        Write-Host '  POSTINSTALL SCRIPT SCAN (malicious pattern check)' -ForegroundColor Yellow
+        $nmDirs = @($pkgRoots | ForEach-Object { Join-Path $_ 'node_modules' } | Where-Object { Test-Path $_ })
+        if ($nmDirs.Count -eq 0) {
+            # Also scan global npm
+            $globalNm = Join-Path $env:APPDATA 'npm\node_modules'
+            if (Test-Path $globalNm) { $nmDirs = @($globalNm) }
+        }
+
+        $suspiciousPatterns = @('curl','wget','http\.get','https\.get','fetch\(','axios','request\(','child_process','exec\(','spawn\(','eval\(','atob\(','fromCharCode')
+        $flaggedPkgs = [System.Collections.Generic.List[string]]::new()
+
+        foreach ($nmDir in $nmDirs) {
+            try {
+                foreach ($pkgDir in [System.IO.Directory]::EnumerateDirectories($nmDir)) {
+                    $pkgJson = Join-Path $pkgDir 'package.json'
+                    if (-not (Test-Path $pkgJson)) { continue }
+                    try {
+                        $pkgData = Get-Content $pkgJson -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+                        if (-not $pkgData -or -not $pkgData.scripts) { continue }
+                        $postInstall = $pkgData.scripts.postinstall
+                        if (-not $postInstall) { continue }
+                        foreach ($pat in $suspiciousPatterns) {
+                            if ($postInstall -match $pat) {
+                                $pkgName = [System.IO.Path]::GetFileName($pkgDir)
+                                $null = $flaggedPkgs.Add($pkgName)
+                                break
+                            }
+                        }
+                    } catch {}
+                }
+            } catch {}
+        }
+
+        if ($flaggedPkgs.Count -gt 0) {
+            $anyFound = $true
+            Write-Host ('    [!] {0} package(s) with suspicious postinstall scripts:' -f $flaggedPkgs.Count) -ForegroundColor Red
+            foreach ($pkg in $flaggedPkgs | Select-Object -First 20) {
+                Write-Host ('        {0}' -f $pkg) -ForegroundColor DarkYellow
+            }
+            Write-Host '    Review manually: npm show <pkg> scripts' -ForegroundColor DarkGray
+        } else {
+            Write-Host '    No suspicious postinstall scripts found.' -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    }
+
+    # -- cargo audit ---------------------------------------------------------
+    if (Test-CommandExists 'cargo-audit' -or (Test-CommandExists 'cargo' -and (Test-Path (Join-Path $HOME '.cargo\bin\cargo-audit.exe')))) {
+        Write-Host '  CARGO AUDIT (RustSec)' -ForegroundColor Yellow
+        try {
+            $cargoAuditCmd = if (Test-CommandExists 'cargo-audit') { 'cargo-audit' } else { 'cargo' }
+            $auditArgs = if ($cargoAuditCmd -eq 'cargo') { @('audit', '--json') } else { @('--json') }
+            $auditOut  = & $cargoAuditCmd @auditArgs 2>$null | Out-String
+            $auditData = $auditOut | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($auditData -and $auditData.vulnerabilities) {
+                $count = if ($auditData.vulnerabilities.count) { [int]$auditData.vulnerabilities.count } else { 0 }
+                if ($count -gt 0) {
+                    $anyFound = $true
+                    Write-Host ('    [!] {0} vulnerabilities found (RustSec advisory)' -f $count) -ForegroundColor Red
+                    foreach ($vuln in @($auditData.vulnerabilities.list | Select-Object -First 5)) {
+                        $id   = if ($vuln.advisory.id)    { $vuln.advisory.id }    else { '?' }
+                        $pkg  = if ($vuln.package.name)   { $vuln.package.name }   else { '?' }
+                        $titl = if ($vuln.advisory.title) { $vuln.advisory.title } else { '' }
+                        Write-Host ('      {0}  {1}  {2}' -f $id, $pkg, $titl) -ForegroundColor DarkYellow
+                    }
+                } else {
+                    Write-Host '    [OK] No known vulnerabilities.' -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host '    Could not parse cargo audit output.' -ForegroundColor DarkGray
+            }
+        } catch {
+            Write-Host '    cargo audit failed or not installed. Install: cargo install cargo-audit' -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    } elseif (Test-CommandExists 'cargo') {
+        Write-Host '  CARGO AUDIT' -ForegroundColor Yellow
+        Write-Host '    cargo-audit not installed. Run: cargo install cargo-audit' -ForegroundColor DarkGray
+        Write-Host ''
+    }
+
+    # -- pip-audit -----------------------------------------------------------
+    if (Test-CommandExists 'pip-audit') {
+        Write-Host '  PIP AUDIT (OSV/PyPI)' -ForegroundColor Yellow
+        try {
+            $auditOut  = & pip-audit --format=json 2>$null | Out-String
+            $auditData = $auditOut | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($auditData) {
+                # pip-audit JSON: array of {name, version, vulns:[{id,fix_versions,aliases}]}
+                $vulnPkgs = @($auditData | Where-Object { $_.vulns -and $_.vulns.Count -gt 0 })
+                if ($vulnPkgs.Count -gt 0) {
+                    $anyFound = $true
+                    Write-Host ('    [!] {0} package(s) with vulnerabilities:' -f $vulnPkgs.Count) -ForegroundColor Red
+                    foreach ($pkg in $vulnPkgs | Select-Object -First 10) {
+                        foreach ($v in $pkg.vulns | Select-Object -First 2) {
+                            $fix = if ($v.fix_versions) { 'fix: ' + ($v.fix_versions -join ', ') } else { 'no fix' }
+                            Write-Host ('      {0} {1}  {2}  {3}' -f $pkg.name, $pkg.version, $v.id, $fix) -ForegroundColor DarkYellow
+                        }
+                    }
+                } else {
+                    Write-Host '    [OK] No known vulnerabilities.' -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host '    Could not parse pip-audit output.' -ForegroundColor DarkGray
+            }
+        } catch {
+            Write-Host '    pip-audit failed.' -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    } else {
+        Write-Host '  PIP AUDIT' -ForegroundColor Yellow
+        Write-Host '    pip-audit not installed. Run: pip install pip-audit' -ForegroundColor DarkGray
+        Write-Host ''
+    }
+
+    if (-not $anyFound) {
+        Write-Host '  All clear — no high/critical vulnerabilities detected.' -ForegroundColor Green
+        Write-Host ''
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -2267,6 +2775,132 @@ function Invoke-DefenderScan {
     Write-Host ''
 }
 
+function Read-CleanLoopState {
+    Ensure-StateDir
+    if (-not (Test-Path $script:CleanLoopPath)) {
+        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:CleanLoopDefaultMinutes; lastRunUtc = $null }
+    }
+    try {
+        return Get-Content -Raw $script:CleanLoopPath | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:CleanLoopDefaultMinutes; lastRunUtc = $null }
+    }
+}
+
+function Write-CleanLoopState {
+    param([bool]$Enabled, [int]$IntervalMinutes, [datetime]$LastRunUtc = [datetime]::UtcNow)
+    Ensure-StateDir
+    [pscustomobject]@{
+        enabled         = $Enabled
+        intervalMinutes = $IntervalMinutes
+        lastRunUtc      = $LastRunUtc.ToString('o')
+    } | ConvertTo-Json | Set-Content -Path $script:CleanLoopPath -Encoding UTF8
+}
+
+function Invoke-CleanLoopTick {
+    # Safe-only operations: RAM GC + working set trim + DNS/ARP flush
+    # NEVER deletes files. Runs in hidden background process.
+    try { [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers(); [System.GC]::Collect() } catch {}
+    try {
+        if (-not ([System.Management.Automation.PSTypeName]'MemUtil').Type) {
+            Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public class MemUtil {
+    [DllImport("psapi.dll")]    public static extern bool EmptyWorkingSet(IntPtr hProcess);
+    [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+}
+'@ -ErrorAction SilentlyContinue
+        }
+        [MemUtil]::EmptyWorkingSet([MemUtil]::GetCurrentProcess()) | Out-Null
+    } catch {}
+    try { & ipconfig /flushdns 2>$null | Out-Null } catch {}
+    try { & arp -d * 2>$null | Out-Null } catch {}
+
+    $state = Read-CleanLoopState
+    Write-CleanLoopState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes -LastRunUtc ([datetime]::UtcNow)
+}
+
+function Start-CleanLoopCheck {
+    $state = Read-CleanLoopState
+    if (-not $state.enabled) { return }
+
+    $lastUtc      = if ($state.lastRunUtc) { [datetime]$state.lastRunUtc } else { [datetime]::MinValue }
+    $minutesSince = ([datetime]::UtcNow - $lastUtc).TotalMinutes
+    if ($minutesSince -lt $state.intervalMinutes) { return }
+
+    $engine = Get-ShellEngine
+    if (-not (Test-Path $engine)) { return }
+
+    $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                   '-File', $PSCommandPath, '-Task', 'CleanLoop')
+    try {
+        Start-Process -FilePath $engine -ArgumentList $arguments -WindowStyle Hidden -ErrorAction Stop | Out-Null
+    } catch {}
+}
+
+function Invoke-CleanLoopCommand {
+    param([string[]]$Rest)
+
+    $sub = if ($Rest -and $Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
+
+    switch ($sub) {
+        'on' {
+            $mins = $script:CleanLoopDefaultMinutes
+            if ($Rest.Count -ge 2) {
+                $parsed = 0
+                if ($Rest[1] -match '^\d+$' -and [int]::TryParse($Rest[1], [ref]$parsed) -and $parsed -ge 1) {
+                    $mins = $parsed
+                }
+            }
+            Write-CleanLoopState -Enabled $true -IntervalMinutes $mins
+            Write-Host ('  clean loop: ON  every {0} min  (RAM flush + DNS flush, no file deletion)' -f $mins) -ForegroundColor Green
+        }
+        'off' {
+            $state = Read-CleanLoopState
+            Write-CleanLoopState -Enabled $false -IntervalMinutes $state.intervalMinutes
+            Write-Host '  clean loop: OFF' -ForegroundColor DarkGray
+        }
+        'now' {
+            Write-Host '  Running clean loop tick...' -ForegroundColor Yellow
+            Invoke-CleanLoopTick
+            Write-Host '  Done: RAM flushed, DNS cleared.' -ForegroundColor Green
+        }
+        'status' {
+            $state = Read-CleanLoopState
+            $lastStr = if ($state.lastRunUtc) {
+                $last = [datetime]$state.lastRunUtc
+                $ago  = [math]::Round(([datetime]::UtcNow - $last).TotalMinutes, 1)
+                ('{0:u}  ({1} min ago)' -f $last, $ago)
+            } else { 'never' }
+            $stateColor = if ($state.enabled) { 'Green' } else { 'DarkGray' }
+            Write-Host ''
+            Write-Host ('  clean loop: {0}  every {1} min' -f $(if ($state.enabled) { 'ON' } else { 'OFF' }), $state.intervalMinutes) -ForegroundColor $stateColor
+            Write-Host ('  last run:   {0}' -f $lastStr) -ForegroundColor DarkGray
+            Write-Host '  safe ops:   RAM GC + working set trim + DNS flush + ARP flush' -ForegroundColor DarkGray
+            Write-Host ''
+        }
+        { $_ -in 'help', '-h', '--help' } {
+            Write-Host ''
+            Write-HintSection 'CLEAN LOOP -- background auto-optimization (RAM/network only, no file deletion)'
+            Write-HintRow '8sync clean --loop on'       'Start loop with default interval (5 min)'
+            Write-HintRow '8sync clean --loop on N'     'Start loop every N minutes  e.g. --loop on 10'
+            Write-HintRow '8sync clean --loop off'      'Stop the background clean loop'
+            Write-HintRow '8sync clean --loop now'      'Run one tick immediately'
+            Write-HintRow '8sync clean --loop status'   'Show loop state and last run time'
+            Write-Host ''
+        }
+        default {
+            $parsed = 0
+            if ([int]::TryParse($sub, [ref]$parsed) -and $parsed -ge 1) {
+                Write-CleanLoopState -Enabled $true -IntervalMinutes $parsed
+                Write-Host ('  clean loop: ON  every {0} min' -f $parsed) -ForegroundColor Green
+            } else {
+                Write-Host ('  Unknown loop subcommand: {0}. Try: on, off, now, status' -f $sub) -ForegroundColor DarkYellow
+            }
+        }
+    }
+}
+
 function Invoke-SystemClean {
     param(
         [int]$StaleDays = 7,
@@ -2283,6 +2917,7 @@ function Invoke-SystemClean {
 
     Write-Host ''
     Write-Host ('  8sync clean  >{0}d stale{1}' -f $StaleDays, $dTag) -ForegroundColor Cyan
+    Write-Host '  SAFE: OS/browser/tool caches only. Git repos and source files are never touched.' -ForegroundColor DarkGray
     Write-Host ''
 
     # -- Temp --------------------------------------------------------------
@@ -2313,7 +2948,9 @@ function Invoke-SystemClean {
         @{ Path = (Join-Path $env:LOCALAPPDATA 'pip\cache');                                   Label = 'pip' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'uv\cache');                                    Label = 'uv' }
         @{ Path = (Join-Path $env:LOCALAPPDATA 'go\pkg\mod\cache');                            Label = 'go/mod' }
-        @{ Path = (Join-Path $HOME '.cargo\registry\cache');                                   Label = 'cargo' }
+        @{ Path = (Join-Path $HOME '.cargo\registry\cache');                                   Label = 'cargo/cache' }
+        @{ Path = (Join-Path $HOME '.cargo\registry\src');                                     Label = 'cargo/src' }
+        @{ Path = (Join-Path $HOME '.cargo\git\checkouts');                                    Label = 'cargo/git' }
         @{ Path = (Join-Path $HOME '.gradle\caches');                                          Label = 'gradle' }
         @{ Path = (Join-Path $HOME '.m2\repository');                                          Label = 'maven' }
         @{ Path = (Join-Path $HOME '.nuget\packages');                                         Label = 'nuget' }
@@ -2333,6 +2970,65 @@ function Invoke-SystemClean {
     )
     foreach ($entry in $cachePaths) {
         Invoke-CleanPath -Path $entry.Path -Label $entry.Label -StaleDays $StaleDays -DryRun:$DryRun -Recursive | Out-Null
+    }
+
+    # -- Toolchain command-based caches ----------------------------------
+    Write-Host ''
+    Write-Host '  TOOLCHAIN CACHES' -ForegroundColor Yellow
+
+    # go build cache: go clean -cache (100% safe, regenerates)
+    if (Test-CommandExists 'go') {
+        Write-CleanSpinner -Msg 'go build cache...'
+        try {
+            $goCache = & go env GOCACHE 2>$null
+            if ($goCache -and [System.IO.Directory]::Exists($goCache)) {
+                $goCacheSize = (Get-ChildItem $goCache -Recurse -Force -ErrorAction SilentlyContinue |
+                    Measure-Object -Property Length -Sum).Sum
+                Clear-SpinnerLine
+                if (-not $DryRun) {
+                    & go clean -cache 2>$null
+                    Write-Host ('  [go/build]    {0,-48} freed ~{1}' -f $goCache, (Format-Bytes ([long]$goCacheSize))) -ForegroundColor Green
+                    $script:CleanTotalFreed += [long]$goCacheSize
+                } else {
+                    Write-Host ('  [go/build]    {0,-48} would free ~{1}' -f $goCache, (Format-Bytes ([long]$goCacheSize))) -ForegroundColor DarkYellow
+                }
+            } else {
+                Clear-SpinnerLine
+                Write-Host '  [go/build]    cache empty or not found' -ForegroundColor DarkGray
+            }
+        } catch {
+            Clear-SpinnerLine
+            Write-Host '  [go/build]    skipped (error)' -ForegroundColor DarkGray
+        }
+    }
+
+    # docker system prune: safe to remove stopped containers, dangling images, build cache
+    if (Test-CommandExists 'docker') {
+        Write-CleanSpinner -Msg 'docker prune...'
+        try {
+            # Check if docker daemon is running
+            $null = & docker info 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Clear-SpinnerLine
+                if (-not $DryRun) {
+                    $pruneOut = & docker system prune -f 2>&1 | Out-String
+                    # Parse "Total reclaimed space: X.XXX MB" from output
+                    $reclaimedMatch = [regex]::Match($pruneOut, 'Total reclaimed space:\s+([\d.]+)\s*(B|kB|MB|GB)')
+                    $reclaimedLabel = if ($reclaimedMatch.Success) { $reclaimedMatch.Value.Trim() } else { 'done' }
+                    Write-Host ('  [docker]      prune complete — {0}' -f $reclaimedLabel) -ForegroundColor Green
+                } else {
+                    $dfOut = & docker system df 2>&1 | Out-String
+                    Write-Host '  [docker]      would run: docker system prune -f' -ForegroundColor DarkYellow
+                    Write-Host ($dfOut.Trim() -replace '^', '              ') -ForegroundColor DarkGray
+                }
+            } else {
+                Clear-SpinnerLine
+                Write-Host '  [docker]      daemon not running, skipped' -ForegroundColor DarkGray
+            }
+        } catch {
+            Clear-SpinnerLine
+            Write-Host '  [docker]      skipped (not available)' -ForegroundColor DarkGray
+        }
     }
 
     # -- Windows caches --------------------------------------------------
@@ -2419,7 +3115,11 @@ function Invoke-CleanCommand {
     $doProjects  = $false
     $projectsAll = $false
     $doDeep      = $false
+    $doDelete    = $false
     $doScan      = $false
+    $doAudit     = $false
+    $doLoop      = $false
+    $loopArgs    = @()
     $scanPaths   = @()
 
     foreach ($arg in $Rest) {
@@ -2428,7 +3128,10 @@ function Invoke-CleanCommand {
             '--projects' { $doProjects = $true }
             '--all'      { $projectsAll = $true }
             '--deep'     { $doDeep = $true }
+            '--delete'   { $doDelete = $true }
             '--scan'     { $doScan = $true }
+            '--audit'    { $doAudit = $true }
+            '--loop'     { $doLoop = $true }
             { $_ -in '--help', 'help', '-h' } {
                 Write-Host ''
                 Write-HintSection 'CLEAN -- deep system / cache / venv / RAM / disk / project optimizer'
@@ -2440,9 +3143,16 @@ function Invoke-CleanCommand {
                 Write-HintRow '8sync clean --projects --days N'      'Stale threshold for projects (default: 90d)'
                 Write-HintRow '8sync clean --projects --dry-run'     'Preview project deletions only'
                 Write-HintRow '8sync clean --deep'                   'Report stale MCP/npm/pip/cargo/go artifacts'
+                Write-HintRow '8sync clean --deep --delete'          'Delete stale artifacts with per-type confirmation'
+                Write-HintRow '8sync clean --deep --delete --all'    'Delete ALL stale artifacts, skip per-type prompt'
+                Write-HintRow '8sync clean --deep --delete --dry-run' 'Preview what --delete would remove'
                 Write-HintRow '8sync clean --deep --days N'          'Custom threshold for artifact scan'
                 Write-HintRow '8sync clean --scan'                   'Windows Defender quick + dev-folder scan'
                 Write-HintRow '8sync clean --scan <path>'            'Targeted Defender scan on specific path'
+                Write-HintRow '8sync clean --audit'                  'npm/cargo/pip vulnerability scan + postinstall check'
+                Write-HintRow '8sync clean --loop on [N]'            'Background RAM/DNS flush every N min (default 5)'
+                Write-HintRow '8sync clean --loop off'               'Stop background clean loop'
+                Write-HintRow '8sync clean --loop status'            'Show loop state and last run time'
                 Write-Host ''
                 return
             }
@@ -2456,11 +3166,16 @@ function Invoke-CleanCommand {
                 $staleDays = $parsed
             }
         }
-        # --scan <path1> <path2> ...  (optional path args after --scan)
         if ($Rest[$i].ToLowerInvariant() -eq '--scan') {
             for ($j = $i + 1; $j -lt $Rest.Count; $j++) {
                 if ($Rest[$j] -like '--*') { break }
                 $scanPaths += $Rest[$j]
+            }
+        }
+        if ($Rest[$i].ToLowerInvariant() -eq '--loop') {
+            for ($j = $i + 1; $j -lt $Rest.Count; $j++) {
+                if ($Rest[$j] -like '--*') { break }
+                $loopArgs += $Rest[$j]
             }
         }
     }
@@ -2473,12 +3188,25 @@ function Invoke-CleanCommand {
     }
 
     if ($doDeep) {
-        Show-DevArtifactReport -StaleDays $staleDays
+        $artifacts = Show-DevArtifactReport -StaleDays $staleDays
+        if ($doDelete -and $artifacts -and $artifacts.Count -gt 0) {
+            Invoke-DeleteDevArtifacts -Artifacts $artifacts -All:$projectsAll -DryRun:$dryRun
+        }
         return
     }
 
     if ($doScan) {
         Invoke-DefenderScan -TargetPaths $scanPaths
+        return
+    }
+
+    if ($doAudit) {
+        Invoke-EcosystemAudit
+        return
+    }
+
+    if ($doLoop) {
+        Invoke-CleanLoopCommand -Rest $loopArgs
         return
     }
 
@@ -2500,6 +3228,7 @@ function Invoke-HxCommand {
             $name = if ($Rest.Count -ge 2) { $Rest[1] } else { '' }
             Invoke-HxLang -LangName $name
         }
+        'health'  { Invoke-HxHealth }
         'wrap'    { Invoke-HxWrap }
         'opacity' {
             $val = if ($Rest.Count -ge 2) { $Rest[1] } else { '' }
@@ -2641,7 +3370,18 @@ function Register-8SyncAlias {
             'help'   { Show-8SyncHint }
             'hint'   { Show-8SyncHint }
             'status' { Show-8SyncStatus }
-            'sync'   { Invoke-ToolSync }
+            'sync'   {
+                $checkFlag = $Rest -contains '--check'
+                if ($Rest -contains '--help' -or $Rest -contains 'help' -or $Rest -contains '-h') {
+                    Write-Host ''
+                    Write-HintSection 'SYNC -- install and update managed tools via Scoop'
+                    Write-HintRow '8sync sync'         'Install missing + update all managed tools'
+                    Write-HintRow '8sync sync --check' 'Dry-run: show missing tools + available updates, no changes'
+                    Write-Host ''
+                } else {
+                    Invoke-ToolSync -Check:$checkFlag
+                }
+            }
             'clean'  { Invoke-CleanCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
@@ -2729,6 +3469,7 @@ function Start-WezTermShell {
     Set-ToolAliases
     Start-AutoSync
     Start-BgRotateCheck
+    Start-CleanLoopCheck
 
     $missingPackages = Get-MissingPackages
     if ($missingPackages.Count -gt 0) {
@@ -2758,6 +3499,10 @@ try {
         }
         'BgRotate' {
             Invoke-BgRotateNow
+            break
+        }
+        'CleanLoop' {
+            Invoke-CleanLoopTick
             break
         }
         default {
