@@ -18,3 +18,6 @@
 - Config files: `wezterm.lua`, `wezterm-bootstrap.ps1`
 - State: `.state/tool-state.json`
 - Wallpaper: `current-bg.lua`, `bg/`
+
+## Known Pitfalls (avoid)
+- Window capture tools can fail if the native title bar is removed and the window is fully transparent (Acrylic + opacity 0.0). Keep this in mind when troubleshooting capture issues.
