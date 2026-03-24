@@ -40,13 +40,26 @@ $script:BgRotateDefaultMinutes = 30
 $script:BackgroundDir = Join-Path $PSScriptRoot 'bg'
 $script:CleanLoopPath = Join-Path $script:StateDir 'clean-loop.json'
 $script:CleanLoopDefaultMinutes = 5
+$script:CleanLoopLockPath = Join-Path $script:StateDir 'clean-loop.lock'
+$script:CleanLoopLockMaxAgeMinutes = 180
+$script:CleanLoopDefaultProfile = 'light'
+$script:CleanLoopKnownProfiles = @('light', 'balanced', 'deep')
 $script:CurrentBgLuaPath = Join-Path $PSScriptRoot 'current-bg.lua'
+$script:CurrentStyleLuaPath = Join-Path $PSScriptRoot 'current-style.lua'
+$script:StartupProfilePath = Join-Path $script:StateDir 'startup-profile.json'
+$script:StartupProfileMaxEntries = 40
+$script:StartupModeDefault = 'balanced'
+$script:StartupKnownModes = @('light', 'balanced')
 
 $script:HelixConfigDir = Join-Path $env:APPDATA 'helix'
 $script:HelixConfigPath = Join-Path $script:HelixConfigDir 'config.toml'
 $script:CurrentOpacityPath = Join-Path $PSScriptRoot 'current-opacity.lua'
 $script:DefaultOpacity = 0.72
 $script:OpacityStep = 0.05
+$script:DefaultGlassStyle = 'neon_glass'
+$script:DefaultGlassScene = 'focus'
+$script:KnownGlassStyles = @('neon_glass', 'ice_glass', 'mint_glass')
+$script:KnownGlassScenes = @('focus', 'cinematic', 'showcase')
 
 $script:LangServers = [ordered]@{
     'python'     = @('python', 'pyright')
@@ -200,6 +213,61 @@ function Write-State {
     $payload | ConvertTo-Json | Set-Content -Path $script:StatePath -Encoding UTF8
 }
 
+function Get-StartupMode {
+    $mode = $env:WEZTERM_STARTUP_MODE
+    if ([string]::IsNullOrWhiteSpace($mode)) {
+        return $script:StartupModeDefault
+    }
+
+    $normalized = $mode.ToLowerInvariant()
+    if ($script:StartupKnownModes -contains $normalized) {
+        return $normalized
+    }
+
+    return $script:StartupModeDefault
+}
+
+function Write-StartupProfile {
+    param(
+        [Parameter(Mandatory)] [string]$Mode,
+        [Parameter(Mandatory)] [hashtable]$Phases,
+        [Parameter(Mandatory)] [double]$TotalMs
+    )
+
+    Ensure-StateDir
+
+    $entry = [pscustomobject]@{
+        timestampUtc = [datetime]::UtcNow.ToString('o')
+        mode         = $Mode
+        totalMs      = [math]::Round($TotalMs, 1)
+        phases       = $Phases
+    }
+
+    $existing = @()
+    if (Test-Path $script:StartupProfilePath) {
+        try {
+            $raw = Get-Content -Raw $script:StartupProfilePath
+            if ($raw) {
+                $parsed = $raw | ConvertFrom-Json
+                if ($parsed -is [array]) {
+                    $existing = @($parsed)
+                } elseif ($parsed) {
+                    $existing = @($parsed)
+                }
+            }
+        } catch {
+        }
+    }
+
+    $merged = @($existing + $entry)
+    if ($merged.Count -gt $script:StartupProfileMaxEntries) {
+        $start = $merged.Count - $script:StartupProfileMaxEntries
+        $merged = @($merged[$start..($merged.Count - 1)])
+    }
+
+    $merged | ConvertTo-Json -Depth 7 | Set-Content -Path $script:StartupProfilePath -Encoding UTF8
+}
+
 function Get-ShellEngine {
     $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
     if ($pwsh) {
@@ -298,7 +366,8 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --deep'             'Report stale MCP/npm/pip/cargo/go dev artifacts'
     Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
     Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
-    Write-HintRow '8sync clean --loop on [N]'      'Background RAM/DNS flush every N min (default 5)'
+    Write-HintRow '8sync clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
+    Write-HintRow '8sync theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
     Write-HintRow '8sync opencode [--dry-run]'     'Copy ~/.config/opencode into .opencode for this project'
 
     Write-HintSection 'BACKGROUND'
@@ -383,6 +452,22 @@ function Show-8SyncStatus {
     $rotateStr = if ($rotateSt.enabled) { 'ON  every {0}min' -f $rotateSt.intervalMinutes } else { 'OFF' }
     $rotateColor = if ($rotateSt.enabled) { 'Green' } else { 'DarkGray' }
     Write-Host ('bg rotate: {0}' -f $rotateStr) -ForegroundColor $rotateColor
+    $glass = Read-CurrentStyleState
+    Write-Host ('glass theme: style={0} scene={1} hint={2}' -f $glass.style, $glass.scene, $glass.bgHint) -ForegroundColor DarkGray
+    Write-Host ('startup mode: {0}  (override: WEZTERM_STARTUP_MODE=light|balanced)' -f (Get-StartupMode)) -ForegroundColor DarkGray
+
+    if (Test-Path $script:StartupProfilePath) {
+        try {
+            $spRaw = Get-Content -Raw $script:StartupProfilePath
+            $spData = if ($spRaw) { $spRaw | ConvertFrom-Json } else { $null }
+            $spArr = if ($spData -is [array]) { @($spData) } elseif ($spData) { @($spData) } else { @() }
+            if ($spArr.Count -gt 0) {
+                $last = $spArr[$spArr.Count - 1]
+                Write-Host ('startup perf: last={0}ms mode={1}' -f $last.totalMs, $last.mode) -ForegroundColor DarkGray
+            }
+        } catch {
+        }
+    }
     Write-Host ''
 }
 
@@ -643,14 +728,15 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','sync','clean','bg','hx','opencode')
+    $modes = @('help','status','sync','clean','bg','hx','theme','opencode')
 
         # subcommands per mode
         $subMap = @{
             bg    = @('search','pick','set','open','rotate','help')
             hx    = @('lang','wrap','opacity','theme','health','help')
+            theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')
-            clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','--help')
+            clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             opencode = @('setup','--dry-run','help')
         }
 
@@ -728,6 +814,7 @@ function Normalize-WallhavenEntry {
         short      = $Item.short_url
         preview    = $Item.thumbs.original
         file       = $Item.path
+        colors     = @($Item.colors)
         tags       = $tags
         queriedUtc = [datetime]::UtcNow.ToString('o')
     }
@@ -896,11 +983,121 @@ function Write-CurrentBgLua {
     Set-Content -Path $script:CurrentBgLuaPath -Value $content -Encoding UTF8
 }
 
+function Read-CurrentStyleState {
+    $style = $script:DefaultGlassStyle
+    $scene = $script:DefaultGlassScene
+    $bgHint = 'neutral'
+
+    if (Test-Path $script:CurrentStyleLuaPath) {
+        try {
+            $raw = Get-Content -Raw $script:CurrentStyleLuaPath
+            if ($raw -match 'style\s*=\s*"([a-z_]+)"') {
+                $candidate = $Matches[1].ToLowerInvariant()
+                if ($script:KnownGlassStyles -contains $candidate) { $style = $candidate }
+            }
+            if ($raw -match 'scene\s*=\s*"([a-z_]+)"') {
+                $candidate = $Matches[1].ToLowerInvariant()
+                if ($script:KnownGlassScenes -contains $candidate) { $scene = $candidate }
+            }
+            if ($raw -match 'bg_hint\s*=\s*"([a-z_]+)"') {
+                $candidate = $Matches[1].ToLowerInvariant()
+                if (@('bright', 'neutral', 'dark') -contains $candidate) { $bgHint = $candidate }
+            }
+        } catch {
+        }
+    }
+
+    return [pscustomobject]@{
+        style  = $style
+        scene  = $scene
+        bgHint = $bgHint
+    }
+}
+
+function Write-CurrentStyleLua {
+    param(
+        [string]$Style,
+        [string]$Scene,
+        [string]$BgHint
+    )
+
+    $current = Read-CurrentStyleState
+    $resolvedStyle = if ($Style) { $Style.ToLowerInvariant() } else { $current.style }
+    $resolvedScene = if ($Scene) { $Scene.ToLowerInvariant() } else { $current.scene }
+    $resolvedHint = if ($BgHint) { $BgHint.ToLowerInvariant() } else { $current.bgHint }
+
+    if (-not ($script:KnownGlassStyles -contains $resolvedStyle)) { $resolvedStyle = $script:DefaultGlassStyle }
+    if (-not ($script:KnownGlassScenes -contains $resolvedScene)) { $resolvedScene = $script:DefaultGlassScene }
+    if (-not (@('bright', 'neutral', 'dark') -contains $resolvedHint)) { $resolvedHint = 'neutral' }
+
+    $content = @(
+        'return {'
+        ('  style = "{0}",' -f $resolvedStyle)
+        ('  scene = "{0}",' -f $resolvedScene)
+        ('  bg_hint = "{0}",' -f $resolvedHint)
+        '}'
+    )
+    $content | Set-Content -Path $script:CurrentStyleLuaPath -Encoding UTF8
+
+    return [pscustomobject]@{
+        style  = $resolvedStyle
+        scene  = $resolvedScene
+        bgHint = $resolvedHint
+    }
+}
+
+function Get-WallpaperBrightnessHint {
+    param([object]$Entry)
+
+    if (-not $Entry) {
+        return 'neutral'
+    }
+
+    $palette = @()
+    if ($Entry.colors) {
+        $palette = @($Entry.colors)
+    }
+
+    if ($palette.Count -eq 0) {
+        return 'neutral'
+    }
+
+    $scores = New-Object System.Collections.Generic.List[double]
+    foreach ($hex in $palette) {
+        if (-not $hex) { continue }
+        $raw = $hex.ToString().TrimStart('#')
+        if ($raw.Length -ne 6) { continue }
+        try {
+            $r = [Convert]::ToInt32($raw.Substring(0, 2), 16)
+            $g = [Convert]::ToInt32($raw.Substring(2, 2), 16)
+            $b = [Convert]::ToInt32($raw.Substring(4, 2), 16)
+            $lum = ((0.2126 * $r) + (0.7152 * $g) + (0.0722 * $b)) / 255.0
+            $scores.Add($lum)
+        } catch {
+        }
+    }
+
+    if ($scores.Count -eq 0) {
+        return 'neutral'
+    }
+
+    $avg = ($scores | Measure-Object -Average).Average
+    if ($avg -ge 0.62) { return 'bright' }
+    if ($avg -le 0.38) { return 'dark' }
+    return 'neutral'
+}
+
 function Try-ReloadWezTerm {
     if (Test-CommandExists 'wezterm') {
         try {
-            & wezterm cli reload | Out-Null
-            Write-Host 'WezTerm config reloaded.' -ForegroundColor Green
+            $cliHelp = & wezterm cli --help | Out-String
+            if ($cliHelp -match '(?m)^\s+reload\s') {
+                & wezterm cli reload | Out-Null
+                Write-Host 'WezTerm config reloaded.' -ForegroundColor Green
+            } else {
+                & wezterm cli list-clients | Out-Null
+                Write-Host 'Config updated. Press Ctrl+Shift+R in WezTerm to reload.' -ForegroundColor Green
+            }
             return
         } catch {
         }
@@ -1004,6 +1201,7 @@ function Invoke-BgSet {
     }
 
     $finalPath = $null
+    $bgHint = 'neutral'
     switch ($target.Type) {
         'path' {
             $finalPath = $target.Value
@@ -1022,6 +1220,7 @@ function Invoke-BgSet {
             if ($downloaded) {
                 $finalPath = $downloaded
             }
+            $bgHint = Get-WallpaperBrightnessHint -Entry $entry
         }
     }
 
@@ -1031,6 +1230,8 @@ function Invoke-BgSet {
     }
 
     Write-CurrentBgLua -Path $finalPath
+    $styleState = Write-CurrentStyleLua -BgHint $bgHint
+    Write-Host ("Glass adaptive hint: {0}" -f $styleState.bgHint) -ForegroundColor DarkGray
     Try-ReloadWezTerm
 }
 
@@ -2780,55 +2981,239 @@ function Invoke-DefenderScan {
 function Read-CleanLoopState {
     Ensure-StateDir
     if (-not (Test-Path $script:CleanLoopPath)) {
-        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:CleanLoopDefaultMinutes; lastRunUtc = $null }
+        return [pscustomobject]@{
+            enabled         = $false
+            intervalMinutes = $script:CleanLoopDefaultMinutes
+            profile         = $script:CleanLoopDefaultProfile
+            cooldownMinutes = 240
+            lastRunUtc      = $null
+            lastDeepRunUtc  = $null
+        }
     }
+
     try {
-        return Get-Content -Raw $script:CleanLoopPath | ConvertFrom-Json
+        $raw = Get-Content -Raw $script:CleanLoopPath | ConvertFrom-Json
+        $profile = if ($raw.profile -and ($script:CleanLoopKnownProfiles -contains $raw.profile)) {
+            $raw.profile
+        } else {
+            $script:CleanLoopDefaultProfile
+        }
+        $cooldown = if ($raw.cooldownMinutes -and [int]$raw.cooldownMinutes -gt 0) {
+            [int]$raw.cooldownMinutes
+        } else {
+            240
+        }
+
+        return [pscustomobject]@{
+            enabled         = [bool]$raw.enabled
+            intervalMinutes = if ($raw.intervalMinutes -and [int]$raw.intervalMinutes -gt 0) { [int]$raw.intervalMinutes } else { $script:CleanLoopDefaultMinutes }
+            profile         = $profile
+            cooldownMinutes = $cooldown
+            lastRunUtc      = $raw.lastRunUtc
+            lastDeepRunUtc  = $raw.lastDeepRunUtc
+        }
     } catch {
-        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:CleanLoopDefaultMinutes; lastRunUtc = $null }
+        return [pscustomobject]@{
+            enabled         = $false
+            intervalMinutes = $script:CleanLoopDefaultMinutes
+            profile         = $script:CleanLoopDefaultProfile
+            cooldownMinutes = 240
+            lastRunUtc      = $null
+            lastDeepRunUtc  = $null
+        }
     }
 }
 
 function Write-CleanLoopState {
-    param([bool]$Enabled, [int]$IntervalMinutes, [datetime]$LastRunUtc = [datetime]::UtcNow)
+    param(
+        [bool]$Enabled,
+        [int]$IntervalMinutes,
+        [string]$Profile,
+        [int]$CooldownMinutes,
+        [datetime]$LastRunUtc,
+        [datetime]$LastDeepRunUtc
+    )
+
     Ensure-StateDir
+
+    $current = Read-CleanLoopState
+    $resolvedProfile = if ($Profile) { $Profile } else { $current.profile }
+    if (-not ($script:CleanLoopKnownProfiles -contains $resolvedProfile)) {
+        $resolvedProfile = $script:CleanLoopDefaultProfile
+    }
+
+    $resolvedInterval = if ($IntervalMinutes -gt 0) { $IntervalMinutes } else { $current.intervalMinutes }
+    $resolvedCooldown = if ($CooldownMinutes -gt 0) { $CooldownMinutes } else { $current.cooldownMinutes }
+    $resolvedLastRun = if ($PSBoundParameters.ContainsKey('LastRunUtc')) { $LastRunUtc } elseif ($current.lastRunUtc) { [datetime]$current.lastRunUtc } else { [datetime]::UtcNow }
+    $resolvedLastDeepRun = if ($PSBoundParameters.ContainsKey('LastDeepRunUtc')) { $LastDeepRunUtc } elseif ($current.lastDeepRunUtc) { [datetime]$current.lastDeepRunUtc } else { $null }
+
     [pscustomobject]@{
         enabled         = $Enabled
-        intervalMinutes = $IntervalMinutes
-        lastRunUtc      = $LastRunUtc.ToString('o')
+        intervalMinutes = $resolvedInterval
+        profile         = $resolvedProfile
+        cooldownMinutes = $resolvedCooldown
+        lastRunUtc      = if ($resolvedLastRun) { $resolvedLastRun.ToString('o') } else { $null }
+        lastDeepRunUtc  = if ($resolvedLastDeepRun) { $resolvedLastDeepRun.ToString('o') } else { $null }
     } | ConvertTo-Json | Set-Content -Path $script:CleanLoopPath -Encoding UTF8
 }
 
-function Invoke-CleanLoopTick {
-    # Safe-only operations: RAM GC + working set trim + DNS/ARP flush
-    # NEVER deletes files. Runs in hidden background process.
-    try { [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers(); [System.GC]::Collect() } catch {}
+function Get-CleanLoopProfileSettings {
+    param([string]$Profile)
+
+    $resolved = if ($script:CleanLoopKnownProfiles -contains $Profile) { $Profile } else { $script:CleanLoopDefaultProfile }
+    switch ($resolved) {
+        'deep' {
+            return [pscustomobject]@{
+                profile                  = 'deep'
+                defaultIntervalMinutes   = 45
+                defaultCooldownMinutes   = 180
+                runDryCleanPreview       = $true
+                dryCleanStaleDays        = 7
+                runDefenderQuickScan     = $true
+            }
+        }
+        'balanced' {
+            return [pscustomobject]@{
+                profile                  = 'balanced'
+                defaultIntervalMinutes   = 15
+                defaultCooldownMinutes   = 360
+                runDryCleanPreview       = $true
+                dryCleanStaleDays        = 14
+                runDefenderQuickScan     = $false
+            }
+        }
+        default {
+            return [pscustomobject]@{
+                profile                  = 'light'
+                defaultIntervalMinutes   = 5
+                defaultCooldownMinutes   = 720
+                runDryCleanPreview       = $false
+                dryCleanStaleDays        = 21
+                runDefenderQuickScan     = $false
+            }
+        }
+    }
+}
+
+function Acquire-CleanLoopLock {
+    if (Test-Path $script:CleanLoopLockPath) {
+        try {
+            $raw = Get-Content -Raw $script:CleanLoopLockPath | ConvertFrom-Json
+            if ($raw -and $raw.startedUtc) {
+                $started = [datetime]$raw.startedUtc
+                $ageMinutes = ([datetime]::UtcNow - $started).TotalMinutes
+                if ($ageMinutes -lt $script:CleanLoopLockMaxAgeMinutes) {
+                    return $false
+                }
+            }
+        } catch {
+        }
+        Remove-Item $script:CleanLoopLockPath -Force -ErrorAction SilentlyContinue
+    }
+
     try {
-        if (-not ([System.Management.Automation.PSTypeName]'MemUtil').Type) {
-            Add-Type -TypeDefinition @'
+        [pscustomobject]@{
+            pid        = $PID
+            startedUtc = [datetime]::UtcNow.ToString('o')
+        } | ConvertTo-Json | Set-Content -Path $script:CleanLoopLockPath -Encoding UTF8
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Release-CleanLoopLock {
+    Remove-Item $script:CleanLoopLockPath -Force -ErrorAction SilentlyContinue
+}
+
+function Invoke-CleanLoopTick {
+    param([switch]$Manual)
+
+    if (-not (Acquire-CleanLoopLock)) {
+        if ($Manual) {
+            Write-Host '  clean loop skipped: another loop task is active.' -ForegroundColor DarkYellow
+        }
+        return
+    }
+
+    try {
+        $state = Read-CleanLoopState
+        $profileSettings = Get-CleanLoopProfileSettings -Profile $state.profile
+        $didDryClean = $false
+        $didDefender = $false
+        $lastDeepRunUtc = if ($state.lastDeepRunUtc) { [datetime]$state.lastDeepRunUtc } else { $null }
+
+        # Safe-only operations always: RAM GC + working set trim + DNS/ARP flush.
+        try { [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers(); [System.GC]::Collect() } catch {}
+        try {
+            if (-not ([System.Management.Automation.PSTypeName]'MemUtil').Type) {
+                Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
 public class MemUtil {
     [DllImport("psapi.dll")]    public static extern bool EmptyWorkingSet(IntPtr hProcess);
     [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
 }
 '@ -ErrorAction SilentlyContinue
-        }
-        [MemUtil]::EmptyWorkingSet([MemUtil]::GetCurrentProcess()) | Out-Null
-    } catch {}
-    try { & ipconfig /flushdns 2>$null | Out-Null } catch {}
-    try { & arp -d * 2>$null | Out-Null } catch {}
+            }
+            [MemUtil]::EmptyWorkingSet([MemUtil]::GetCurrentProcess()) | Out-Null
+        } catch {}
+        try { & ipconfig /flushdns 2>$null | Out-Null } catch {}
+        try { & arp -d * 2>$null | Out-Null } catch {}
 
-    $state = Read-CleanLoopState
-    Write-CleanLoopState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes -LastRunUtc ([datetime]::UtcNow)
+        # Profile-specific preview mode: run safe clean as dry-run only.
+        if ($profileSettings.runDryCleanPreview) {
+            if ($Manual) {
+                Write-Host ('  profile {0}: running clean preview (dry-run, {1}d stale)...' -f $profileSettings.profile, $profileSettings.dryCleanStaleDays) -ForegroundColor Yellow
+            }
+            Invoke-SystemClean -StaleDays $profileSettings.dryCleanStaleDays -DryRun
+            $didDryClean = $true
+        }
+
+        # Deep profile can trigger Defender quick scan on cooldown.
+        if ($profileSettings.runDefenderQuickScan) {
+            $cooldown = if ($state.cooldownMinutes -gt 0) { $state.cooldownMinutes } else { $profileSettings.defaultCooldownMinutes }
+            $canRunDefender = $true
+            if ($lastDeepRunUtc) {
+                $minutesSinceDeep = ([datetime]::UtcNow - $lastDeepRunUtc).TotalMinutes
+                if ($minutesSinceDeep -lt $cooldown) {
+                    $canRunDefender = $false
+                }
+            }
+
+            if ($canRunDefender) {
+                if ($Manual) {
+                    Write-Host ('  profile {0}: starting Defender quick scan...' -f $profileSettings.profile) -ForegroundColor Yellow
+                }
+                Invoke-DefenderScan -TargetPaths @()
+                $didDefender = $true
+                $lastDeepRunUtc = [datetime]::UtcNow
+            } elseif ($Manual) {
+                Write-Host ('  Defender cooldown active ({0} min).' -f $cooldown) -ForegroundColor DarkGray
+            }
+        }
+
+        Write-CleanLoopState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes -Profile $state.profile -CooldownMinutes $state.cooldownMinutes -LastRunUtc ([datetime]::UtcNow) -LastDeepRunUtc $lastDeepRunUtc
+
+        if ($Manual) {
+            $dryMsg = if ($didDryClean) { 'yes' } else { 'no' }
+            $defMsg = if ($didDefender) { 'yes' } else { 'no' }
+            Write-Host ('  loop tick done (profile={0}, dry-clean-preview={1}, defender={2}).' -f $state.profile, $dryMsg, $defMsg) -ForegroundColor Green
+        }
+    } finally {
+        Release-CleanLoopLock
+    }
 }
 
 function Start-CleanLoopCheck {
     $state = Read-CleanLoopState
     if (-not $state.enabled) { return }
 
+    $profileSettings = Get-CleanLoopProfileSettings -Profile $state.profile
+    $interval = if ($state.intervalMinutes -gt 0) { $state.intervalMinutes } else { $profileSettings.defaultIntervalMinutes }
+
     $lastUtc      = if ($state.lastRunUtc) { [datetime]$state.lastRunUtc } else { [datetime]::MinValue }
     $minutesSince = ([datetime]::UtcNow - $lastUtc).TotalMinutes
-    if ($minutesSince -lt $state.intervalMinutes) { return }
+    if ($minutesSince -lt $interval) { return }
 
     $engine = Get-ShellEngine
     if (-not (Test-Path $engine)) { return }
@@ -2847,45 +3232,98 @@ function Invoke-CleanLoopCommand {
 
     switch ($sub) {
         'on' {
-            $mins = $script:CleanLoopDefaultMinutes
+            $state = Read-CleanLoopState
+            $profile = $state.profile
+            $mins = $state.intervalMinutes
+
             if ($Rest.Count -ge 2) {
-                $parsed = 0
-                if ($Rest[1] -match '^\d+$' -and [int]::TryParse($Rest[1], [ref]$parsed) -and $parsed -ge 1) {
-                    $mins = $parsed
+                foreach ($token in ($Rest | Select-Object -Skip 1)) {
+                    $arg = $token.ToLowerInvariant()
+                    $parsed = 0
+                    if ($script:CleanLoopKnownProfiles -contains $arg) {
+                        $profile = $arg
+                        continue
+                    }
+                    if ($arg -match '^\d+$' -and [int]::TryParse($arg, [ref]$parsed) -and $parsed -ge 1) {
+                        $mins = $parsed
+                    }
                 }
             }
-            Write-CleanLoopState -Enabled $true -IntervalMinutes $mins
-            Write-Host ('  clean loop: ON  every {0} min  (RAM flush + DNS flush, no file deletion)' -f $mins) -ForegroundColor Green
+
+            $profileSettings = Get-CleanLoopProfileSettings -Profile $profile
+            if (-not $mins -or $mins -lt 1) {
+                $mins = $profileSettings.defaultIntervalMinutes
+            }
+
+            Write-CleanLoopState -Enabled $true -IntervalMinutes $mins -Profile $profile -CooldownMinutes $profileSettings.defaultCooldownMinutes
+            Write-Host ('  clean loop: ON  every {0} min  profile={1}' -f $mins, $profile) -ForegroundColor Green
+            Write-Host '  safety: lock + cooldown + dry-run-first deep preview (no auto file deletion).' -ForegroundColor DarkGray
         }
         'off' {
             $state = Read-CleanLoopState
-            Write-CleanLoopState -Enabled $false -IntervalMinutes $state.intervalMinutes
+            Write-CleanLoopState -Enabled $false -IntervalMinutes $state.intervalMinutes -Profile $state.profile -CooldownMinutes $state.cooldownMinutes
             Write-Host '  clean loop: OFF' -ForegroundColor DarkGray
+        }
+        'profile' {
+            $state = Read-CleanLoopState
+            if ($Rest.Count -lt 2) {
+                Write-Host ('  current profile: {0}' -f $state.profile) -ForegroundColor Cyan
+                Write-Host ('  available: {0}' -f ($script:CleanLoopKnownProfiles -join ', ')) -ForegroundColor DarkGray
+                return
+            }
+
+            $requested = $Rest[1].ToLowerInvariant()
+            if (-not ($script:CleanLoopKnownProfiles -contains $requested)) {
+                Write-Host ('  invalid profile: {0}' -f $requested) -ForegroundColor DarkYellow
+                Write-Host ('  available: {0}' -f ($script:CleanLoopKnownProfiles -join ', ')) -ForegroundColor DarkGray
+                return
+            }
+
+            $settings = Get-CleanLoopProfileSettings -Profile $requested
+            Write-CleanLoopState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes -Profile $requested -CooldownMinutes $settings.defaultCooldownMinutes
+            Write-Host ('  clean loop profile set: {0}' -f $requested) -ForegroundColor Green
         }
         'now' {
             Write-Host '  Running clean loop tick...' -ForegroundColor Yellow
-            Invoke-CleanLoopTick
-            Write-Host '  Done: RAM flushed, DNS cleared.' -ForegroundColor Green
+            Invoke-CleanLoopTick -Manual
         }
         'status' {
             $state = Read-CleanLoopState
+            $settings = Get-CleanLoopProfileSettings -Profile $state.profile
             $lastStr = if ($state.lastRunUtc) {
                 $last = [datetime]$state.lastRunUtc
+                $ago  = [math]::Round(([datetime]::UtcNow - $last).TotalMinutes, 1)
+                ('{0:u}  ({1} min ago)' -f $last, $ago)
+            } else { 'never' }
+            $deepStr = if ($state.lastDeepRunUtc) {
+                $last = [datetime]$state.lastDeepRunUtc
                 $ago  = [math]::Round(([datetime]::UtcNow - $last).TotalMinutes, 1)
                 ('{0:u}  ({1} min ago)' -f $last, $ago)
             } else { 'never' }
             $stateColor = if ($state.enabled) { 'Green' } else { 'DarkGray' }
             Write-Host ''
             Write-Host ('  clean loop: {0}  every {1} min' -f $(if ($state.enabled) { 'ON' } else { 'OFF' }), $state.intervalMinutes) -ForegroundColor $stateColor
+            Write-Host ('  profile:    {0}' -f $state.profile) -ForegroundColor Cyan
             Write-Host ('  last run:   {0}' -f $lastStr) -ForegroundColor DarkGray
-            Write-Host '  safe ops:   RAM GC + working set trim + DNS flush + ARP flush' -ForegroundColor DarkGray
+            Write-Host ('  last deep:  {0}' -f $deepStr) -ForegroundColor DarkGray
+            Write-Host ('  cooldown:   {0} min' -f $state.cooldownMinutes) -ForegroundColor DarkGray
+            Write-Host '  safe ops:   RAM GC + working set trim + DNS flush + ARP flush (always)' -ForegroundColor DarkGray
+            if ($settings.runDryCleanPreview) {
+                Write-Host ('  deep ops:   dry-run clean preview every tick (stale>{0}d)' -f $settings.dryCleanStaleDays) -ForegroundColor DarkGray
+            }
+            if ($settings.runDefenderQuickScan) {
+                Write-Host '  deep ops:   Defender quick scan on cooldown' -ForegroundColor DarkGray
+            }
             Write-Host ''
         }
         { $_ -in 'help', '-h', '--help' } {
             Write-Host ''
-            Write-HintSection 'CLEAN LOOP -- background auto-optimization (RAM/network only, no file deletion)'
-            Write-HintRow '8sync clean --loop on'       'Start loop with default interval (5 min)'
-            Write-HintRow '8sync clean --loop on N'     'Start loop every N minutes  e.g. --loop on 10'
+            Write-HintSection 'CLEAN LOOP -- background auto-optimization (safe-by-default)'
+            Write-HintRow '8sync clean --loop on'       'Start loop with current/default interval and profile'
+            Write-HintRow '8sync clean --loop on N'     'Start loop every N minutes'
+            Write-HintRow '8sync clean --loop on deep'  'Enable deep profile (dry-run clean + Defender cooldown)'
+            Write-HintRow '8sync clean --loop on 15 balanced' 'Set interval + profile together'
+            Write-HintRow '8sync clean --loop profile <name>' 'Set profile only: light|balanced|deep'
             Write-HintRow '8sync clean --loop off'      'Stop the background clean loop'
             Write-HintRow '8sync clean --loop now'      'Run one tick immediately'
             Write-HintRow '8sync clean --loop status'   'Show loop state and last run time'
@@ -2894,10 +3332,16 @@ function Invoke-CleanLoopCommand {
         default {
             $parsed = 0
             if ([int]::TryParse($sub, [ref]$parsed) -and $parsed -ge 1) {
-                Write-CleanLoopState -Enabled $true -IntervalMinutes $parsed
+                $state = Read-CleanLoopState
+                Write-CleanLoopState -Enabled $true -IntervalMinutes $parsed -Profile $state.profile -CooldownMinutes $state.cooldownMinutes
                 Write-Host ('  clean loop: ON  every {0} min' -f $parsed) -ForegroundColor Green
+            } elseif ($script:CleanLoopKnownProfiles -contains $sub) {
+                $state = Read-CleanLoopState
+                $settings = Get-CleanLoopProfileSettings -Profile $sub
+                Write-CleanLoopState -Enabled $true -IntervalMinutes $state.intervalMinutes -Profile $sub -CooldownMinutes $settings.defaultCooldownMinutes
+                Write-Host ('  clean loop: ON  profile={0}' -f $sub) -ForegroundColor Green
             } else {
-                Write-Host ('  Unknown loop subcommand: {0}. Try: on, off, now, status' -f $sub) -ForegroundColor DarkYellow
+                Write-Host ('  Unknown loop subcommand: {0}. Try: on, off, profile, now, status' -f $sub) -ForegroundColor DarkYellow
             }
         }
     }
@@ -3178,9 +3622,10 @@ function Invoke-CleanCommand {
                 Write-HintRow '8sync clean --scan'                   'Windows Defender quick + dev-folder scan'
                 Write-HintRow '8sync clean --scan <path>'            'Targeted Defender scan on specific path'
                 Write-HintRow '8sync clean --audit'                  'npm/cargo/pip vulnerability scan + postinstall check'
-                Write-HintRow '8sync clean --loop on [N]'            'Background RAM/DNS flush every N min (default 5)'
+                Write-HintRow '8sync clean --loop on [N] [profile]'  'Auto loop: light|balanced|deep with safety lock/cooldown'
                 Write-HintRow '8sync clean --loop off'               'Stop background clean loop'
                 Write-HintRow '8sync clean --loop status'            'Show loop state and last run time'
+                Write-HintRow '8sync clean --loop profile <name>'    'Change loop profile: light|balanced|deep'
                 Write-Host ''
                 return
             }
@@ -3319,6 +3764,106 @@ function Invoke-OpencodeCommand {
     Write-Host ''
 }
 
+function Show-ThemeHelp {
+    Write-Host ''
+    Write-HintSection 'WEZTERM GLASS THEME'
+    Write-HintRow '8sync theme status'                  'Show current style, scene, and adaptive hint'
+    Write-HintRow '8sync theme list'                    'List available styles and scenes'
+    Write-HintRow '8sync theme <style> [scene]'         'Set style quickly, optional scene'
+    Write-HintRow '8sync theme style <name>'            'Set style only'
+    Write-HintRow '8sync theme scene <name>'            'Set scene only'
+    Write-HintRow '8sync theme help'                    'Show this help'
+    Write-Host ''
+}
+
+function Show-ThemeStatus {
+    $state = Read-CurrentStyleState
+    Write-Host ''
+    Write-Host ('  glass style: {0}' -f $state.style) -ForegroundColor Cyan
+    Write-Host ('  glass scene: {0}' -f $state.scene) -ForegroundColor Cyan
+    Write-Host ('  adaptive hint: {0}' -f $state.bgHint) -ForegroundColor DarkGray
+    Write-Host ('  styles: {0}' -f ($script:KnownGlassStyles -join ', ')) -ForegroundColor DarkGray
+    Write-Host ('  scenes: {0}' -f ($script:KnownGlassScenes -join ', ')) -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Invoke-ThemeCommand {
+    param([string[]]$Rest)
+
+    if (-not $Rest -or $Rest.Count -eq 0) {
+        Show-ThemeStatus
+        Show-ThemeHelp
+        return
+    }
+
+    $sub = $Rest[0].ToLowerInvariant()
+
+    if ($sub -in @('help', '--help', '-h')) {
+        Show-ThemeHelp
+        return
+    }
+
+    if ($sub -eq 'status') {
+        Show-ThemeStatus
+        return
+    }
+
+    if ($sub -eq 'list') {
+        Show-ThemeStatus
+        return
+    }
+
+    $targetStyle = $null
+    $targetScene = $null
+
+    switch ($sub) {
+        'style' {
+            if ($Rest.Count -lt 2) {
+                Write-Host ('Usage: 8sync theme style <{0}>' -f ($script:KnownGlassStyles -join '|')) -ForegroundColor DarkYellow
+                return
+            }
+            $targetStyle = $Rest[1].ToLowerInvariant()
+        }
+        'scene' {
+            if ($Rest.Count -lt 2) {
+                Write-Host ('Usage: 8sync theme scene <{0}>' -f ($script:KnownGlassScenes -join '|')) -ForegroundColor DarkYellow
+                return
+            }
+            $targetScene = $Rest[1].ToLowerInvariant()
+        }
+        default {
+            if ($script:KnownGlassStyles -contains $sub) {
+                $targetStyle = $sub
+                if ($Rest.Count -ge 2) {
+                    $targetScene = $Rest[1].ToLowerInvariant()
+                }
+            } elseif ($script:KnownGlassScenes -contains $sub) {
+                $targetScene = $sub
+            } else {
+                Write-Host 'Unknown theme command.' -ForegroundColor DarkYellow
+                Show-ThemeHelp
+                return
+            }
+        }
+    }
+
+    if ($targetStyle -and -not ($script:KnownGlassStyles -contains $targetStyle)) {
+        Write-Host ('Invalid style: {0}' -f $targetStyle) -ForegroundColor DarkYellow
+        Write-Host ('Valid styles: {0}' -f ($script:KnownGlassStyles -join ', ')) -ForegroundColor DarkGray
+        return
+    }
+
+    if ($targetScene -and -not ($script:KnownGlassScenes -contains $targetScene)) {
+        Write-Host ('Invalid scene: {0}' -f $targetScene) -ForegroundColor DarkYellow
+        Write-Host ('Valid scenes: {0}' -f ($script:KnownGlassScenes -join ', ')) -ForegroundColor DarkGray
+        return
+    }
+
+    $result = Write-CurrentStyleLua -Style $targetStyle -Scene $targetScene
+    Write-Host ('Glass theme updated: style={0} scene={1} hint={2}' -f $result.style, $result.scene, $result.bgHint) -ForegroundColor Green
+    Try-ReloadWezTerm
+}
+
 function Invoke-HxCommand {
     param([string[]]$Rest)
 
@@ -3349,6 +3894,11 @@ function Invoke-HxCommand {
 }
 
 function Register-ShellEngineInits {
+    $startupMode = Get-StartupMode
+    if ($startupMode -eq 'light') {
+        return
+    }
+
     # Run zoxide and starship init AFTER all aliases are registered.
     # Both spawn an external process and Invoke-Expression the output --
     # typically 50-150ms each. Moving them here means the prompt appears
@@ -3491,6 +4041,7 @@ function Register-8SyncAlias {
             'clean'  { Invoke-CleanCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
+            'theme'  { Invoke-ThemeCommand -Rest $Rest }
             'opencode' { Invoke-OpencodeCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
@@ -3556,14 +4107,32 @@ function Ensure-NerdFont {
 }
 
 function Start-WezTermShell {
+    $startupMode = Get-StartupMode
+    $boot = [System.Diagnostics.Stopwatch]::StartNew()
+    $phaseMs = [ordered]@{}
+    $phase = [System.Diagnostics.Stopwatch]::StartNew()
+
+    $markPhase = {
+        param([Parameter(Mandatory)] [string]$Name)
+        $phaseMs[$Name] = [math]::Round($phase.Elapsed.TotalMilliseconds, 1)
+        $phase.Restart()
+    }
+
     $psVer = $PSVersionTable.PSVersion
     if ($psVer.Major -lt 5 -or ($psVer.Major -eq 5 -and $psVer.Minor -lt 1)) {
         Write-Warning ('[8sync] PowerShell {0}.{1} detected. Minimum supported: 5.1. Some features may not work.' -f $psVer.Major, $psVer.Minor)
         Write-Warning '[8sync] Install pwsh 7+: scoop install powershell  or  https://aka.ms/powershell'
     }
+    & $markPhase 'version-check'
 
     Ensure-PreferredPaths
-    Ensure-NerdFont
+    & $markPhase 'preferred-paths'
+
+    if ($startupMode -ne 'light') {
+        Ensure-NerdFont
+    }
+    & $markPhase 'font-check'
+
     $env:TERM_PROGRAM = 'WezTerm'
     if ($Host.UI -and $Host.UI.RawUI) {
         try {
@@ -3572,15 +4141,36 @@ function Start-WezTermShell {
             # Ignore if console doesn't support title setting
         }
     }
+    & $markPhase 'terminal-meta'
+
     Set-HistoryExperience
+    & $markPhase 'history'
+
     Set-ToolAliases
-    Start-AutoSync
-    Start-BgRotateCheck
-    Start-CleanLoopCheck
+    & $markPhase 'aliases-and-engines'
+
+    if ($startupMode -eq 'light') {
+        Start-CleanLoopCheck
+        & $markPhase 'background-checks(light)'
+    } else {
+        Start-AutoSync
+        Start-BgRotateCheck
+        Start-CleanLoopCheck
+        & $markPhase 'background-checks(full)'
+    }
 
     $missingPackages = Get-MissingPackages
+    & $markPhase 'missing-cache'
+
     if ($missingPackages.Count -gt 0) {
         Write-Host ('[8sync] Missing tools: {0}. Run "8sync sync" to install.' -f ($missingPackages -join ', ')) -ForegroundColor DarkYellow
+    }
+
+    $boot.Stop()
+    Write-StartupProfile -Mode $startupMode -Phases $phaseMs -TotalMs $boot.Elapsed.TotalMilliseconds
+
+    if ($env:WEZTERM_BOOT_TRACE -eq '1') {
+        Write-Host ('[8sync] startup {0}ms ({1})' -f [math]::Round($boot.Elapsed.TotalMilliseconds, 1), $startupMode) -ForegroundColor DarkGray
     }
 }
 

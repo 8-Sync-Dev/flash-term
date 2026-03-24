@@ -12,6 +12,7 @@ local fallback_bg_path = config_dir .. "\\bg\\your-name-couple-3840x2160-25439.j
 local current_bg_lua = config_dir .. "\\current-bg.lua"
 local bootstrap_path = config_dir .. "\\wezterm-bootstrap.ps1"
 local current_opacity_lua = config_dir .. "\\current-opacity.lua"
+local current_style_lua = config_dir .. "\\current-style.lua"
 
 local default_shell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
 local pwsh_path = home .. "\\scoop\\shims\\pwsh.exe"
@@ -34,15 +35,281 @@ local function load_background_path()
   return nil
 end
 
-local function load_opacity()
+local function clamp_number(value, min_value, max_value)
+  return math.max(min_value, math.min(max_value, value))
+end
+
+local function load_opacity(default_value, adaptive_delta)
+  local base_value = default_value
   if file_exists(current_opacity_lua) then
     local ok, value = pcall(dofile, current_opacity_lua)
     if ok and type(value) == "number" then
-      return math.max(0, math.min(1, value))
+      base_value = value
     end
   end
-  return 0.72
+
+  return clamp_number(base_value + (adaptive_delta or 0), 0, 1)
 end
+
+local function load_style_state()
+  if not file_exists(current_style_lua) then
+    return nil
+  end
+
+  local ok, value = pcall(dofile, current_style_lua)
+  if not ok or type(value) ~= "table" then
+    return nil
+  end
+
+  local result = {}
+  if type(value.style) == "string" and value.style ~= "" then
+    result.style = value.style
+  end
+  if type(value.scene) == "string" and value.scene ~= "" then
+    result.scene = value.scene
+  end
+  if type(value.bg_hint) == "string" and value.bg_hint ~= "" then
+    result.bg_hint = value.bg_hint
+  end
+
+  return result
+end
+
+local style_presets = {
+  neon_glass = {
+    window = {
+      background_opacity = 0.88,
+      text_background_opacity = 0.88,
+    },
+    background = {
+      brightness = 0.26,
+      saturation = 0.88,
+      overlay_color = "#0b1220",
+      overlay_opacity_default = 0.72,
+    },
+    frame = {
+      active_titlebar_bg = "#0b1220",
+      inactive_titlebar_bg = "#09101c",
+      active_titlebar_fg = "#bff9ff",
+      inactive_titlebar_fg = "#6f829f",
+      active_titlebar_border_bottom = "#22456b",
+      inactive_titlebar_border_bottom = "#152a43",
+      button_fg = "#bff9ff",
+      button_bg = "#15253c",
+      button_hover_fg = "#07111d",
+      button_hover_bg = "#38e7ff",
+      border_left_width = "3px",
+      border_right_width = "3px",
+      border_top_height = "3px",
+      border_bottom_height = "3px",
+      border_left_color = "#38e7ff",
+      border_right_color = "#8b5cf6",
+      border_top_color = "#38e7ff",
+      border_bottom_color = "#8b5cf6",
+    },
+    tab = {
+      active_fg = "#f2feff",
+      active_bg = "#24496e",
+      inactive_fg = "#9badc6",
+      inactive_bg = "#121d31",
+      hover_fg = "#e6f6ff",
+      hover_bg = "#1a304d",
+    },
+    status = {
+      base_bg = "#09101c",
+      ws_fg = "#f8fcff",
+      ws_bg = "#1e40af",
+      cwd_fg = "#ecfeff",
+      cwd_bg = "#0f766e",
+      proc_fg = "#e2e8f0",
+      proc_bg = "#364152",
+      dim_fg = "#6f829f",
+    },
+  },
+  ice_glass = {
+    window = {
+      background_opacity = 0.92,
+      text_background_opacity = 0.92,
+    },
+    background = {
+      brightness = 0.30,
+      saturation = 0.86,
+      overlay_color = "#0b1521",
+      overlay_opacity_default = 0.66,
+    },
+    frame = {
+      active_titlebar_bg = "#0d1b2a",
+      inactive_titlebar_bg = "#0b1521",
+      active_titlebar_fg = "#e0f2fe",
+      inactive_titlebar_fg = "#7f93a8",
+      active_titlebar_border_bottom = "#2a4f70",
+      inactive_titlebar_border_bottom = "#1b3248",
+      button_fg = "#e0f2fe",
+      button_bg = "#1a2e43",
+      button_hover_fg = "#0b1521",
+      button_hover_bg = "#67e8f9",
+      border_left_width = "3px",
+      border_right_width = "3px",
+      border_top_height = "3px",
+      border_bottom_height = "3px",
+      border_left_color = "#67e8f9",
+      border_right_color = "#38bdf8",
+      border_top_color = "#67e8f9",
+      border_bottom_color = "#38bdf8",
+    },
+    tab = {
+      active_fg = "#f0f9ff",
+      active_bg = "#27445e",
+      inactive_fg = "#8ba1b8",
+      inactive_bg = "#152438",
+      hover_fg = "#e0f2fe",
+      hover_bg = "#1f334a",
+    },
+    status = {
+      base_bg = "#0b1521",
+      ws_fg = "#f0f9ff",
+      ws_bg = "#0369a1",
+      cwd_fg = "#ecfeff",
+      cwd_bg = "#0f766e",
+      proc_fg = "#e2e8f0",
+      proc_bg = "#334155",
+      dim_fg = "#64748b",
+    },
+  },
+  mint_glass = {
+    window = {
+      background_opacity = 0.90,
+      text_background_opacity = 0.90,
+    },
+    background = {
+      brightness = 0.29,
+      saturation = 0.90,
+      overlay_color = "#0b1f1a",
+      overlay_opacity_default = 0.67,
+    },
+    frame = {
+      active_titlebar_bg = "#0f1f1a",
+      inactive_titlebar_bg = "#0b1713",
+      active_titlebar_fg = "#d1fae5",
+      inactive_titlebar_fg = "#6b8f85",
+      active_titlebar_border_bottom = "#215f54",
+      inactive_titlebar_border_bottom = "#173f38",
+      button_fg = "#d1fae5",
+      button_bg = "#18352f",
+      button_hover_fg = "#08110f",
+      button_hover_bg = "#34d399",
+      border_left_width = "3px",
+      border_right_width = "3px",
+      border_top_height = "3px",
+      border_bottom_height = "3px",
+      border_left_color = "#34d399",
+      border_right_color = "#2dd4bf",
+      border_top_color = "#34d399",
+      border_bottom_color = "#2dd4bf",
+    },
+    tab = {
+      active_fg = "#f0fdf4",
+      active_bg = "#21544a",
+      inactive_fg = "#95b8ae",
+      inactive_bg = "#132a24",
+      hover_fg = "#dcfce7",
+      hover_bg = "#1a3b33",
+    },
+    status = {
+      base_bg = "#0b1713",
+      ws_fg = "#f0fdf4",
+      ws_bg = "#0f766e",
+      cwd_fg = "#ecfdf5",
+      cwd_bg = "#047857",
+      proc_fg = "#d1fae5",
+      proc_bg = "#2f4f46",
+      dim_fg = "#6b8f85",
+    },
+  },
+}
+
+local scene_presets = {
+  focus = {
+    window_background_opacity = 0.93,
+    text_background_opacity = 0.90,
+    overlay_opacity = 0.75,
+    adaptive_overlay_strength = 0.10,
+  },
+  cinematic = {
+    window_background_opacity = 0.89,
+    text_background_opacity = 0.86,
+    overlay_opacity = 0.69,
+    adaptive_overlay_strength = 0.08,
+  },
+  showcase = {
+    window_background_opacity = 0.84,
+    text_background_opacity = 0.82,
+    overlay_opacity = 0.61,
+    adaptive_overlay_strength = 0.06,
+  },
+}
+
+local function infer_bg_hint_from_path(path)
+  if not path or path == "" then
+    return "neutral"
+  end
+
+  local lowered = string.lower(path)
+  if lowered:find("bright", 1, true)
+      or lowered:find("light", 1, true)
+      or lowered:find("snow", 1, true)
+      or lowered:find("day", 1, true)
+      or lowered:find("white", 1, true)
+      or lowered:find("sun", 1, true) then
+    return "bright"
+  end
+
+  if lowered:find("dark", 1, true)
+      or lowered:find("night", 1, true)
+      or lowered:find("moon", 1, true)
+      or lowered:find("space", 1, true)
+      or lowered:find("black", 1, true)
+      or lowered:find("neon", 1, true) then
+    return "dark"
+  end
+
+  return "neutral"
+end
+
+local function overlay_delta_from_hint(bg_hint, strength)
+  if bg_hint == "bright" then
+    return strength
+  end
+  if bg_hint == "dark" then
+    return -strength
+  end
+  return 0
+end
+
+local style_state = load_style_state() or {}
+local env_style_name = os.getenv("WEZTERM_GLASS_STYLE")
+local env_scene_name = os.getenv("WEZTERM_GLASS_SCENE")
+
+local active_style_name = "neon_glass"
+if env_style_name and style_presets[env_style_name] then
+  active_style_name = env_style_name
+elseif style_state.style and style_presets[style_state.style] then
+  active_style_name = style_state.style
+end
+
+local active_scene_name = "focus"
+if env_scene_name and scene_presets[env_scene_name] then
+  active_scene_name = env_scene_name
+elseif style_state.scene and scene_presets[style_state.scene] then
+  active_scene_name = style_state.scene
+end
+
+local active_style = style_presets[active_style_name] or style_presets.neon_glass
+local active_scene = scene_presets[active_scene_name] or scene_presets.focus
+
+local active_bg_path = load_background_path()
+local bg_hint = style_state.bg_hint or infer_bg_hint_from_path(active_bg_path)
+local adaptive_overlay_delta = overlay_delta_from_hint(bg_hint, active_scene.adaptive_overlay_strength)
 
 local function pane_cwd(pane)
   local cwd_uri = pane:get_current_working_dir()
@@ -79,60 +346,44 @@ local function truncate_text(text, max_len)
   return text:sub(1, max_len - 2) .. ".."
 end
 
-local neon_colors = {
-  { l = "#00e5ff", r = "#7c3aed" },
-  { l = "#7c3aed", r = "#ff00c8" },
-  { l = "#ff00c8", r = "#00e5ff" },
-  { l = "#00ff99", r = "#00e5ff" },
-}
-local neon_idx = 1
-local neon_last = 0
-local neon_interval = 2.8
+local function append_items(dst, src)
+  for _, item in ipairs(src) do
+    table.insert(dst, item)
+  end
+end
+
+local function status_chip(text, fg, bg)
+  return {
+    { Background = { Color = bg } },
+    { Foreground = { Color = fg } },
+    { Text = " " .. text .. " " },
+  }
+end
 
 wezterm.on("update-status", function(window, pane)
-  local now = wezterm.time.now()
-  if now - neon_last >= neon_interval then
-    neon_last = now
-    neon_idx = (neon_idx % #neon_colors) + 1
-    local c = neon_colors[neon_idx]
-    window:set_config_overrides({
-      window_frame = {
-        active_titlebar_bg         = "#0b1220",
-        inactive_titlebar_bg       = "#0a0f1a",
-        active_titlebar_fg         = "#8ffbff",
-        inactive_titlebar_fg       = "#5c6b86",
-        active_titlebar_border_bottom   = "#1d3b5f",
-        inactive_titlebar_border_bottom = "#111b2e",
-        button_fg       = "#8ffbff",
-        button_bg       = "#101c2f",
-        button_hover_fg = "#0b1220",
-        button_hover_bg = "#00e5ff",
-        border_left_width    = "2px",
-        border_right_width   = "2px",
-        border_top_height    = "2px",
-        border_bottom_height = "2px",
-        border_left_color    = c.l,
-        border_right_color   = c.r,
-        border_top_color     = c.r,
-        border_bottom_color  = c.l,
-      },
-    })
-  end
-
   local cwd     = pane_cwd(pane)
   local process = basename(pane:get_foreground_process_name() or "")
   local ws      = truncate_text(window:active_workspace(), 12)
   local cwd_lbl = truncate_text(cwd ~= "" and basename(cwd) or "~", 18)
   local proc_lbl = truncate_text(process, 16)
+  local status_colors = active_style.status
 
-  window:set_right_status(wezterm.format({
-    { Foreground = { Color = "#a6adc8" } },
-    { Text = "  " .. ws .. "  " },
-    { Foreground = { Color = "#89b4fa" } },
-    { Text = cwd_lbl },
-    { Foreground = { Color = "#6c7086" } },
-    { Text = "  " .. proc_lbl .. "  " },
-  }))
+  local items = {
+    { Background = { Color = status_colors.base_bg } },
+    { Foreground = { Color = status_colors.dim_fg } },
+    { Text = " " },
+  }
+  append_items(items, status_chip(ws, status_colors.ws_fg, status_colors.ws_bg))
+  table.insert(items, { Background = { Color = status_colors.base_bg } })
+  table.insert(items, { Text = " " })
+  append_items(items, status_chip(cwd_lbl, status_colors.cwd_fg, status_colors.cwd_bg))
+  table.insert(items, { Background = { Color = status_colors.base_bg } })
+  table.insert(items, { Text = " " })
+  append_items(items, status_chip(proc_lbl, status_colors.proc_fg, status_colors.proc_bg))
+  table.insert(items, { Background = { Color = status_colors.base_bg } })
+  table.insert(items, { Text = " " })
+
+  window:set_right_status(wezterm.format(items))
 end)
 
 wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
@@ -140,8 +391,22 @@ wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
   if title == "" then
     title = basename(tab.active_pane.foreground_process_name or "shell")
   end
-  local max_chars = math.max(6, max_width - 6)
-  return " " .. truncate_text(title, max_chars) .. " "
+  local max_chars = math.max(6, max_width - 8)
+  local label = truncate_text(title, max_chars)
+  local tab_colors = active_style.tab
+  local fg = tab.is_active and tab_colors.active_fg or tab_colors.inactive_fg
+  local bg = tab.is_active and tab_colors.active_bg or tab_colors.inactive_bg
+
+  if hover and not tab.is_active then
+    fg = tab_colors.hover_fg
+    bg = tab_colors.hover_bg
+  end
+
+  return {
+    { Background = { Color = bg } },
+    { Foreground = { Color = fg } },
+    { Text = "  " .. label .. "  " },
+  }
 end)
 
 wezterm.on("format-window-title", function(tab, pane)
@@ -183,16 +448,15 @@ config.freetype_render_target = "HorizontalLcd"
 
 config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
 config.win32_system_backdrop = "Acrylic"
-config.window_padding = { left = 10, right = 10, top = 8, bottom = 8 }
+config.window_padding = { left = 12, right = 12, top = 9, bottom = 9 }
 config.initial_cols = 150
 config.initial_rows = 42
 config.adjust_window_size_when_changing_font_size = false
 
 config.color_scheme = "Catppuccin Mocha"
-config.window_background_opacity = 0.0
-config.text_background_opacity = 1.0
+config.window_background_opacity = active_scene.window_background_opacity
+config.text_background_opacity = active_scene.text_background_opacity
 
-local active_bg_path = load_background_path()
 if active_bg_path then
   config.background = {
     {
@@ -200,15 +464,15 @@ if active_bg_path then
       width = "100%",
       height = "100%",
       hsb = {
-        brightness = 0.32,
-        saturation = 0.95,
+        brightness = active_style.background.brightness,
+        saturation = active_style.background.saturation,
       },
     },
     {
-      source = { Color = "#11111b" },
+      source = { Color = active_style.background.overlay_color },
       width = "100%",
       height = "100%",
-      opacity = load_opacity(),
+      opacity = load_opacity(active_scene.overlay_opacity or active_style.background.overlay_opacity_default, adaptive_overlay_delta),
     },
   }
 end
@@ -241,31 +505,12 @@ else
 end
 config.webgpu_power_preference = "HighPerformance"
 
-config.window_frame = {
-  active_titlebar_bg = "#0b1220",
-  inactive_titlebar_bg = "#0a0f1a",
-  active_titlebar_fg = "#8ffbff",
-  inactive_titlebar_fg = "#5c6b86",
-  active_titlebar_border_bottom = "#1d3b5f",
-  inactive_titlebar_border_bottom = "#111b2e",
-  button_fg = "#8ffbff",
-  button_bg = "#101c2f",
-  button_hover_fg = "#0b1220",
-  button_hover_bg = "#00e5ff",
-  border_left_width    = "2px",
-  border_right_width   = "2px",
-  border_top_height    = "2px",
-  border_bottom_height = "2px",
-  border_left_color    = "#00e5ff",
-  border_right_color   = "#7c3aed",
-  border_top_color     = "#00e5ff",
-  border_bottom_color  = "#7c3aed",
-}
+config.window_frame = active_style.frame
 
 config.integrated_title_buttons = { "Hide", "Maximize", "Close" }
 config.integrated_title_button_style = "Windows"
 config.integrated_title_button_alignment = "Right"
-config.integrated_title_button_color = "#00e5ff"
+config.integrated_title_button_color = active_style.frame.button_fg
 
 config.hide_tab_bar_if_only_one_tab = true
 config.use_fancy_tab_bar = true

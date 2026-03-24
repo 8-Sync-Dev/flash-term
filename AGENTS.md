@@ -12,6 +12,7 @@ A WezTerm terminal configuration for Windows 11. Two primary source files:
 Two files are **generated at runtime** and must never be committed (they are in `.gitignore`):
 - `current-bg.lua` — written by `8sync bg set`, read by `wezterm.lua`
 - `current-opacity.lua` — written by `8sync hx opacity`, read by `wezterm.lua`
+- `current-style.lua` — written by `8sync theme` / `8sync bg set`, read by `wezterm.lua`
 
 ## Build / Lint / Test Commands
 
@@ -186,6 +187,7 @@ Never assume a managed tool is present. Use `Test-CommandExists` before setting 
 | `wezterm-bootstrap.ps1` | Shell bootstrap + 8sync | Yes |
 | `current-bg.lua` | Generated: active wallpaper path | **No** |
 | `current-opacity.lua` | Generated: overlay opacity | **No** |
+| `current-style.lua` | Generated: active glass style/scene + bg hint | **No** |
 | `bg/` | Downloaded wallpaper images | **No** |
 | `fonts/` | Bundled Nerd Font | **No** |
 | `.state/` | Runtime state (JSON) | **No** |
