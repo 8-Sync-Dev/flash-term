@@ -62,7 +62,8 @@ local function pane_cwd(pane)
 end
 
 local function basename(path)
-  return path:match("([^\\]+)$") or path
+  path = path:gsub("[/\\]+$", "")
+  return path:match("([^/\\]+)$") or path
 end
 
 local function truncate_text(text, max_len)
@@ -78,21 +79,68 @@ local function truncate_text(text, max_len)
   return text:sub(1, max_len - 2) .. ".."
 end
 
+local neon_colors = {
+  { l = "#00e5ff", r = "#7c3aed" },
+  { l = "#7c3aed", r = "#ff00c8" },
+  { l = "#ff00c8", r = "#00e5ff" },
+  { l = "#00ff99", r = "#00e5ff" },
+}
+local neon_idx = 1
+local neon_last = 0
+
 wezterm.on("update-status", function(window, pane)
-  local cwd = pane_cwd(pane)
+  local now = wezterm.time.now()
+  if now - neon_last >= 2.5 then
+    neon_last = now
+    neon_idx = (neon_idx % #neon_colors) + 1
+    local c = neon_colors[neon_idx]
+    window:set_config_overrides({
+      window_frame = {
+        active_titlebar_bg         = "#0b1220",
+        inactive_titlebar_bg       = "#0a0f1a",
+        active_titlebar_fg         = "#8ffbff",
+        inactive_titlebar_fg       = "#5c6b86",
+        active_titlebar_border_bottom   = "#1d3b5f",
+        inactive_titlebar_border_bottom = "#111b2e",
+        button_fg       = "#8ffbff",
+        button_bg       = "#101c2f",
+        button_hover_fg = "#0b1220",
+        button_hover_bg = "#00e5ff",
+        border_left_width    = "2px",
+        border_right_width   = "2px",
+        border_top_height    = "2px",
+        border_bottom_height = "2px",
+        border_left_color    = c.l,
+        border_right_color   = c.r,
+        border_top_color     = c.l,
+        border_bottom_color  = c.r,
+      },
+    })
+  end
+
+  local cwd     = pane_cwd(pane)
   local process = basename(pane:get_foreground_process_name() or "")
-  local workspace = truncate_text(window:active_workspace(), 12)
-  local cwd_label = truncate_text(cwd ~= "" and basename(cwd) or "~", 18)
-  local process_label = truncate_text(process, 16)
+  local ws      = truncate_text(window:active_workspace(), 12)
+  local cwd_lbl = truncate_text(cwd ~= "" and basename(cwd) or "~", 18)
+  local proc_lbl = truncate_text(process, 16)
 
   window:set_right_status(wezterm.format({
     { Foreground = { Color = "#a6adc8" } },
-    { Text = "  " .. workspace .. "  " },
+    { Text = "  " .. ws .. "  " },
     { Foreground = { Color = "#89b4fa" } },
-    { Text = cwd_label },
+    { Text = cwd_lbl },
     { Foreground = { Color = "#6c7086" } },
-    { Text = "  " .. process_label .. "  " },
+    { Text = "  " .. proc_lbl .. "  " },
   }))
+end)
+
+wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
+  local title = tab.active_pane.title or ""
+  if title == "" then
+    title = basename(tab.active_pane.foreground_process_name or "shell")
+  end
+  local max_chars = math.max(6, max_width - 6)
+  return " " .. truncate_text(title, max_chars) .. " "
 end)
 
 wezterm.on("format-window-title", function(tab, pane)
@@ -190,6 +238,7 @@ if ok_gpus and gpus and #gpus > 0 then
 else
   config.webgpu_power_preference = "HighPerformance"
 end
+config.webgpu_power_preference = "HighPerformance"
 
 config.window_frame = {
   active_titlebar_bg = "#0b1220",
