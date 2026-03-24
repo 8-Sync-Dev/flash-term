@@ -299,6 +299,7 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
     Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
     Write-HintRow '8sync clean --loop on [N]'      'Background RAM/DNS flush every N min (default 5)'
+    Write-HintRow '8sync opencode [--dry-run]'     'Copy ~/.config/opencode into .opencode for this project'
 
     Write-HintSection 'BACKGROUND'
     Write-HintRow '8sync bg search <kw>'         'Search Wallhaven for 4K wallpapers'
@@ -642,7 +643,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-        $modes = @('help','status','sync','clean','bg','hx')
+    $modes = @('help','status','sync','clean','bg','hx','opencode')
 
         # subcommands per mode
         $subMap = @{
@@ -650,6 +651,7 @@ function Register-8SyncCompleter {
             hx    = @('lang','wrap','opacity','theme','health','help')
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','--help')
+            opencode = @('setup','--dry-run','help')
         }
 
         if ($count -le 1) {
@@ -3239,6 +3241,84 @@ function Invoke-CleanCommand {
     Invoke-SystemClean -StaleDays $staleDays -DryRun:$dryRun
 }
 
+function Find-ProjectRoot {
+    param([Parameter(Mandatory)] [string]$StartPath)
+
+    $current = $StartPath
+    try { $current = (Resolve-Path $StartPath -ErrorAction Stop).Path } catch {}
+
+    while ($true) {
+        if (Test-Path (Join-Path $current '.opencode')) { return $current }
+        if (Test-Path (Join-Path $current '.git')) { return $current }
+
+        $parent = Split-Path $current -Parent
+        if (-not $parent -or $parent -eq $current) { return $current }
+        $current = $parent
+    }
+}
+
+function Invoke-OpencodeCommand {
+    param([string[]]$Rest)
+
+    $dryRun = $Rest -contains '--dry-run'
+    $sub = if ($Rest -and $Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
+
+    if ($sub -in 'help', '-h', '--help') {
+        Write-Host ''
+        Write-HintSection 'OPENCODE CONFIG'
+        Write-HintRow '8sync opencode'           'Copy ~/.config/opencode into .opencode for current project'
+        Write-HintRow '8sync opencode --dry-run' 'Preview what would be copied'
+        Write-Host ''
+        return
+    }
+
+    $source = Join-Path $HOME '.config\opencode'
+    if (-not (Test-Path $source)) {
+        Write-Host ('  opencode source not found: {0}' -f $source) -ForegroundColor DarkYellow
+        return
+    }
+
+    $root = Find-ProjectRoot -StartPath $PWD.Path
+    $dest = Join-Path $root '.opencode'
+
+    if (-not (Test-Path $dest)) {
+        if (-not $dryRun) {
+            $null = New-Item -ItemType Directory -Path $dest -Force
+        }
+    }
+
+    Write-Host ''
+    Write-Host '  8sync opencode  project bootstrap' -ForegroundColor Cyan
+    Write-Host ('  source: {0}' -f $source) -ForegroundColor DarkGray
+    Write-Host ('  target: {0}' -f $dest) -ForegroundColor DarkGray
+    Write-Host ''
+
+    $items = Get-ChildItem $source -Force -ErrorAction SilentlyContinue
+    if (-not $items -or $items.Count -eq 0) {
+        Write-Host '  no files found to copy.' -ForegroundColor DarkGray
+        return
+    }
+
+    foreach ($item in $items) {
+        if ($item.Name -eq '.git') { continue }
+        $target = Join-Path $dest $item.Name
+        if ($dryRun) {
+            Write-Host ('  [dry-run] {0} -> {1}' -f $item.Name, $target) -ForegroundColor DarkYellow
+            continue
+        }
+        try {
+            Copy-Item $item.FullName -Destination $target -Recurse -Force -ErrorAction Stop
+            Write-Host ('  copied: {0}' -f $item.Name) -ForegroundColor Green
+        } catch {
+            Write-Host ('  failed: {0} — {1}' -f $item.Name, $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    Write-Host ''
+    Write-Host '  done.' -ForegroundColor Green
+    Write-Host ''
+}
+
 function Invoke-HxCommand {
     param([string[]]$Rest)
 
@@ -3411,6 +3491,7 @@ function Register-8SyncAlias {
             'clean'  { Invoke-CleanCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
+            'opencode' { Invoke-OpencodeCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }
