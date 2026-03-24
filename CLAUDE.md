@@ -27,6 +27,7 @@ A WezTerm terminal configuration for Windows 11, consisting of two main files:
 - All tools are installed/updated via Scoop
 - Auto-sync runs in a hidden background process when tools are missing or stale (72h interval)
 - State persisted to `.state/tool-state.json`; `.state/sync.lock` prevents concurrent syncs
+- `8sync opencode` copies the user's OpenCode config from `~/.config/opencode` into `.opencode` at the project root (root auto-detected by `.opencode` or `.git`)
 
 ### Key Design Patterns
 - **Graceful degradation**: every tool check uses `Test-CommandExists` before setting aliases; if a tool is missing, the alias is simply skipped
