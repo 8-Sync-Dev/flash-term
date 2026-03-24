@@ -87,10 +87,11 @@ local neon_colors = {
 }
 local neon_idx = 1
 local neon_last = 0
+local neon_interval = 2.8
 
 wezterm.on("update-status", function(window, pane)
   local now = wezterm.time.now()
-  if now - neon_last >= 2.5 then
+  if now - neon_last >= neon_interval then
     neon_last = now
     neon_idx = (neon_idx % #neon_colors) + 1
     local c = neon_colors[neon_idx]
@@ -112,8 +113,8 @@ wezterm.on("update-status", function(window, pane)
         border_bottom_height = "2px",
         border_left_color    = c.l,
         border_right_color   = c.r,
-        border_top_color     = c.l,
-        border_bottom_color  = c.r,
+        border_top_color     = c.r,
+        border_bottom_color  = c.l,
       },
     })
   end
