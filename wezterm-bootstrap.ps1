@@ -368,7 +368,9 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
     Write-HintRow '8sync clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
     Write-HintRow '8sync theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
-    Write-HintRow '8sync opencode [--dry-run]'     'Copy ~/.config/opencode into .opencode for this project'
+    Write-HintRow '8sync opencode install'           'Bootstrap full OpenCode config to ~/.config/opencode/'
+    Write-HintRow '8sync opencode install --dry-run' 'Preview what would be written, no changes'
+    Write-HintRow '8sync opencode status'            'Show OpenCode config + runtime status'
 
     Write-HintSection 'BACKGROUND'
     Write-HintRow '8sync bg search <kw>'         'Search Wallhaven for 4K wallpapers'
@@ -737,7 +739,7 @@ function Register-8SyncCompleter {
             theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
-            opencode = @('setup','--dry-run','help')
+            opencode = @('install','setup','status','--dry-run','help')
         }
 
         if ($count -le 1) {
@@ -4009,6 +4011,257 @@ function Set-ToolAliases {
     # Engine inits last -- these are the slowest external calls (50-150ms each)
     # All aliases/completers are already registered before this runs
     Register-ShellEngineInits
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8sync opencode — Bootstrap OpenCode config for any Windows machine
+# ─────────────────────────────────────────────────────────────────────────────
+
+function Show-OpencodeHelp {
+    Write-Host ''
+    Write-HintSection 'OPENCODE -- Bootstrap OpenCode AI coding assistant'
+    Write-HintRow '8sync opencode install'           'Bootstrap full OpenCode config to ~/.config/opencode/'
+    Write-HintRow '8sync opencode install --dry-run' 'Preview what would be written, no changes made'
+    Write-HintRow '8sync opencode status'            'Show current OpenCode install state'
+    Write-HintRow '8sync opencode help'              'Show this help'
+    Write-Host ''
+    Write-Host '  Notes:' -ForegroundColor DarkGray
+    Write-Host '    - install is idempotent: re-running overwrites config files safely' -ForegroundColor DarkGray
+    Write-Host '    - API keys in opencode.json must be set manually after install' -ForegroundColor DarkGray
+    Write-Host '    - Requires: node/npx, uv/uvx, bun (for plugins)' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Invoke-OpencodeInstall {
+    param([switch]$DryRun)
+
+    $src  = "$HOME\.config\opencode"
+    $dest = "$HOME\.config\opencode"
+
+    # ── Validate source (must be THIS machine's config, or a bundled template)
+    if (-not (Test-Path $src)) {
+        Write-Host "  [opencode] Source config not found at: $src" -ForegroundColor Red
+        Write-Host "  Cannot bootstrap — please run on a machine that already has the config." -ForegroundColor Yellow
+        return
+    }
+
+    # Collect all items to copy/create
+    $actions = [System.Collections.Generic.List[pscustomobject]]::new()
+
+    # Files & dirs to replicate (relative to $src)
+    $items = @(
+        'opencode.json'
+        'oh-my-opencode.json'
+        'AGENTS.md'
+        '.gitignore'
+        'sync-token.ps1'
+        'plugin-claude-code.py'
+        'sync-token.py'
+        'instructions\mcp-awareness.md'
+        'instructions\context-compaction.md'
+        'instructions\search-maximization.md'
+        'agents\architect.md'
+        'agents\ai-engineer.md'
+        'agents\backend-dev.md'
+        'agents\code-reviewer.md'
+        'agents\devops.md'
+        'agents\init-team.md'
+        'agents\tester.md'
+        'plugins\anthropic-auth.mjs'
+    )
+
+    foreach ($rel in $items) {
+        $srcPath  = Join-Path $src $rel
+        $destPath = Join-Path $dest $rel
+        $destDir  = Split-Path $destPath -Parent
+
+        if (Test-Path $srcPath) {
+            $actions.Add([pscustomobject]@{
+                Action   = 'copy'
+                Src      = $srcPath
+                Dest     = $destPath
+                DestDir  = $destDir
+                Rel      = $rel
+            })
+        } else {
+            $actions.Add([pscustomobject]@{
+                Action   = 'missing'
+                Src      = $srcPath
+                Dest     = $destPath
+                DestDir  = $destDir
+                Rel      = $rel
+            })
+        }
+    }
+
+    if ($DryRun) {
+        Write-Host ''
+        Write-Host '  [opencode] DRY RUN — no files will be written' -ForegroundColor Yellow
+        Write-Host ''
+        foreach ($a in $actions) {
+            if ($a.Action -eq 'copy') {
+                $exists = if (Test-Path $a.Dest) { '[overwrite]' } else { '[create]  ' }
+                Write-Host ("  {0} {1}" -f $exists, $a.Rel) -ForegroundColor Cyan
+            } else {
+                Write-Host ("  [skip]     {0}  (source missing)" -f $a.Rel) -ForegroundColor DarkGray
+            }
+        }
+        Write-Host ''
+        Write-Host '  Run without --dry-run to apply.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # ── Apply
+    Write-Host ''
+    Write-Host '  [opencode] Installing config...' -ForegroundColor Cyan
+    Write-Host ''
+
+    $copied  = 0
+    $skipped = 0
+    $errors  = 0
+
+    foreach ($a in $actions) {
+        if ($a.Action -eq 'missing') {
+            Write-Host ("  [skip]    {0}  (source missing)" -f $a.Rel) -ForegroundColor DarkGray
+            $skipped++
+            continue
+        }
+
+        try {
+            # Ensure destination directory exists
+            if (-not (Test-Path $a.DestDir)) {
+                New-Item -ItemType Directory -Path $a.DestDir -Force | Out-Null
+            }
+
+            # Skip if source and destination are the same path
+            if ($a.Src -eq $a.Dest) {
+                Write-Host ("  [same]    {0}" -f $a.Rel) -ForegroundColor DarkGray
+                $skipped++
+                continue
+            }
+
+            Copy-Item -Path $a.Src -Destination $a.Dest -Force
+            $verb = if (Test-Path $a.Dest) { 'update' } else { 'create' }
+            Write-Host ("  [ok]      {0}" -f $a.Rel) -ForegroundColor Green
+            $copied++
+        }
+        catch {
+            Write-Host ("  [error]   {0}  -- {1}" -f $a.Rel, $_.Exception.Message) -ForegroundColor Red
+            $errors++
+        }
+    }
+
+    # ── Install npm dependencies if package.json exists
+    $pkgJson = Join-Path $dest 'package.json'
+    if (Test-Path $pkgJson) {
+        Write-Host ''
+        Write-Host '  [opencode] Installing npm dependencies...' -ForegroundColor Cyan
+        try {
+            $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+            $bunCmd = Get-Command bun -ErrorAction SilentlyContinue
+            if ($bunCmd) {
+                & bun install --cwd $dest 2>&1 | Where-Object { $_ -notmatch '^$' } | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+                Write-Host '  [ok]      bun install' -ForegroundColor Green
+            } elseif ($npmCmd) {
+                & npm install --prefix $dest 2>&1 | Where-Object { $_ -notmatch '^$' } | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+                Write-Host '  [ok]      npm install' -ForegroundColor Green
+            } else {
+                Write-Host '  [skip]    npm/bun not found — run manually: bun install (in ~/.config/opencode/)' -ForegroundColor DarkYellow
+            }
+        }
+        catch {
+            Write-Host ("  [warn]    npm/bun install failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    # ── Summary
+    Write-Host ''
+    Write-Host ("  Done.  {0} copied, {1} skipped, {2} errors" -f $copied, $skipped, $errors) -ForegroundColor $(if ($errors -gt 0) { 'DarkYellow' } else { 'Cyan' })
+    Write-Host ''
+
+    # ── Post-install reminders
+    Write-Host '  NEXT STEPS:' -ForegroundColor Yellow
+    Write-Host '    1. Set your API keys in ~/.config/opencode/opencode.json' -ForegroundColor White
+    Write-Host '       - provider.anthropic.options.apiKey' -ForegroundColor DarkGray
+    Write-Host '       - mcp.zai-mcp-server.environment.Z_AI_API_KEY' -ForegroundColor DarkGray
+    Write-Host '       - mcp.web-search-prime.headers.Authorization' -ForegroundColor DarkGray
+    Write-Host '       - mcp.web-reader.headers.Authorization' -ForegroundColor DarkGray
+    Write-Host '       - mcp.zread.headers.Authorization' -ForegroundColor DarkGray
+    Write-Host '    2. Update mcp.filesystem path (currently D:\Work_Space_2026)' -ForegroundColor White
+    Write-Host '    3. Update mcp.pencil path to match local Pencil app install' -ForegroundColor White
+    Write-Host '    4. Install required runtimes: npx, uvx, bun' -ForegroundColor White
+    Write-Host '    5. Run: opencode' -ForegroundColor White
+    Write-Host ''
+}
+
+function Invoke-OpencodeStatus {
+    $configDir = "$HOME\.config\opencode"
+
+    Write-Host ''
+    Write-Host '  [opencode] Config Status' -ForegroundColor Cyan
+    Write-Host ''
+
+    # Config dir
+    $dirOk = Test-Path $configDir
+    $dirColor = if ($dirOk) { 'Green' } else { 'Red' }
+    Write-Host ("  {0,-38} {1}" -f '~/.config/opencode/', $(if ($dirOk) { 'exists' } else { 'MISSING' })) -ForegroundColor $dirColor
+
+    # Key files
+    $checks = @(
+        @{ Rel = 'opencode.json';                 Label = 'Main config' }
+        @{ Rel = 'oh-my-opencode.json';           Label = 'oh-my-opencode plugin' }
+        @{ Rel = 'AGENTS.md';                     Label = 'Global agent instructions' }
+        @{ Rel = 'instructions\mcp-awareness.md'; Label = 'MCP awareness rules' }
+        @{ Rel = 'agents\tester.md';              Label = 'Sub-agents (7 agents)' }
+        @{ Rel = 'plugins\anthropic-auth.mjs';    Label = 'Auth plugin' }
+    )
+
+    foreach ($c in $checks) {
+        $path  = Join-Path $configDir $c.Rel
+        $ok    = Test-Path $path
+        $color = if ($ok) { 'Green' } else { 'DarkYellow' }
+        $state = if ($ok) { 'ok' } else { 'missing' }
+        Write-Host ("    {0,-36} [{1}]  {2}" -f $c.Label, $state, $c.Rel) -ForegroundColor $color
+    }
+
+    # Check opencode binary
+    Write-Host ''
+    $oc = Get-Command opencode -ErrorAction SilentlyContinue
+    if ($oc) {
+        Write-Host ("  opencode binary:  {0}" -f $oc.Source) -ForegroundColor Green
+    } else {
+        Write-Host '  opencode binary:  NOT FOUND  (install: npm install -g opencode-ai)' -ForegroundColor DarkYellow
+    }
+
+    # Check runtimes
+    foreach ($rt in @('npx','uvx','bun','node')) {
+        $cmd = Get-Command $rt -ErrorAction SilentlyContinue
+        $color = if ($cmd) { 'Green' } else { 'DarkYellow' }
+        $state = if ($cmd) { 'found' } else { 'MISSING' }
+        Write-Host ("  {0,-16} {1}" -f "${rt}:", $state) -ForegroundColor $color
+    }
+
+    Write-Host ''
+}
+
+function Invoke-OpencodeCommand {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    $sub    = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'help' }
+    $dryRun = $Rest -contains '--dry-run'
+
+    switch ($sub) {
+        'install' { Invoke-OpencodeInstall -DryRun:$dryRun }
+        'setup'   { Invoke-OpencodeInstall -DryRun:$dryRun }  # alias
+        '--dry-run' { Invoke-OpencodeInstall -DryRun }        # 8sync opencode --dry-run shorthand
+        'status'  { Invoke-OpencodeStatus }
+        'help'    { Show-OpencodeHelp }
+        default   { Show-OpencodeHelp }
+    }
 }
 
 function Register-8SyncAlias {
