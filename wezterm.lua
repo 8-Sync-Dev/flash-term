@@ -21,6 +21,13 @@ local cursor_styles = {
   "BlinkingUnderline",
 }
 
+local cursor_style_labels = {
+  SteadyBlock = "BLOCK",
+  BlinkingBlock = "B-BLOCK",
+  BlinkingBar = "B-BAR",
+  BlinkingUnderline = "B-ULINE",
+}
+
 local default_shell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
 local pwsh_path = home .. "\\scoop\\shims\\pwsh.exe"
 if file_exists(pwsh_path) then
@@ -346,7 +353,7 @@ local bg_hint = style_state.bg_hint or infer_bg_hint_from_path(active_bg_path)
 local adaptive_overlay_delta = overlay_delta_from_hint(bg_hint, active_scene.adaptive_overlay_strength)
 
 wezterm.GLOBAL.bg_mode = wezterm.GLOBAL.bg_mode or (optimized_bg_path and "legacy" or "solid")
-wezterm.GLOBAL.cursor_style_index = wezterm.GLOBAL.cursor_style_index or 1
+wezterm.GLOBAL.cursor_style_index = wezterm.GLOBAL.cursor_style_index or 2
 
 local function build_background(mode)
   if mode == "legacy" and optimized_bg_path then
@@ -440,8 +447,35 @@ if not status_line_cache then
     { Text = " PROC " },
     { Background = { Color = "#09101c" } },
     { Text = " " },
+    { Background = { Color = "#14532d" } },
+    { Foreground = { Color = "#ecfdf5" } },
+    { Text = " CUR " },
+    { Background = { Color = "#09101c" } },
+    { Text = " " },
   }
   wezterm.GLOBAL.status_line_cache = status_line_cache
+end
+
+local left_status_cache = wezterm.GLOBAL.left_status_cache
+if not left_status_cache then
+  left_status_cache = {
+    { Background = { Color = "#070d16" } },
+    { Foreground = { Color = "#1ef2ff" } },
+    { Text = "  " },
+    { Background = { Color = "#0d1b32" } },
+    { Foreground = { Color = "#78f3ff" } },
+    { Text = " 󰖭 " },
+    { Background = { Color = "#132744" } },
+    { Foreground = { Color = "#a4f7ff" } },
+    { Text = " 󰖯 " },
+    { Background = { Color = "#183359" } },
+    { Foreground = { Color = "#d6faff" } },
+    { Text = " 󰅖 " },
+    { Background = { Color = "#070d16" } },
+    { Foreground = { Color = "#1ef2ff" } },
+    { Text = "  " },
+  }
+  wezterm.GLOBAL.left_status_cache = left_status_cache
 end
 
 wezterm.on("update-status", function(window, pane)
@@ -450,7 +484,10 @@ wezterm.on("update-status", function(window, pane)
   local ws      = truncate_text(window:active_workspace(), 12)
   local cwd_lbl = truncate_text(cwd ~= "" and basename(cwd) or "~", 18)
   local proc_lbl = truncate_text(process, 16)
+  local cursor_style = cursor_styles[wezterm.GLOBAL.cursor_style_index or 2] or "BlinkingBlock"
+  local cursor_lbl = cursor_style_labels[cursor_style] or cursor_style
   local status_colors = active_style.status
+  local tab_colors = active_style.tab
 
   local items = status_line_cache
   items[1].Background.Color = status_colors.base_bg
@@ -467,7 +504,19 @@ wezterm.on("update-status", function(window, pane)
   items[15].Foreground.Color = status_colors.proc_fg
   items[16].Text = " " .. proc_lbl .. " "
   items[17].Background.Color = status_colors.base_bg
+  items[19].Background.Color = tab_colors.active_bg
+  items[20].Foreground.Color = tab_colors.active_fg
+  items[21].Text = " " .. cursor_lbl .. " "
+  items[22].Background.Color = status_colors.base_bg
 
+  local left_items = left_status_cache
+  left_items[2].Foreground.Color = tab_colors.active_bg
+  left_items[4].Background.Color = status_colors.base_bg
+  left_items[7].Background.Color = tab_colors.inactive_bg
+  left_items[10].Background.Color = tab_colors.hover_bg
+  left_items[13].Foreground.Color = tab_colors.active_bg
+
+  window:set_left_status(wezterm.format(left_items))
   window:set_right_status(wezterm.format(items))
 end)
 
@@ -595,34 +644,33 @@ else
 end
 config.webgpu_power_preference = "HighPerformance"
 
-config.window_frame = active_style.frame
 config.colors = {
-  split = active_style.frame.border_left_color,
+  split = "#14c8ff",
   tab_bar = {
-    background = "#070d16",
-    inactive_tab_edge = active_style.frame.border_left_color,
+    background = "#050a14",
+    inactive_tab_edge = active_style.tab.hover_bg,
     active_tab = {
-      bg_color = active_style.tab.active_bg,
-      fg_color = active_style.tab.active_fg,
+      bg_color = "#0f2d57",
+      fg_color = "#e6fbff",
       intensity = "Bold",
       italic = true,
     },
     inactive_tab = {
-      bg_color = active_style.tab.inactive_bg,
-      fg_color = active_style.tab.inactive_fg,
+      bg_color = "#091426",
+      fg_color = "#8da7c4",
     },
     inactive_tab_hover = {
-      bg_color = active_style.tab.hover_bg,
-      fg_color = active_style.tab.hover_fg,
+      bg_color = "#17365e",
+      fg_color = "#ddf9ff",
       italic = true,
     },
     new_tab = {
-      bg_color = "#0c1422",
-      fg_color = "#8aa3c7",
+      bg_color = "#0a1324",
+      fg_color = "#73e7ff",
     },
     new_tab_hover = {
-      bg_color = "#17304d",
-      fg_color = "#dff6ff",
+      bg_color = "#194066",
+      fg_color = "#effdff",
       italic = true,
     },
   },
@@ -632,23 +680,44 @@ config.inactive_pane_hsb = {
   brightness = 0.74,
 }
 
+config.window_frame = {
+  font = active_style.frame.font,
+  font_size = active_style.frame.font_size,
+  active_titlebar_bg = "#050a14",
+  inactive_titlebar_bg = "#050914",
+  active_titlebar_fg = "#e8fbff",
+  inactive_titlebar_fg = "#93a5bf",
+  border_left_width = "4px",
+  border_right_width = "4px",
+  border_bottom_height = "4px",
+  border_top_height = "4px",
+  border_left_color = "#14c8ff",
+  border_right_color = "#14c8ff",
+  border_bottom_color = "#14c8ff",
+  border_top_color = "#14c8ff",
+  button_fg = "#f3feff",
+  button_bg = "#0e2748",
+  button_hover_fg = "#f4ffff",
+  button_hover_bg = "#1f4b76",
+}
+
 config.integrated_title_buttons = { "Hide", "Maximize", "Close" }
-config.integrated_title_button_style = "Windows"
+config.integrated_title_button_style = "Gnome"
 config.integrated_title_button_alignment = "Right"
-config.integrated_title_button_color = active_style.frame.button_fg
+config.integrated_title_button_color = "#d9f9ff"
 
 config.hide_tab_bar_if_only_one_tab = true
 config.use_fancy_tab_bar = true
 config.tab_bar_at_bottom = true
 config.show_new_tab_button_in_tab_bar = false
-config.tab_max_width = 28
+config.tab_max_width = 32
 config.scrollback_lines = 12000
-config.default_cursor_style = cursor_styles[wezterm.GLOBAL.cursor_style_index or 1]
-config.cursor_blink_rate = 0
+config.default_cursor_style = cursor_styles[wezterm.GLOBAL.cursor_style_index or 2]
+config.cursor_blink_rate = 420
 config.cursor_blink_ease_in = "EaseOut"
-config.cursor_blink_ease_out = "EaseIn"
-config.animation_fps = 12
-config.max_fps = 120
+config.cursor_blink_ease_out = "EaseOut"
+config.animation_fps = 24
+config.max_fps = 144
 config.status_update_interval = 1500
 config.enable_scroll_bar = false
 config.audible_bell = "Disabled"
