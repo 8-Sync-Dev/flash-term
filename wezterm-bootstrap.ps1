@@ -385,6 +385,9 @@ function Show-8SyncHint {
     Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
     Write-HintRow '8sync hx opacity <val>'  'Adjust background transparency: +  -  or 0.0-1.0'
     Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
+    Write-HintRow '8sync hx bg black'       'Pure black background (glass effect)'
+    Write-HintRow '8sync hx bg transparent' 'Transparent bg (terminal bg shows through)'
+    Write-HintRow '8sync hx bg reset'       'Restore original theme background'
 
     Write-HintSection 'FILE & NAVIGATION'
     Write-HintRow 'll'                      'List files with icons (eza -lah)'
@@ -735,7 +738,7 @@ function Register-8SyncCompleter {
         # subcommands per mode
         $subMap = @{
             bg    = @('search','pick','set','open','rotate','help')
-            hx    = @('lang','wrap','opacity','theme','health','help')
+            hx    = @('lang','wrap','opacity','theme','bg','health','help')
             theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
@@ -1474,6 +1477,81 @@ function Invoke-HxTheme {
         Set-HelixThemeValue -Theme $selected
         Write-Host "Helix theme set to: $selected" -ForegroundColor Green
     }
+}
+
+function Set-HelixBg {
+    param([string]$Style)
+
+    $helixThemesDir = Join-Path $env:APPDATA 'helix\themes'
+    $themeFile      = Join-Path $helixThemesDir 'glass_black.toml'
+
+    if (-not (Test-Path $helixThemesDir)) {
+        $null = New-Item -ItemType Directory -Path $helixThemesDir -Force
+    }
+
+    # Resolve current base theme to inherit from (default: catppuccin_mocha)
+    $base = Get-HelixThemeValue
+    if (-not $base -or $base -eq 'glass_black') { $base = 'catppuccin_mocha' }
+
+    switch ($Style.ToLowerInvariant()) {
+        'black' {
+            @(
+                "# glass_black - pure black background over $base",
+                "inherits = `"$base`"",
+                '',
+                '"ui.background" = { bg = "#000000" }',
+                '"ui.cursorline.primary" = { bg = "#0d0d0d" }'
+            ) | Set-Content -Path $themeFile -Encoding UTF8
+        }
+        'transparent' {
+            @(
+                "# glass_black - transparent background (terminal bg shows through)",
+                "inherits = `"$base`"",
+                '',
+                '"ui.background" = { }'
+            ) | Set-Content -Path $themeFile -Encoding UTF8
+        }
+        'reset' {
+            if (Test-Path $themeFile) { Remove-Item $themeFile -Force }
+            Set-HelixThemeValue -Theme $base
+            Write-Host "  [hx bg] Reset to base theme: $base" -ForegroundColor Green
+            return
+        }
+        default {
+            # Treat as hex color or named color
+            $color = $Style
+            if ($color -notmatch '^#') { $color = "#$color" }
+            @(
+                "# glass_black - custom background",
+                "inherits = `"$base`"",
+                '',
+                "`"ui.background`" = { bg = `"$color`" }"
+            ) | Set-Content -Path $themeFile -Encoding UTF8
+        }
+    }
+
+    Set-HelixThemeValue -Theme 'glass_black'
+    Write-Host ("  [hx bg] Background set to '{0}' (theme: glass_black <- {1})" -f $Style, $base) -ForegroundColor Green
+}
+
+function Invoke-HxBg {
+    param([string]$Style)
+
+    if (-not $Style -or $Style -eq 'help') {
+        Write-Host ''
+        Write-HintSection 'HX BG -- set Helix background color'
+        Write-HintRow '8sync hx bg black'        'Pure black (#000000) background'
+        Write-HintRow '8sync hx bg transparent'  'Transparent (terminal bg shows through)'
+        Write-HintRow '8sync hx bg <#hex>'       'Custom hex color e.g. 8sync hx bg 0a0a0a'
+        Write-HintRow '8sync hx bg reset'         'Remove override, restore original theme'
+        Write-Host ''
+        Write-Host '  Current theme:' -NoNewline -ForegroundColor DarkGray
+        Write-Host (' ' + (Get-HelixThemeValue)) -ForegroundColor Cyan
+        Write-Host ''
+        return
+    }
+
+    Set-HelixBg -Style $Style
 }
 
 function Invoke-HxWrap {
@@ -3890,6 +3968,10 @@ function Invoke-HxCommand {
         'theme'   {
             $name = if ($Rest.Count -ge 2) { $Rest[1] } else { '' }
             Invoke-HxTheme -ThemeName $name
+        }
+        'bg'      {
+            $style = if ($Rest.Count -ge 2) { $Rest[1] } else { '' }
+            Invoke-HxBg -Style $style
         }
         default   { Show-HxHelp }
     }
