@@ -4041,7 +4041,7 @@ function Invoke-OpencodeInstall {
     # ── Validate source (must be THIS machine's config, or a bundled template)
     if (-not (Test-Path $src)) {
         Write-Host "  [opencode] Source config not found at: $src" -ForegroundColor Red
-        Write-Host "  Cannot bootstrap — please run on a machine that already has the config." -ForegroundColor Yellow
+        Write-Host '  Cannot bootstrap - please run on a machine that already has the config.' -ForegroundColor Yellow
         return
     }
 
