@@ -14,6 +14,13 @@ local bootstrap_path = config_dir .. "\\wezterm-bootstrap.ps1"
 local current_opacity_lua = config_dir .. "\\current-opacity.lua"
 local current_style_lua = config_dir .. "\\current-style.lua"
 
+local cursor_styles = {
+  "SteadyBlock",
+  "BlinkingBlock",
+  "BlinkingBar",
+  "BlinkingUnderline",
+}
+
 local default_shell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
 local pwsh_path = home .. "\\scoop\\shims\\pwsh.exe"
 if file_exists(pwsh_path) then
@@ -33,6 +40,32 @@ local function load_background_path()
   end
 
   return nil
+end
+
+local function with_extension(path, ext)
+  local stem = path:match("^(.*)%.[^%.]+$")
+  if not stem then
+    return path .. ext
+  end
+  return stem .. ext
+end
+
+local function resolve_optimized_background_path(path)
+  if not path or path == "" then
+    return nil
+  end
+
+  local avif_path = with_extension(path, ".avif")
+  if avif_path ~= path and file_exists(avif_path) then
+    return avif_path
+  end
+
+  local webp_path = with_extension(path, ".webp")
+  if webp_path ~= path and file_exists(webp_path) then
+    return webp_path
+  end
+
+  return path
 end
 
 local function clamp_number(value, min_value, max_value)
@@ -308,8 +341,48 @@ local active_style = style_presets[active_style_name] or style_presets.neon_glas
 local active_scene = scene_presets[active_scene_name] or scene_presets.focus
 
 local active_bg_path = load_background_path()
+local optimized_bg_path = resolve_optimized_background_path(active_bg_path)
 local bg_hint = style_state.bg_hint or infer_bg_hint_from_path(active_bg_path)
 local adaptive_overlay_delta = overlay_delta_from_hint(bg_hint, active_scene.adaptive_overlay_strength)
+
+wezterm.GLOBAL.bg_mode = wezterm.GLOBAL.bg_mode or (optimized_bg_path and "legacy" or "solid")
+wezterm.GLOBAL.cursor_style_index = wezterm.GLOBAL.cursor_style_index or 1
+
+local function build_background(mode)
+  if mode == "legacy" and optimized_bg_path then
+    return {
+      {
+        source = { File = optimized_bg_path },
+        width = "100%",
+        height = "100%",
+        hsb = {
+          brightness = active_style.background.brightness,
+          saturation = active_style.background.saturation,
+        },
+      },
+      {
+        source = { Color = active_style.background.overlay_color },
+        width = "100%",
+        height = "100%",
+        opacity = load_opacity(active_scene.overlay_opacity or active_style.background.overlay_opacity_default, adaptive_overlay_delta),
+      },
+    }
+  end
+
+  return {
+    {
+      source = {
+        Gradient = {
+          orientation = { Linear = { angle = 28.0 } },
+          colors = { "#070b10", "#081018", "#0a0d17", "#070b10" },
+        },
+      },
+      width = "100%",
+      height = "100%",
+      opacity = 1.0,
+    },
+  }
+end
 
 local function pane_cwd(pane)
   local cwd_uri = pane:get_current_working_dir()
@@ -343,21 +416,32 @@ local function truncate_text(text, max_len)
   if max_len <= 2 then
     return text:sub(1, max_len)
   end
-  return text:sub(1, max_len - 2) .. ".."
+  return text:sub(1, max_len - 1) .. "…"
 end
 
-local function append_items(dst, src)
-  for _, item in ipairs(src) do
-    table.insert(dst, item)
-  end
-end
-
-local function status_chip(text, fg, bg)
-  return {
-    { Background = { Color = bg } },
-    { Foreground = { Color = fg } },
-    { Text = " " .. text .. " " },
+local status_line_cache = wezterm.GLOBAL.status_line_cache
+if not status_line_cache then
+  status_line_cache = {
+    { Background = { Color = "#09101c" } },
+    { Foreground = { Color = "#6f829f" } },
+    { Text = " " },
+    { Background = { Color = "#1e40af" } },
+    { Foreground = { Color = "#f8fcff" } },
+    { Text = " WS " },
+    { Background = { Color = "#09101c" } },
+    { Text = " " },
+    { Background = { Color = "#0f766e" } },
+    { Foreground = { Color = "#ecfeff" } },
+    { Text = " CWD " },
+    { Background = { Color = "#09101c" } },
+    { Text = " " },
+    { Background = { Color = "#364152" } },
+    { Foreground = { Color = "#e2e8f0" } },
+    { Text = " PROC " },
+    { Background = { Color = "#09101c" } },
+    { Text = " " },
   }
+  wezterm.GLOBAL.status_line_cache = status_line_cache
 end
 
 wezterm.on("update-status", function(window, pane)
@@ -368,20 +452,21 @@ wezterm.on("update-status", function(window, pane)
   local proc_lbl = truncate_text(process, 16)
   local status_colors = active_style.status
 
-  local items = {
-    { Background = { Color = status_colors.base_bg } },
-    { Foreground = { Color = status_colors.dim_fg } },
-    { Text = " " },
-  }
-  append_items(items, status_chip(ws, status_colors.ws_fg, status_colors.ws_bg))
-  table.insert(items, { Background = { Color = status_colors.base_bg } })
-  table.insert(items, { Text = " " })
-  append_items(items, status_chip(cwd_lbl, status_colors.cwd_fg, status_colors.cwd_bg))
-  table.insert(items, { Background = { Color = status_colors.base_bg } })
-  table.insert(items, { Text = " " })
-  append_items(items, status_chip(proc_lbl, status_colors.proc_fg, status_colors.proc_bg))
-  table.insert(items, { Background = { Color = status_colors.base_bg } })
-  table.insert(items, { Text = " " })
+  local items = status_line_cache
+  items[1].Background.Color = status_colors.base_bg
+  items[2].Foreground.Color = status_colors.dim_fg
+  items[4].Background.Color = status_colors.ws_bg
+  items[5].Foreground.Color = status_colors.ws_fg
+  items[6].Text = " " .. ws .. " "
+  items[7].Background.Color = status_colors.base_bg
+  items[9].Background.Color = status_colors.cwd_bg
+  items[10].Foreground.Color = status_colors.cwd_fg
+  items[11].Text = " " .. cwd_lbl .. " "
+  items[12].Background.Color = status_colors.base_bg
+  items[14].Background.Color = status_colors.proc_bg
+  items[15].Foreground.Color = status_colors.proc_fg
+  items[16].Text = " " .. proc_lbl .. " "
+  items[17].Background.Color = status_colors.base_bg
 
   window:set_right_status(wezterm.format(items))
 end)
@@ -396,6 +481,7 @@ wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
   local tab_colors = active_style.tab
   local fg = tab.is_active and tab_colors.active_fg or tab_colors.inactive_fg
   local bg = tab.is_active and tab_colors.active_bg or tab_colors.inactive_bg
+  local prefix = tab.is_active and "󰮔 " or ""
 
   if hover and not tab.is_active then
     fg = tab_colors.hover_fg
@@ -405,7 +491,9 @@ wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
   return {
     { Background = { Color = bg } },
     { Foreground = { Color = fg } },
-    { Text = "  " .. label .. "  " },
+    { Attribute = { Intensity = tab.is_active and "Bold" or "Normal" } },
+    { Attribute = { Italic = tab.is_active } },
+    { Text = "  " .. prefix .. label .. "  " },
   }
 end)
 
@@ -418,6 +506,24 @@ wezterm.on("format-window-title", function(tab, pane)
     return cwd_label .. "  " .. process_label
   end
   return cwd_label
+end)
+
+wezterm.on("toggle-bg-mode", function(window, pane)
+  wezterm.GLOBAL.bg_mode = wezterm.GLOBAL.bg_mode == "legacy" and "solid" or "legacy"
+  local overrides = window:get_config_overrides() or {}
+  overrides.background = build_background(wezterm.GLOBAL.bg_mode)
+  window:set_config_overrides(overrides)
+end)
+
+wezterm.on("cycle-cursor-style", function(window, pane)
+  local next_index = (wezterm.GLOBAL.cursor_style_index or 1) + 1
+  if next_index > #cursor_styles then
+    next_index = 1
+  end
+  wezterm.GLOBAL.cursor_style_index = next_index
+  local overrides = window:get_config_overrides() or {}
+  overrides.default_cursor_style = cursor_styles[next_index]
+  window:set_config_overrides(overrides)
 end)
 
 config.default_prog = {
@@ -439,10 +545,13 @@ config.window_close_confirmation = "NeverPrompt"
 config.font = wezterm.font_with_fallback({
   { family = "JetBrainsMono NF", weight = "Regular" },
   { family = "JetBrainsMono NFM", weight = "Regular" },
+  { family = "CaskaydiaCove Nerd Font Mono", weight = "Regular" },
+  { family = "GeistMono Nerd Font", weight = "Regular" },
   { family = "Consolas" },
 })
-config.font_size = 14
+config.font_size = 13
 config.line_height = 1.08
+config.harfbuzz_features = { "calt", "clig", "liga", "ss01", "ss02" }
 config.freetype_load_target = "Normal"
 config.freetype_render_target = "HorizontalLcd"
 
@@ -456,26 +565,7 @@ config.adjust_window_size_when_changing_font_size = false
 config.color_scheme = "Catppuccin Mocha"
 config.window_background_opacity = active_scene.window_background_opacity
 config.text_background_opacity = active_scene.text_background_opacity
-
-if active_bg_path then
-  config.background = {
-    {
-      source = { File = active_bg_path },
-      width = "100%",
-      height = "100%",
-      hsb = {
-        brightness = active_style.background.brightness,
-        saturation = active_style.background.saturation,
-      },
-    },
-    {
-      source = { Color = active_style.background.overlay_color },
-      width = "100%",
-      height = "100%",
-      opacity = load_opacity(active_scene.overlay_opacity or active_style.background.overlay_opacity_default, adaptive_overlay_delta),
-    },
-  }
-end
+config.background = build_background(wezterm.GLOBAL.bg_mode)
 
 config.front_end = "WebGpu"
 
@@ -506,6 +596,41 @@ end
 config.webgpu_power_preference = "HighPerformance"
 
 config.window_frame = active_style.frame
+config.colors = {
+  split = active_style.frame.border_left_color,
+  tab_bar = {
+    background = "#070d16",
+    inactive_tab_edge = active_style.frame.border_left_color,
+    active_tab = {
+      bg_color = active_style.tab.active_bg,
+      fg_color = active_style.tab.active_fg,
+      intensity = "Bold",
+      italic = true,
+    },
+    inactive_tab = {
+      bg_color = active_style.tab.inactive_bg,
+      fg_color = active_style.tab.inactive_fg,
+    },
+    inactive_tab_hover = {
+      bg_color = active_style.tab.hover_bg,
+      fg_color = active_style.tab.hover_fg,
+      italic = true,
+    },
+    new_tab = {
+      bg_color = "#0c1422",
+      fg_color = "#8aa3c7",
+    },
+    new_tab_hover = {
+      bg_color = "#17304d",
+      fg_color = "#dff6ff",
+      italic = true,
+    },
+  },
+}
+config.inactive_pane_hsb = {
+  saturation = 0.82,
+  brightness = 0.74,
+}
 
 config.integrated_title_buttons = { "Hide", "Maximize", "Close" }
 config.integrated_title_button_style = "Windows"
@@ -516,12 +641,15 @@ config.hide_tab_bar_if_only_one_tab = true
 config.use_fancy_tab_bar = true
 config.tab_bar_at_bottom = true
 config.show_new_tab_button_in_tab_bar = false
+config.tab_max_width = 28
 config.scrollback_lines = 12000
-config.default_cursor_style = "BlinkingBar"
-config.cursor_blink_rate = 650
-config.animation_fps = 1
+config.default_cursor_style = cursor_styles[wezterm.GLOBAL.cursor_style_index or 1]
+config.cursor_blink_rate = 0
+config.cursor_blink_ease_in = "EaseOut"
+config.cursor_blink_ease_out = "EaseIn"
+config.animation_fps = 12
 config.max_fps = 120
-config.status_update_interval = 1000
+config.status_update_interval = 1500
 config.enable_scroll_bar = false
 config.audible_bell = "Disabled"
 config.check_for_updates = false
@@ -558,5 +686,15 @@ config.launch_menu = {
 
 local keys_ok, keys_table = pcall(dofile, config_dir .. "\\keys.lua")
 config.keys = (keys_ok and type(keys_table) == "table") and keys_table or {}
+table.insert(config.keys, {
+  key = "b",
+  mods = "CTRL|SHIFT",
+  action = wezterm.action.EmitEvent("toggle-bg-mode"),
+})
+table.insert(config.keys, {
+  key = "o",
+  mods = "CTRL|SHIFT",
+  action = wezterm.action.EmitEvent("cycle-cursor-style"),
+})
 
 return config
