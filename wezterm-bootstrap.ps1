@@ -4156,10 +4156,12 @@ function Invoke-OpencodeApply {
     }
 
     if ($Force -and (Test-Path $targetPath)) {
+        # Delete contents but keep the directory itself — avoids "in use" error when cwd is inside target
         try {
-            Remove-Item -Path $targetPath -Recurse -Force -ErrorAction Stop
+            Get-ChildItem -Path $targetPath -Force -ErrorAction SilentlyContinue |
+                Remove-Item -Recurse -Force -ErrorAction Stop
         } catch {
-            Write-Host ("  [error] Failed to clear target folder: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            Write-Host ("  [error] Failed to clear target folder contents: {0}" -f $_.Exception.Message) -ForegroundColor Red
             return
         }
     }
@@ -4209,6 +4211,8 @@ function Invoke-OpencodeApply {
     } finally {
         Pop-Location
     }
+
+
 
     Write-Host ''
     Write-Host '  [opencode] Setup complete!' -ForegroundColor Cyan
