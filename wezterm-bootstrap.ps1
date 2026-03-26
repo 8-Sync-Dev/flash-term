@@ -368,7 +368,7 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
     Write-HintRow '8sync clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
     Write-HintRow '8sync theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
-    Write-HintRow '8sync opencode'                   'Export portable OpenCode bundle to ./a (exclude lib, node_modules, *.ps1, *.py)'
+    Write-HintRow '8sync opencode'                   'Export portable OpenCode bundle to ./oc-bundle (exclude lib, node_modules, *.ps1, *.py)'
     Write-HintRow '8sync opencode --dry-run'         'Preview exported files only, no changes'
     Write-HintRow '8sync opencode status'            'Show source + bundle status and runtime readiness'
 
@@ -4022,10 +4022,10 @@ function Set-ToolAliases {
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Resolve-OpencodeBundlePath {
-    param([string]$BundleDir = 'a')
+    param([string]$BundleDir = 'oc-bundle')
 
     if ([string]::IsNullOrWhiteSpace($BundleDir)) {
-        $BundleDir = 'a'
+        $BundleDir = 'oc-bundle'
     }
 
     if ([System.IO.Path]::IsPathRooted($BundleDir)) {
@@ -4065,14 +4065,14 @@ function Test-OpencodeExportExcluded {
 function Show-OpencodeHelp {
     Write-Host ''
     Write-HintSection 'OPENCODE -- Export portable setup bundle'
-    Write-HintRow '8sync opencode'                    'Export ~/.config/opencode to ./a (exclude lib, node_modules, *.ps1, *.py)'
-    Write-HintRow '8sync opencode export [folder]'    'Export to custom folder (default: a)'
+    Write-HintRow '8sync opencode'                    'Export ~/.config/opencode to ./oc-bundle (exclude lib, node_modules, *.ps1, *.py)'
+    Write-HintRow '8sync opencode export [folder]'    'Export to custom folder (default: oc-bundle)'
     Write-HintRow '8sync opencode --dry-run'          'Preview files that would be exported'
     Write-HintRow '8sync opencode status'             'Show source/bundle/npm readiness'
     Write-HintRow '8sync opencode help'               'Show this help'
     Write-Host ''
     Write-Host '  Target machine setup:' -ForegroundColor DarkGray
-    Write-Host '    1) Copy everything from bundle folder (default: a) -> ~/.config/opencode' -ForegroundColor DarkGray
+    Write-Host '    1) Copy everything from bundle folder (default: oc-bundle) -> ~/.config/opencode' -ForegroundColor DarkGray
     Write-Host '    2) cd ~/.config/opencode && npm i' -ForegroundColor DarkGray
     Write-Host '    3) If npm missing: scoop install nvm; nvm install <version>; nvm use <version>; npm i' -ForegroundColor DarkGray
     Write-Host ''
@@ -4080,7 +4080,7 @@ function Show-OpencodeHelp {
 
 function Invoke-OpencodeExport {
     param(
-        [string]$BundleDir = 'a',
+        [string]$BundleDir = 'oc-bundle',
         [switch]$DryRun
     )
 
@@ -4176,7 +4176,7 @@ function Invoke-OpencodeExport {
 
 function Invoke-OpencodeStatus {
     $sourcePath = Join-Path $HOME '.config\opencode'
-    $bundlePath = Resolve-OpencodeBundlePath -BundleDir 'a'
+    $bundlePath = Resolve-OpencodeBundlePath -BundleDir 'oc-bundle'
 
     Write-Host ''
     Write-Host '  [opencode] Export Status' -ForegroundColor Cyan
@@ -4186,7 +4186,7 @@ function Invoke-OpencodeStatus {
     Write-Host ("  {0,-40} {1}" -f '~/.config/opencode (source):', $(if ($sourceOk) { 'exists' } else { 'MISSING' })) -ForegroundColor $(if ($sourceOk) { 'Green' } else { 'Red' })
 
     $bundleOk = Test-Path $bundlePath
-    Write-Host ("  {0,-40} {1}" -f './a (default bundle):', $(if ($bundleOk) { 'exists' } else { 'MISSING' })) -ForegroundColor $(if ($bundleOk) { 'Green' } else { 'DarkYellow' })
+    Write-Host ("  {0,-40} {1}" -f './oc-bundle (default bundle):', $(if ($bundleOk) { 'exists' } else { 'MISSING' })) -ForegroundColor $(if ($bundleOk) { 'Green' } else { 'DarkYellow' })
 
     if ($bundleOk) {
         $bundleCount = (Get-ChildItem -Path $bundlePath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
@@ -4229,7 +4229,7 @@ function Invoke-OpencodeCommand {
         $argStart = 1
     }
 
-    $bundleDir = 'a'
+    $bundleDir = 'oc-bundle'
     if ($Rest.Count -gt $argStart) {
         $candidate = $Rest[$argStart]
         if ($candidate -and $candidate -notlike '--*') {
@@ -4241,7 +4241,7 @@ function Invoke-OpencodeCommand {
         'export' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'install' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun } # backward-compatible alias
         'setup' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }   # backward-compatible alias
-        '--dry-run' { Invoke-OpencodeExport -BundleDir 'a' -DryRun }
+        '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
         'status' { Invoke-OpencodeStatus }
         'help' { Show-OpencodeHelp }
         default { Show-OpencodeHelp }

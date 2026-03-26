@@ -134,7 +134,7 @@ Output grouped by type with size + age. Remove items manually via package manage
 ### `8sync opencode` — Portable OpenCode bundle export
 
 ```powershell
-8sync opencode                    # export to ./a
+8sync opencode                    # export to ./oc-bundle
 8sync opencode export a           # explicit export target
 8sync opencode --dry-run          # preview exported files only
 8sync opencode status             # source/bundle/node/npm/nvm readiness
@@ -142,7 +142,7 @@ Output grouped by type with size + age. Remove items manually via package manage
 ```
 
 - Source: `~/.config/opencode`
-- Default bundle folder: `./a` (relative to current working directory)
+- Default bundle folder: `./oc-bundle` (relative to current working directory)
 - Export exclusions: `lib/`, `node_modules/`, `*.ps1`, `*.py`
 - `install` and `setup` are backward-compatible aliases to `export`
 
