@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
 
         # subcommands per mode
         $subMap = @{
-            bg    = @('search','pick','set','open','rotate','help')
+            bg    = @('search','pick','set','open','rotate','list','clear','remove','help')
             hx    = @('lang','wrap','opacity','theme','bg','health','help')
             theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')

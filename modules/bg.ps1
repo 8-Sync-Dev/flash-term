@@ -73,119 +73,6 @@ function Search-Wallhaven {
     return $items
 }
 
-function Read-BgRotateState {
-    Ensure-StateDir
-    if (-not (Test-Path $script:BgRotatePath)) {
-        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:BgRotateDefaultMinutes; lastRotatedUtc = $null }
-    }
-    try {
-        return Get-Content -Raw $script:BgRotatePath | ConvertFrom-Json
-    } catch {
-        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:BgRotateDefaultMinutes; lastRotatedUtc = $null }
-    }
-}
-
-function Write-BgRotateState {
-    param([bool]$Enabled, [int]$IntervalMinutes, [string]$LastRotatedUtc = '')
-    Ensure-StateDir
-    $state = Read-BgRotateState
-    if ($LastRotatedUtc -eq '') { $LastRotatedUtc = $state.lastRotatedUtc }
-    [pscustomobject]@{
-        enabled         = $Enabled
-        intervalMinutes = $IntervalMinutes
-        lastRotatedUtc  = $LastRotatedUtc
-    } | ConvertTo-Json | Set-Content -Path $script:BgRotatePath -Encoding UTF8
-}
-
-function Invoke-BgRotateNow {
-    $cache = Read-BgCache
-    if (-not $cache -or $cache.Count -eq 0) {
-        Write-Host '  No cached wallpapers. Run "8sync bg search <keywords>" first.' -ForegroundColor DarkYellow
-        return
-    }
-
-    $currentPath = ''
-    if (Test-Path $script:CurrentBgLuaPath) {
-        try {
-            $raw = Get-Content -Raw $script:CurrentBgLuaPath -ErrorAction SilentlyContinue
-            if ($raw -match '\[\[(.+)\]\]') { $currentPath = $Matches[1].Trim() }
-        } catch {}
-    }
-
-    $candidates = @($cache | Where-Object {
-        $fileName = 'wallhaven-{0}.jpg' -f $_.id
-        $localPath = Join-Path $script:BackgroundDir $fileName
-        $localPath -ne $currentPath
-    })
-
-    if ($candidates.Count -eq 0) { $candidates = @($cache) }
-
-    $pick = $candidates[(Get-Random -Maximum $candidates.Count)]
-    Write-Host ('  Rotating to: {0}' -f $pick.id) -ForegroundColor Cyan
-    Invoke-BgSet -Value $pick.id
-
-    $state = Read-BgRotateState
-    Write-BgRotateState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes `
-        -LastRotatedUtc ([datetime]::UtcNow.ToString('o'))
-}
-
-function Start-BgRotateCheck {
-    $state = Read-BgRotateState
-    if (-not $state.enabled) { return }
-
-    $lastUtc = if ($state.lastRotatedUtc) { [datetime]$state.lastRotatedUtc } else { [datetime]::MinValue }
-    $minutesSince = ([datetime]::UtcNow - $lastUtc).TotalMinutes
-    if ($minutesSince -lt $state.intervalMinutes) { return }
-
-    $engine = Get-ShellEngine
-    if (-not (Test-Path $engine)) { return }
-
-    $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                   '-File', $PSCommandPath, '-Task', 'BgRotate')
-    try {
-        Start-Process -FilePath $engine -ArgumentList $arguments -WindowStyle Hidden -ErrorAction Stop | Out-Null
-    } catch {}
-}
-
-function Invoke-BgRotateCommand {
-    param([string[]]$Rest)
-
-    $sub = if ($Rest -and $Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
-
-    switch ($sub) {
-        'on' {
-            $mins = $script:BgRotateDefaultMinutes
-            if ($Rest.Count -ge 2) {
-                $parsed = 0
-                if ([int]::TryParse($Rest[1], [ref]$parsed) -and $parsed -gt 0) { $mins = $parsed }
-            }
-            Write-BgRotateState -Enabled $true -IntervalMinutes $mins
-            Write-Host ('  bg rotate: ON  every {0} min' -f $mins) -ForegroundColor Green
-        }
-        'off' {
-            $state = Read-BgRotateState
-            Write-BgRotateState -Enabled $false -IntervalMinutes $state.intervalMinutes
-            Write-Host '  bg rotate: OFF' -ForegroundColor DarkGray
-        }
-        'now' {
-            Invoke-BgRotateNow
-        }
-        'status' {
-            $state = Read-BgRotateState
-            $lastUtc = if ($state.lastRotatedUtc) { [datetime]$state.lastRotatedUtc } else { $null }
-            $statusStr = if ($state.enabled) { 'ON' } else { 'OFF' }
-            $color = if ($state.enabled) { 'Green' } else { 'DarkGray' }
-            Write-Host ''
-            Write-Host ('  bg rotate: {0}  every {1} min' -f $statusStr, $state.intervalMinutes) -ForegroundColor $color
-            Write-Host ('  last rotated: {0}' -f $(if ($lastUtc) { $lastUtc.ToString('u') } else { 'never' })) -ForegroundColor DarkGray
-            Write-Host ''
-        }
-        default {
-            Write-Host '  Usage: 8sync bg rotate [on [N] | off | now | status]' -ForegroundColor DarkYellow
-        }
-    }
-}
-
 function Show-BgHelp {
     Write-Host ''
     Write-Host 'Background commands:' -ForegroundColor Yellow
@@ -194,7 +81,12 @@ function Show-BgHelp {
     Write-Host '  8sync bg pick'
     Write-Host '  8sync bg set <id|path|url>'
     Write-Host '  8sync bg open <id>'
-    Write-Host '  8sync bg rotate [on [N] | off | now | status]'
+    Write-Host ('  8sync bg rotate [on [N] | off | now | time <min> | status]  (default: {0} min)' -f $script:BgRotateDefaultMinutes)
+    Write-Host '  8sync bg list                                 List downloaded images'
+    Write-Host '  8sync bg clear cache                          Clear search cache'
+    Write-Host '  8sync bg remove <filename|id|all>             Remove downloaded images'
+    Write-Host ''
+    Write-Host '  Rotate picks random images from bg/ folder.' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -487,6 +379,263 @@ function Invoke-BgOpen {
     }
 }
 
+function Read-BgRotateState {
+    Ensure-StateDir
+    if (-not (Test-Path $script:BgRotatePath)) {
+        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:BgRotateDefaultMinutes; lastRotatedUtc = $null }
+    }
+    try {
+        return Get-Content -Raw $script:BgRotatePath | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{ enabled = $false; intervalMinutes = $script:BgRotateDefaultMinutes; lastRotatedUtc = $null }
+    }
+}
+
+function Write-BgRotateState {
+    param([bool]$Enabled, [int]$IntervalMinutes, [string]$LastRotatedUtc = '')
+    Ensure-StateDir
+    $state = Read-BgRotateState
+    if ($LastRotatedUtc -eq '') { $LastRotatedUtc = $state.lastRotatedUtc }
+    [pscustomobject]@{
+        enabled         = $Enabled
+        intervalMinutes = $IntervalMinutes
+        lastRotatedUtc  = $LastRotatedUtc
+    } | ConvertTo-Json | Set-Content -Path $script:BgRotatePath -Encoding UTF8
+}
+
+function Invoke-BgRotateNow {
+    Ensure-BackgroundDir
+    $imageExts = @('*.jpg','*.jpeg','*.png','*.bmp','*.gif','*.webp')
+    $allFiles = @()
+    foreach ($ext in $imageExts) {
+        $allFiles += @(Get-ChildItem -Path $script:BackgroundDir -Filter $ext -File -ErrorAction SilentlyContinue)
+    }
+
+    if ($allFiles.Count -eq 0) {
+        Write-Host '  No images in bg/ folder. Run "8sync bg search <keywords>" + "8sync bg set <id>" first.' -ForegroundColor DarkYellow
+        return
+    }
+
+    $currentPath = ''
+    if (Test-Path $script:CurrentBgLuaPath) {
+        try {
+            $raw = Get-Content -Raw $script:CurrentBgLuaPath -ErrorAction SilentlyContinue
+            if ($raw -match '\[\[(.+)\]\]') { $currentPath = $Matches[1].Trim() }
+        } catch {}
+    }
+
+    $candidates = @($allFiles | Where-Object { $_.FullName -ne $currentPath })
+    if ($candidates.Count -eq 0) { $candidates = $allFiles }
+
+    $pick = $candidates[(Get-Random -Maximum $candidates.Count)]
+    Write-Host ('  Rotating to: {0}' -f $pick.Name) -ForegroundColor Cyan
+
+    # Try to get brightness hint from cache if wallhaven id matches
+    $brightnessHint = $null
+    if ($pick.Name -match 'wallhaven-(.+)\.\w+$') {
+        $whId = $Matches[1]
+        $cache = Read-BgCache
+        $entry = $cache | Where-Object { $_.id -eq $whId } | Select-Object -First 1
+        if ($entry) { $brightnessHint = Get-WallpaperBrightnessHint -Entry $entry }
+    }
+
+    Write-CurrentBgLua -ImagePath $pick.FullName
+    Write-CurrentStyleLua -BrightnessHint $brightnessHint
+    Try-ReloadWezTerm
+
+    $state = Read-BgRotateState
+    Write-BgRotateState -Enabled $state.enabled -IntervalMinutes $state.intervalMinutes `
+        -LastRotatedUtc ([datetime]::UtcNow.ToString('o'))
+}
+
+function Start-BgRotateCheck {
+    $state = Read-BgRotateState
+    if (-not $state.enabled) { return }
+
+    $lastUtc = if ($state.lastRotatedUtc) { [datetime]$state.lastRotatedUtc } else { [datetime]::MinValue }
+    $minutesSince = ([datetime]::UtcNow - $lastUtc).TotalMinutes
+    if ($minutesSince -lt $state.intervalMinutes) { return }
+
+    $engine = Get-ShellEngine
+    if (-not (Test-Path $engine)) { return }
+
+    $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                   '-File', $PSCommandPath, '-Task', 'BgRotate')
+    try {
+        Start-Process -FilePath $engine -ArgumentList $arguments -WindowStyle Hidden -ErrorAction Stop | Out-Null
+    } catch {}
+}
+
+function Invoke-BgRotateCommand {
+    param([string[]]$Rest)
+
+    $sub = if ($Rest -and $Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
+
+    switch ($sub) {
+        'on' {
+            $mins = $script:BgRotateDefaultMinutes
+            if ($Rest.Count -ge 2) {
+                $parsed = 0
+                if ([int]::TryParse($Rest[1], [ref]$parsed) -and $parsed -gt 0) { $mins = $parsed }
+            }
+            Write-BgRotateState -Enabled $true -IntervalMinutes $mins
+            Write-Host ('  bg rotate: ON  every {0} min' -f $mins) -ForegroundColor Green
+        }
+        'off' {
+            $state = Read-BgRotateState
+            Write-BgRotateState -Enabled $false -IntervalMinutes $state.intervalMinutes
+            Write-Host '  bg rotate: OFF' -ForegroundColor DarkGray
+        }
+        'now' {
+            Invoke-BgRotateNow
+        }
+        'time' {
+            if ($Rest.Count -lt 2) {
+                $state = Read-BgRotateState
+                Write-Host ('  Current interval: {0} min' -f $state.intervalMinutes) -ForegroundColor Cyan
+                Write-Host '  Usage: 8sync bg rotate time <minutes>' -ForegroundColor DarkGray
+                return
+            }
+            $parsed = 0
+            if ([int]::TryParse($Rest[1], [ref]$parsed) -and $parsed -gt 0) {
+                $state = Read-BgRotateState
+                Write-BgRotateState -Enabled $state.enabled -IntervalMinutes $parsed
+                Write-Host ('  Rotate interval set to {0} min' -f $parsed) -ForegroundColor Green
+            } else {
+                Write-Host '  Invalid minutes. Usage: 8sync bg rotate time <minutes>' -ForegroundColor DarkYellow
+            }
+        }
+        'status' {
+            $state = Read-BgRotateState
+            $lastUtc = if ($state.lastRotatedUtc) { [datetime]$state.lastRotatedUtc } else { $null }
+            $statusStr = if ($state.enabled) { 'ON' } else { 'OFF' }
+            $color = if ($state.enabled) { 'Green' } else { 'DarkGray' }
+            Write-Host ''
+            Write-Host ('  bg rotate: {0}  every {1} min' -f $statusStr, $state.intervalMinutes) -ForegroundColor $color
+            Write-Host ('  source: bg/ folder ({0} images)' -f @(Get-ChildItem -Path $script:BackgroundDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -match '\.(jpg|jpeg|png|bmp|gif|webp)$' }).Count) -ForegroundColor DarkGray
+            Write-Host ('  last rotated: {0}' -f $(if ($lastUtc) { $lastUtc.ToString('u') } else { 'never' })) -ForegroundColor DarkGray
+            Write-Host ''
+        }
+        default {
+            Write-Host '  Usage: 8sync bg rotate [on [N] | off | now | time <min> | status]' -ForegroundColor DarkYellow
+            Write-Host ('  Default interval: {0} min' -f $script:BgRotateDefaultMinutes) -ForegroundColor DarkGray
+        }
+    }
+}
+
+function Invoke-BgClearCache {
+    if (-not (Test-Path $script:BgCachePath)) {
+        Write-Host '  Search cache is already empty.' -ForegroundColor DarkGray
+        return
+    }
+    try {
+        Remove-Item -Path $script:BgCachePath -Force -ErrorAction Stop
+        Write-Host '  Search cache cleared.' -ForegroundColor Green
+    } catch {
+        Write-Warning "Failed to clear cache: $_"
+    }
+}
+
+function Invoke-BgList {
+    Ensure-BackgroundDir
+    $files = Get-ChildItem -Path $script:BackgroundDir -File -ErrorAction SilentlyContinue |
+        Sort-Object -Property LastWriteTime -Descending
+    if (-not $files -or $files.Count -eq 0) {
+        Write-Host '  No downloaded images in bg/ folder.' -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Host ''
+    Write-Host ("  {0} downloaded image(s) in bg/" -f $files.Count) -ForegroundColor Cyan
+    Write-Host ''
+    $idx = 1
+    foreach ($f in $files) {
+        $sizeKB = [math]::Round($f.Length / 1024, 1)
+        $date = $f.LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+        $marker = ''
+        # Check if this is the currently active wallpaper
+        if (Test-Path $script:CurrentBgLuaPath) {
+            try {
+                $raw = Get-Content -Raw $script:CurrentBgLuaPath -ErrorAction SilentlyContinue
+                if ($raw -match '\[\[(.+)\]\]') {
+                    $currentPath = $Matches[1].Trim().Replace('\\\\', '\')
+                    if ($currentPath -eq $f.FullName) { $marker = ' *' }
+                }
+            } catch {}
+        }
+        $color = if ($marker) { 'Green' } else { 'White' }
+        Write-Host ("  {0,3}. {1,-45} {2,8} KB  {3}{4}" -f $idx, $f.Name, $sizeKB, $date, $marker) -ForegroundColor $color
+        $idx++
+    }
+    Write-Host ''
+    if ($files | Where-Object { $_.Name -match '^wallhaven-' }) {
+        Write-Host '  Preview: https://wallhaven.cc/w/<id>  (id = number after "wallhaven-")' -ForegroundColor DarkGray
+    }
+    Write-Host '  * = currently active wallpaper' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Invoke-BgRemove {
+    param([string[]]$Rest)
+
+    Ensure-BackgroundDir
+
+    if (-not $Rest -or $Rest.Count -eq 0) {
+        Write-Host '  Usage: 8sync bg remove <filename|id|all>' -ForegroundColor DarkYellow
+        Write-Host '  Examples:' -ForegroundColor DarkGray
+        Write-Host '    8sync bg remove wallhaven-abc123.jpg' -ForegroundColor DarkGray
+        Write-Host '    8sync bg remove abc123' -ForegroundColor DarkGray
+        Write-Host '    8sync bg remove all' -ForegroundColor DarkGray
+        return
+    }
+
+    $target = $Rest[0]
+
+    if ($target -eq 'all') {
+        $files = Get-ChildItem -Path $script:BackgroundDir -File -ErrorAction SilentlyContinue
+        if (-not $files -or $files.Count -eq 0) {
+            Write-Host '  No images to remove.' -ForegroundColor DarkGray
+            return
+        }
+        $count = $files.Count
+        $files | Remove-Item -Force -ErrorAction SilentlyContinue
+        Write-Host ("  Removed {0} image(s) from bg/." -f $count) -ForegroundColor Green
+        return
+    }
+
+    # Try exact filename match first
+    $filePath = Join-Path $script:BackgroundDir $target
+    if (Test-Path $filePath) {
+        Remove-Item -Path $filePath -Force
+        Write-Host ("  Removed: {0}" -f $target) -ForegroundColor Green
+        return
+    }
+
+    # Try as wallhaven id (wallhaven-<id>.jpg)
+    $idPath = Join-Path $script:BackgroundDir ("wallhaven-{0}.jpg" -f $target)
+    if (Test-Path $idPath) {
+        Remove-Item -Path $idPath -Force
+        Write-Host ("  Removed: wallhaven-{0}.jpg" -f $target) -ForegroundColor Green
+        return
+    }
+
+    # Try partial filename match
+    $matches = Get-ChildItem -Path $script:BackgroundDir -File -Filter "*$target*" -ErrorAction SilentlyContinue
+    if ($matches -and $matches.Count -eq 1) {
+        Remove-Item -Path $matches[0].FullName -Force
+        Write-Host ("  Removed: {0}" -f $matches[0].Name) -ForegroundColor Green
+        return
+    }
+    if ($matches -and $matches.Count -gt 1) {
+        Write-Host ("  Multiple matches for '{0}':" -f $target) -ForegroundColor DarkYellow
+        $matches | ForEach-Object { Write-Host ("    {0}" -f $_.Name) -ForegroundColor White }
+        Write-Host '  Please specify the exact filename.' -ForegroundColor DarkYellow
+        return
+    }
+
+    Write-Host ("  Not found: {0}" -f $target) -ForegroundColor DarkYellow
+}
+
 function Invoke-BgCommand {
     param([string[]]$Rest)
 
@@ -523,6 +672,15 @@ function Invoke-BgCommand {
             Invoke-BgOpen -Id $Rest[1]
         }
         'rotate' { Invoke-BgRotateCommand -Rest ($Rest | Select-Object -Skip 1) }
+        'clear'  {
+            if ($Rest.Count -ge 2 -and $Rest[1].ToLowerInvariant() -eq 'cache') {
+                Invoke-BgClearCache
+            } else {
+                Write-Host 'Usage: 8sync bg clear cache' -ForegroundColor DarkYellow
+            }
+        }
+        'list'   { Invoke-BgList }
+        'remove' { Invoke-BgRemove -Rest ($Rest | Select-Object -Skip 1) }
         default  { Show-BgHelp }
     }
 }

@@ -301,7 +301,10 @@ function Show-8SyncHint {
     Write-HintRow '8sync bg pick'                'Pick from cached results with fzf'
     Write-HintRow '8sync bg set <id|path>'       'Set wallpaper by cache id, local path, or URL'
     Write-HintRow '8sync bg open <id>'           'Open wallpaper page in browser'
-    Write-HintRow '8sync bg rotate [on N|off]'   'Auto-rotate wallpaper every N min (default 30)'
+    Write-HintRow '8sync bg rotate [on N|off|time N]' 'Auto-rotate from bg/ every N min (default 5)'
+    Write-HintRow '8sync bg list'                'List downloaded images in bg/ folder'
+    Write-HintRow '8sync bg clear cache'         'Clear wallpaper search cache'
+    Write-HintRow '8sync bg remove <name|id|all>' 'Remove downloaded images'
 
     Write-HintSection 'HELIX EDITOR'
     Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
