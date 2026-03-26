@@ -131,6 +131,37 @@ Output grouped by type with size + age. Remove items manually via package manage
 
 ---
 
+### `8sync opencode` — Portable OpenCode bundle export
+
+```powershell
+8sync opencode                    # export to ./a
+8sync opencode export a           # explicit export target
+8sync opencode --dry-run          # preview exported files only
+8sync opencode status             # source/bundle/node/npm/nvm readiness
+8sync opencode help
+```
+
+- Source: `~/.config/opencode`
+- Default bundle folder: `./a` (relative to current working directory)
+- Export exclusions: `lib/`, `node_modules/`, `*.ps1`, `*.py`
+- `install` and `setup` are backward-compatible aliases to `export`
+
+Target machine setup:
+
+```powershell
+# 1) copy bundle contents -> ~/.config/opencode
+cd ~/.config/opencode
+npm i
+
+# 2) if npm is missing
+scoop install nvm
+nvm install <version>
+nvm use <version>
+npm i
+```
+
+---
+
 ### `8sync bg` — Wallpaper management
 
 ```powershell

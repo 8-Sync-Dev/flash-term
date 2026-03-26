@@ -1,5 +1,7 @@
 # 8sync Command Reference
 
+> Legacy snapshot (2026-03-20). For current behavior, use `20260322-8sync-commands.md`.
+
 ## General
 
 ```

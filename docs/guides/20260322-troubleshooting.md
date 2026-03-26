@@ -140,3 +140,22 @@ WezTerm's `automatically_reload_config = true` picks up file changes on its own.
 scoop install powershell
 ```
 The shell continues to load — only some features may behave unexpectedly.
+
+---
+
+## 11. `8sync opencode` exported bundle but target machine cannot run `npm i`
+
+**Cause:** Node/npm is not installed on target machine.
+
+**Fix:** install nvm via Scoop, then install/use Node version:
+
+```powershell
+scoop install nvm
+nvm install <version>
+nvm use <version>
+npm i
+```
+
+**Notes:**
+- `8sync opencode` intentionally excludes `node_modules/` so `npm i` must run on target machine.
+- Also excludes `lib/`, `*.ps1`, `*.py` by design for portable transfer.
