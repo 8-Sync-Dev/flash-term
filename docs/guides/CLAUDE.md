@@ -7,5 +7,9 @@ How-to guides for using WezTerm config features: keybindings, 8sync CLI, wallpap
 `{YYYYMMDD}-{kebab-case-name}.md`
 
 ## Files
-- `20260320-keybindings.md` — All WezTerm key bindings (leader key, panes, tabs)
-- `20260320-8sync-commands.md` — 8sync CLI reference (sync, status, bg, helix)
+- `20260322-8sync-commands.md` — **Canonical** 8sync CLI reference
+- `20260320-keybindings.md` — WezTerm + shell key bindings
+- `20260322-troubleshooting.md` — Known issues and remediation steps
+
+## Legacy Files
+- `20260320-8sync-commands.md` — legacy command reference kept for history; do not use as source of truth.
