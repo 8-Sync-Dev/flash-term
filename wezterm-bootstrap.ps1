@@ -4033,6 +4033,20 @@ function Resolve-OpencodeBundlePath {
         return $BundleDir
     }
 
+    # Smart auto-detection: search known locations in priority order
+    $candidates = @(
+        Join-Path $PWD.Path $BundleDir                                              # 1. Current dir
+        Join-Path $HOME '.config\wezterm\oc-bundle'                                # 2. Wezterm config (canonical)
+        Join-Path $HOME $BundleDir                                                  # 3. HOME root
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    # Default to $PWD (will produce a helpful "not found" error downstream)
     return Join-Path $PWD.Path $BundleDir
 }
 
@@ -4092,8 +4106,10 @@ function Invoke-OpencodeApply {
     )
 
     $bundlePath = Resolve-OpencodeBundlePath -BundleDir $BundleDir
+    $autoDetected = ($BundleDir -eq 'oc-bundle') -and ($bundlePath -ne (Join-Path $PWD.Path $BundleDir))
     if (-not (Test-Path $bundlePath)) {
         Write-Host ("  [opencode] Bundle folder not found: {0}" -f $bundlePath) -ForegroundColor Red
+        Write-Host '  [opencode] Searched: $PWD/oc-bundle, ~/.config/wezterm/oc-bundle, ~/oc-bundle' -ForegroundColor DarkGray
         return
     }
 
@@ -4119,7 +4135,8 @@ function Invoke-OpencodeApply {
 
     Write-Host ''
     Write-Host '  [opencode] Apply bundle' -ForegroundColor Cyan
-    Write-Host ("  bundle: {0}" -f $bundlePath) -ForegroundColor DarkGray
+    $bundleLabel = if ($autoDetected) { "$bundlePath  (auto-detected)" } else { $bundlePath }
+    Write-Host ("  bundle: {0}" -f $bundleLabel) -ForegroundColor DarkGray
     Write-Host ("  target: {0}" -f $targetPath) -ForegroundColor DarkGray
     Write-Host ''
 
@@ -4133,6 +4150,7 @@ function Invoke-OpencodeApply {
         }
         Write-Host ("  Total files: {0}" -f $actions.Count) -ForegroundColor DarkGray
         Write-Host '  [dry-run] would run: npm i (inside ~/.config/opencode)' -ForegroundColor DarkYellow
+        Write-Host '  [dry-run] then: restart OpenCode to auto-install plugins' -ForegroundColor DarkYellow
         Write-Host ''
         return
     }
@@ -4192,6 +4210,12 @@ function Invoke-OpencodeApply {
         Pop-Location
     }
 
+    Write-Host ''
+    Write-Host '  [opencode] Setup complete!' -ForegroundColor Cyan
+    Write-Host '  Next steps:' -ForegroundColor DarkGray
+    Write-Host '    1) Restart OpenCode -- plugins (oh-my-opencode, supermemory, dcp) auto-install on startup' -ForegroundColor DarkGray
+    Write-Host '    2) Add your API keys to ~/.config/opencode/opencode.json (provider.anthropic.options.apiKey)' -ForegroundColor DarkGray
+    Write-Host '    3) MCPs that need local tools: serena (uvx), git-mcp (uvx), playwright-mcp (npx) -- ensure these are available' -ForegroundColor DarkGray
     Write-Host ''
 }
 
