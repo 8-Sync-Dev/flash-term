@@ -40,9 +40,28 @@ git clone https://github.com/8-Sync-Dev/wezterm-config.git "$HOME\.config\wezter
 
 | Guide | Description |
 |---|---|
-| [docs/keybindings.md](docs/keybindings.md) | All WezTerm key bindings |
-| [docs/8sync-commands.md](docs/8sync-commands.md) | 8sync CLI reference |
-| [docs/architecture.md](docs/architecture.md) | How the config files work together |
+| [docs/CLAUDE.md](docs/CLAUDE.md) | Documentation hub and folder conventions |
+| [docs/guides/20260322-8sync-commands.md](docs/guides/20260322-8sync-commands.md) | Canonical 8sync CLI reference |
+| [docs/guides/20260320-keybindings.md](docs/guides/20260320-keybindings.md) | WezTerm + shell keybinding reference |
+| [docs/guides/20260322-troubleshooting.md](docs/guides/20260322-troubleshooting.md) | Common issues and fixes |
+| [docs/architecture/20260320-architecture.md](docs/architecture/20260320-architecture.md) | Config loading and state architecture |
+| [docs/plans/CLAUDE.md](docs/plans/CLAUDE.md) | Versioned implementation plan index |
+
+### Documentation Layout
+
+```text
+docs/
+├── CLAUDE.md
+├── guides/
+├── architecture/
+└── plans/
+```
+
+Project-level Claude guidance and rules live in:
+
+- `CLAUDE.md`
+- `.claude/CLAUDE.md`
+- `.claude/rules/core/*.md`
 
 ## Managed Tools
 

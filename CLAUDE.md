@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Companion Claude Config
+
+Project-specific Claude policy is organized under `.claude/`:
+
+- `.claude/CLAUDE.md` — Claude workspace index for this repo
+- `.claude/rules/core/docs-standards.md` — markdown standards and naming
+- `.claude/rules/core/project-structure.md` — canonical repository map
+- `.claude/rules/core/reporting-standards.md` — reporting quality rules
+
+When updating docs, keep these files aligned with `docs/CLAUDE.md`.
+
 ## What This Is
 
 A WezTerm terminal configuration for Windows 11, consisting of two main files:
@@ -27,7 +38,7 @@ A WezTerm terminal configuration for Windows 11, consisting of two main files:
 - All tools are installed/updated via Scoop
 - Auto-sync runs in a hidden background process when tools are missing or stale (72h interval)
 - State persisted to `.state/tool-state.json`; `.state/sync.lock` prevents concurrent syncs
-- `8sync opencode` copies the user's OpenCode config from `~/.config/opencode` into `.opencode` at the project root (root auto-detected by `.opencode` or `.git`)
+- `8sync opencode` exports a portable bundle to `./a` from `~/.config/opencode`, excluding `lib/`, `node_modules/`, `*.ps1`, and `*.py` for cross-machine setup
 
 ### Key Design Patterns
 - **Graceful degradation**: every tool check uses `Test-CommandExists` before setting aliases; if a tool is missing, the alias is simply skipped
