@@ -135,7 +135,10 @@ Output grouped by type with size + age. Remove items manually via package manage
 
 ```powershell
 8sync opencode                    # export to ./oc-bundle
-8sync opencode export a           # explicit export target
+8sync opencode export my-bundle   # explicit export target
+8sync opencode apply              # apply bundle -> ~/.config/opencode + npm i
+8sync opencode reinstall          # force reinstall (wipe target first) + npm i
+8sync opencode apply --force      # same as reinstall behavior
 8sync opencode --dry-run          # preview exported files only
 8sync opencode status             # source/bundle/node/npm/nvm readiness
 8sync opencode help
@@ -145,13 +148,29 @@ Output grouped by type with size + age. Remove items manually via package manage
 - Default bundle folder: `./oc-bundle` (relative to current working directory)
 - Export exclusions: `lib/`, `node_modules/`, `*.ps1`, `*.py`
 - `install` and `setup` are backward-compatible aliases to `export`
+- `apply` copies bundle files to `~/.config/opencode` and runs `npm i`
+- `reinstall` force-overwrites `~/.config/opencode` and runs `npm i`
+
+Recommended GitHub flow (simple):
+
+```powershell
+# machine A (source)
+8sync opencode
+# commit/push oc-bundle to a PRIVATE repo (or release artifact)
+
+# machine B (target)
+# clone/download bundle
+8sync opencode reinstall
+```
+
+> Security note: do **not** push `oc-bundle` to public GitHub if `opencode.json`
+> contains API keys/tokens. Use private repository or sanitize secrets first.
 
 Target machine setup:
 
 ```powershell
-# 1) copy bundle contents -> ~/.config/opencode
-cd ~/.config/opencode
-npm i
+# 1) simple one-shot force reinstall
+8sync opencode reinstall
 
 # 2) if npm is missing
 scoop install nvm

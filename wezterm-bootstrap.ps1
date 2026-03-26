@@ -369,7 +369,8 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
     Write-HintRow '8sync theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
     Write-HintRow '8sync opencode'                   'Export portable OpenCode bundle to ./oc-bundle (exclude lib, node_modules, *.ps1, *.py)'
-    Write-HintRow '8sync opencode --dry-run'         'Preview exported files only, no changes'
+    Write-HintRow '8sync opencode reinstall'         'Force reinstall from ./oc-bundle -> ~/.config/opencode and run npm i'
+    Write-HintRow '8sync opencode --dry-run'         'Preview exported/applied files only, no changes'
     Write-HintRow '8sync opencode status'            'Show source + bundle status and runtime readiness'
 
     Write-HintSection 'BACKGROUND'
@@ -742,7 +743,7 @@ function Register-8SyncCompleter {
             theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
-            opencode = @('export','install','setup','status','--dry-run','help')
+            opencode = @('export','apply','reinstall','install','setup','status','--dry-run','--force','help')
         }
 
         if ($count -le 1) {
@@ -4067,14 +4068,130 @@ function Show-OpencodeHelp {
     Write-HintSection 'OPENCODE -- Export portable setup bundle'
     Write-HintRow '8sync opencode'                    'Export ~/.config/opencode to ./oc-bundle (exclude lib, node_modules, *.ps1, *.py)'
     Write-HintRow '8sync opencode export [folder]'    'Export to custom folder (default: oc-bundle)'
-    Write-HintRow '8sync opencode --dry-run'          'Preview files that would be exported'
+    Write-HintRow '8sync opencode apply [folder]'     'Copy bundle -> ~/.config/opencode and run npm i'
+    Write-HintRow '8sync opencode reinstall [folder]' 'Force reinstall (wipe ~/.config/opencode, then apply + npm i)'
+    Write-HintRow '8sync opencode --dry-run'          'Preview files that would be exported/applied'
+    Write-HintRow '8sync opencode apply --force'      'Force overwrite target folder before copy + npm i'
     Write-HintRow '8sync opencode status'             'Show source/bundle/npm readiness'
     Write-HintRow '8sync opencode help'               'Show this help'
     Write-Host ''
     Write-Host '  Target machine setup:' -ForegroundColor DarkGray
-    Write-Host '    1) Copy everything from bundle folder (default: oc-bundle) -> ~/.config/opencode' -ForegroundColor DarkGray
-    Write-Host '    2) cd ~/.config/opencode && npm i' -ForegroundColor DarkGray
+    Write-Host '    1) Copy/extract bundle folder (default: oc-bundle) into machine' -ForegroundColor DarkGray
+    Write-Host '    2) Run: 8sync opencode reinstall [folder]   # force overwrite + npm i' -ForegroundColor DarkGray
     Write-Host '    3) If npm missing: scoop install nvm; nvm install <version>; nvm use <version>; npm i' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Note: Do NOT push bundle to public repo with secrets in opencode.json.' -ForegroundColor DarkYellow
+    Write-Host ''
+}
+
+function Invoke-OpencodeApply {
+    param(
+        [string]$BundleDir = 'oc-bundle',
+        [switch]$DryRun,
+        [switch]$Force
+    )
+
+    $bundlePath = Resolve-OpencodeBundlePath -BundleDir $BundleDir
+    if (-not (Test-Path $bundlePath)) {
+        Write-Host ("  [opencode] Bundle folder not found: {0}" -f $bundlePath) -ForegroundColor Red
+        return
+    }
+
+    $targetPath = Join-Path $HOME '.config\opencode'
+    $bundleFiles = Get-ChildItem -Path $bundlePath -Recurse -Force -File -ErrorAction SilentlyContinue
+    if (-not $bundleFiles -or $bundleFiles.Count -eq 0) {
+        Write-Host '  [opencode] Bundle has no files to apply.' -ForegroundColor DarkYellow
+        return
+    }
+
+    $actions = [System.Collections.Generic.List[pscustomobject]]::new()
+    foreach ($file in $bundleFiles) {
+        $rel = Convert-ToRelativePath -BasePath $bundlePath -FullPath $file.FullName
+        $dest = Join-Path $targetPath $rel
+        $destDir = Split-Path $dest -Parent
+        $actions.Add([pscustomobject]@{
+            Rel     = $rel
+            Src     = $file.FullName
+            Dest    = $dest
+            DestDir = $destDir
+        })
+    }
+
+    Write-Host ''
+    Write-Host '  [opencode] Apply bundle' -ForegroundColor Cyan
+    Write-Host ("  bundle: {0}" -f $bundlePath) -ForegroundColor DarkGray
+    Write-Host ("  target: {0}" -f $targetPath) -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($DryRun) {
+        Write-Host '  [opencode] DRY RUN -- no files written' -ForegroundColor Yellow
+        if ($Force) {
+            Write-Host '  [dry-run] would wipe target folder before copy (--force)' -ForegroundColor DarkYellow
+        }
+        foreach ($a in $actions) {
+            Write-Host ("  [dry-run] {0}" -f $a.Rel) -ForegroundColor DarkYellow
+        }
+        Write-Host ("  Total files: {0}" -f $actions.Count) -ForegroundColor DarkGray
+        Write-Host '  [dry-run] would run: npm i (inside ~/.config/opencode)' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    if ($Force -and (Test-Path $targetPath)) {
+        try {
+            Remove-Item -Path $targetPath -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Host ("  [error] Failed to clear target folder: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            return
+        }
+    }
+
+    if (-not (Test-Path $targetPath)) {
+        $null = New-Item -Path $targetPath -ItemType Directory -Force
+    }
+
+    $copied = 0
+    $errors = 0
+    foreach ($a in $actions) {
+        try {
+            if (-not (Test-Path $a.DestDir)) {
+                $null = New-Item -Path $a.DestDir -ItemType Directory -Force
+            }
+            Copy-Item -Path $a.Src -Destination $a.Dest -Force -ErrorAction Stop
+            Write-Host ("  [ok]      {0}" -f $a.Rel) -ForegroundColor Green
+            $copied++
+        } catch {
+            Write-Host ("  [error]   {0} -- {1}" -f $a.Rel, $_.Exception.Message) -ForegroundColor Red
+            $errors++
+        }
+    }
+
+    Write-Host ''
+    Write-Host ("  Apply done. copied={0} errors={1}" -f $copied, $errors) -ForegroundColor $(if ($errors -gt 0) { 'DarkYellow' } else { 'Cyan' })
+    Write-Host ''
+
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        Write-Host '  npm not found. Install Node/npm then run: cd ~/.config/opencode; npm i' -ForegroundColor DarkYellow
+        Write-Host '    scoop install nvm' -ForegroundColor White
+        Write-Host '    nvm install <version>' -ForegroundColor White
+        Write-Host '    nvm use <version>' -ForegroundColor White
+        Write-Host '    npm i' -ForegroundColor White
+        Write-Host ''
+        return
+    }
+
+    try {
+        Push-Location $targetPath
+        Write-Host '  Running npm i ...' -ForegroundColor Yellow
+        npm i
+        Write-Host '  npm i completed.' -ForegroundColor Green
+    } catch {
+        Write-Host ("  [error] npm i failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    } finally {
+        Pop-Location
+    }
+
     Write-Host ''
 }
 
@@ -4221,6 +4338,7 @@ function Invoke-OpencodeCommand {
     )
 
     $dryRun = $Rest -contains '--dry-run'
+    $force = $Rest -contains '--force'
 
     $sub = 'export'
     $argStart = 0
@@ -4239,6 +4357,8 @@ function Invoke-OpencodeCommand {
 
     switch ($sub) {
         'export' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
+        'apply' { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
+        'reinstall' { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force }
         'install' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun } # backward-compatible alias
         'setup' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }   # backward-compatible alias
         '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
