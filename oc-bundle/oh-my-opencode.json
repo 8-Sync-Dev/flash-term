@@ -1,0 +1,186 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
+  "instructions": ["~/.config/opencode/instructions/mcp-awareness.md"],
+  "permission": {
+    "mcp*": "allow",
+    "serena*": "allow",
+    "context7*": "allow",
+    "playwright*": "allow",
+    "web-search*": "allow",
+    "web-reader*": "allow",
+    "filesystem*": "allow",
+    "git-mcp*": "allow",
+    "fetch*": "allow",
+    "memory*": "allow",
+    "sequential-thinking*": "allow"
+  },
+  "agents": {
+    "sisyphus": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "description": "Primary orchestration agent - Claude Sonnet 4.6 for complex reasoning",
+      "permission": {
+        "mcp*": "allow"
+      }
+    },
+    "oracle": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Consultation agent - fast GLM for quick advice",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "context7*": "allow"
+      }
+    },
+    "librarian": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Documentation search agent - always use context7 and web-search",
+      "permission": {
+        "mcp*": "allow",
+        "context7*": "allow",
+        "web-search*": "allow",
+        "web-reader*": "allow",
+        "zread*": "allow"
+      }
+    },
+    "explore": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Codebase exploration - use serena for LSP-aware code navigation",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "git-mcp*": "allow"
+      }
+    },
+    "multimodal-looker": {
+      "model": "zai-coding-plan/glm-4.6v",
+      "description": "Vision/multimodal analysis - use zai-mcp-server for image tools",
+      "permission": {
+        "mcp*": "allow",
+        "zai-mcp-server*": "allow"
+      }
+    },
+    "prometheus": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "description": "Planning agent - Claude Sonnet 4.6 for detailed plans",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "context7*": "allow"
+      }
+    },
+    "metis": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Pre-planning analysis",
+      "permission": {
+        "mcp*": "allow"
+      }
+    },
+    "momus": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Quality assurance reviewer - use serena for code analysis",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "git-mcp*": "allow"
+      }
+    },
+    "atlas": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Context navigator",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow"
+      }
+    },
+    "tester": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Test engineer agent - use playwright for E2E tests",
+      "permission": {
+        "mcp*": "allow",
+        "playwright*": "allow",
+        "serena*": "allow"
+      }
+    },
+    "devops": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "DevOps infrastructure agent",
+      "permission": {
+        "mcp*": "allow",
+        "git-mcp*": "allow",
+        "filesystem*": "allow"
+      }
+    },
+    "code-reviewer": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Code review specialist - use serena for LSP analysis",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "git-mcp*": "allow",
+        "context7*": "allow"
+      }
+    },
+    "backend-dev": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Backend implementation agent - use serena for code navigation",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "context7*": "allow",
+        "git-mcp*": "allow"
+      }
+    },
+    "architect": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "System architecture agent",
+      "permission": {
+        "mcp*": "allow",
+        "serena*": "allow",
+        "context7*": "allow"
+      }
+    },
+    "ai-engineer": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "AI/ML engineering agent",
+      "permission": {
+        "mcp*": "allow",
+        "context7*": "allow",
+        "serena*": "allow"
+      }
+    }
+  },
+  "categories": {
+    "visual-engineering": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Frontend, UI/UX, design tasks"
+    },
+    "ultrabrain": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "description": "Complex logic - use Claude for hard problems"
+    },
+    "deep": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Autonomous deep work"
+    },
+    "artistry": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "Creative problem-solving"
+    },
+    "quick": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Trivial tasks - fastest model"
+    },
+    "unspecified-low": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Low effort general tasks"
+    },
+    "unspecified-high": {
+      "model": "zai-coding-plan/glm-5",
+      "description": "High effort general tasks"
+    },
+    "writing": {
+      "model": "zai-coding-plan/glm-4.7-flashx",
+      "description": "Documentation and prose"
+    }
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-6",
+  "compaction": {
+    "auto": true,
+    "reserved": 20000,
+    "prune": true
+  },
+  "instructions": [
+    "~/.config/opencode/instructions/mcp-awareness.md",
+    "~/.config/opencode/instructions/context-compaction.md",
+    "~/.config/opencode/instructions/search-maximization.md"
+  ],
+  "plugin": [
+    "oh-my-opencode@latest",
+    "opencode-supermemory@latest",
+    "@tarquinen/opencode-dcp@latest",
+    "./plugins/anthropic-auth.mjs",
+    "./plugins/smart-compact.mjs",
+    "opencode-anthropic-oauth"
+  ],
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "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"
+      }
+    }
+  },
+  "permission": {
+    "bash": "allow",
+    "read": "allow",
+    "write": "allow",
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "task": "allow",
+    "todowrite": "allow",
+    "todoread": "allow",
+    "mcp*": "allow"
+  },
+  "mcp": {
+    "zai-mcp-server": {
+      "type": "local",
+      "command": ["npx", "-y", "@z_ai/mcp-server"],
+      "environment": {
+        "Z_AI_MODE": "ZAI",
+        "Z_AI_API_KEY": "89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+      }
+    },
+    "web-search-prime": {
+      "type": "remote",
+      "url": "https://api.z.ai/api/mcp/web_search_prime/mcp",
+      "headers": {
+        "Authorization": "Bearer 89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+      }
+    },
+    "web-reader": {
+      "type": "remote",
+      "url": "https://api.z.ai/api/mcp/web_reader/mcp",
+      "headers": {
+        "Authorization": "Bearer 89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+      }
+    },
+    "zread": {
+      "type": "remote",
+      "url": "https://api.z.ai/api/mcp/zread/mcp",
+      "headers": {
+        "Authorization": "Bearer 89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+      }
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    },
+    "serena": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide"
+      ],
+      "enabled": true
+    },
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "D:\\Work_Space_2026"],
+      "enabled": true
+    },
+    "git-mcp": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-git"],
+      "enabled": true
+    },
+    "fetch": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-fetch"],
+      "enabled": true
+    },
+    "memory": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory"],
+      "enabled": true
+    },
+    "sequential-thinking": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "enabled": true
+    },
+    "brave-search": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-brave-search"],
+      "enabled": false,
+      "environment": {
+        "BRAVE_API_KEY": ""
+      }
+    },
+    "postgres": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-postgres"],
+      "enabled": false
+    },
+    "playwright-mcp": {
+      "type": "local",
+      "command": ["npx", "-y", "@executeautomation/playwright-mcp-server"],
+      "enabled": true
+    },
+    "everything-search": {
+      "type": "local",
+      "command": ["npx", "-y", "@anthropic-ai/mcp-server-everything"],
+      "enabled": false
+    },
+    "pencil": {
+      "command": [
+        "C:\\Users\\Admin\\AppData\\Local\\Programs\\Pencil\\resources\\app.asar.unpacked\\out\\mcp-server-windows-x64.exe",
+        "--app",
+        "desktop"
+      ],
+      "enabled": true,
+      "type": "local"
+    },
+    "ambiance": {
+      "type": "local",
+      "command": ["npx", "-y", "ambiance-mcp"],
+      "enabled": true
+    }
+  }
+}
