@@ -284,8 +284,9 @@ function Show-8SyncHint {
     Write-HintRow '8sync status'            'Installed tools + last sync time'
     Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
     Write-HintRow '8sync sync --check'     'Dry-run: show missing + available updates, no changes'
-    Write-HintRow '8sync clean [--days N]'         'Deep clean: temp/cache/venv/RAM/disk (default: stale > 7 days)'
-    Write-HintRow '8sync clean --projects [--all]' 'Stale git repo picker -- fzf multi-select to delete'
+    Write-HintRow '8sync clean [--days N]'         'Deep clean: temp/cache/global env/RAM/disk (default: stale > 7 days)'
+    Write-HintRow '8sync clean --projects [--all]' 'Report stale git repos only (deletion disabled for safety)'
+    Write-HintRow '8sync gpu [N|status|auto|off]'  'Adaptive GPU policy. Example: 8sync gpu 10 for smoother rendering'
     Write-HintRow '8sync clean --deep'             'Report stale MCP/npm/pip/cargo/go dev artifacts'
     Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
     Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
@@ -384,6 +385,10 @@ function Show-8SyncStatus {
     $rotateStr = if ($rotateSt.enabled) { 'ON  every {0}min' -f $rotateSt.intervalMinutes } else { 'OFF' }
     $rotateColor = if ($rotateSt.enabled) { 'Green' } else { 'DarkGray' }
     Write-Host ('bg rotate: {0}' -f $rotateStr) -ForegroundColor $rotateColor
+    if (Get-Command Get-CurrentGpuMinPercent -ErrorAction SilentlyContinue) {
+        $gpuMin = Get-CurrentGpuMinPercent
+        Write-Host ('gpu target: {0}%  (set via: 8sync gpu N)' -f $gpuMin) -ForegroundColor DarkGray
+    }
     $glass = Read-CurrentStyleState
     Write-Host ('glass theme: style={0} scene={1} hint={2}' -f $glass.style, $glass.scene, $glass.bgHint) -ForegroundColor DarkGray
     Write-Host ('startup mode: {0}  (override: WEZTERM_STARTUP_MODE=light|balanced)' -f (Get-StartupMode)) -ForegroundColor DarkGray

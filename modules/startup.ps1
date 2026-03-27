@@ -145,6 +145,7 @@ function Register-8SyncAlias {
                 }
             }
             'clean'  { Invoke-CleanCommand -Rest $Rest }
+            'gpu'    { Invoke-GpuCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
             'theme'  { Invoke-ThemeCommand -Rest $Rest }

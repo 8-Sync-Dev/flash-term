@@ -50,7 +50,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','sync','clean','bg','hx','theme','opencode')
+    $modes = @('help','status','sync','clean','gpu','bg','hx','theme','opencode')
 
         # subcommands per mode
         $subMap = @{
@@ -59,6 +59,7 @@ function Register-8SyncCompleter {
             theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
+            gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
             opencode = @('export','apply','reinstall','install','setup','status','--dry-run','--force','help')
         }
 

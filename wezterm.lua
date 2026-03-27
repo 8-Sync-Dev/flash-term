@@ -13,6 +13,7 @@ local current_bg_lua = config_dir .. "\\current-bg.lua"
 local bootstrap_path = config_dir .. "\\wezterm-bootstrap.ps1"
 local current_opacity_lua = config_dir .. "\\current-opacity.lua"
 local current_style_lua = config_dir .. "\\current-style.lua"
+local current_gpu_lua = config_dir .. "\\current-gpu.lua"
 
 local cursor_styles = {
   "SteadyBlock",
@@ -110,6 +111,31 @@ local function load_style_state()
   end
   if type(value.bg_hint) == "string" and value.bg_hint ~= "" then
     result.bg_hint = value.bg_hint
+  end
+
+  return result
+end
+
+local function load_gpu_state()
+  local default_state = {
+    min_percent = 10,
+  }
+
+  if not file_exists(current_gpu_lua) then
+    return default_state
+  end
+
+  local ok, value = pcall(dofile, current_gpu_lua)
+  if not ok or type(value) ~= "table" then
+    return default_state
+  end
+
+  local result = {
+    min_percent = default_state.min_percent,
+  }
+
+  if type(value.min_percent) == "number" then
+    result.min_percent = clamp_number(value.min_percent, 0, 100)
   end
 
   return result
@@ -351,6 +377,7 @@ local active_bg_path = load_background_path()
 local optimized_bg_path = resolve_optimized_background_path(active_bg_path)
 local bg_hint = style_state.bg_hint or infer_bg_hint_from_path(active_bg_path)
 local adaptive_overlay_delta = overlay_delta_from_hint(bg_hint, active_scene.adaptive_overlay_strength)
+local gpu_state = load_gpu_state()
 
 wezterm.GLOBAL.bg_mode = wezterm.GLOBAL.bg_mode or (optimized_bg_path and "legacy" or "solid")
 wezterm.GLOBAL.cursor_style_index = wezterm.GLOBAL.cursor_style_index or 2
@@ -616,11 +643,10 @@ config.window_background_opacity = active_scene.window_background_opacity
 config.text_background_opacity = active_scene.text_background_opacity
 config.background = build_background(wezterm.GLOBAL.bg_mode)
 
-config.front_end = "WebGpu"
-
--- Auto-select GPU: discrete when available, else integrated
+local gpu_bias_high = gpu_state.min_percent >= 10
 local ok_gpus, gpus = pcall(wezterm.gui.enumerate_gpus)
 if ok_gpus and gpus and #gpus > 0 then
+  config.front_end = "WebGpu"
   local preferred = nil
   for _, gpu in ipairs(gpus) do
     if gpu.device_type == "DiscreteGpu" then
@@ -639,10 +665,10 @@ if ok_gpus and gpus and #gpus > 0 then
   if preferred then
     config.webgpu_preferred_adapter = preferred
   end
+  config.webgpu_power_preference = gpu_bias_high and "HighPerformance" or "LowPower"
 else
-  config.webgpu_power_preference = "HighPerformance"
+  config.front_end = "OpenGL"
 end
-config.webgpu_power_preference = "HighPerformance"
 
 config.colors = {
   split = "#14c8ff",
@@ -716,8 +742,13 @@ config.default_cursor_style = cursor_styles[wezterm.GLOBAL.cursor_style_index or
 config.cursor_blink_rate = 420
 config.cursor_blink_ease_in = "EaseOut"
 config.cursor_blink_ease_out = "EaseOut"
-config.animation_fps = 24
-config.max_fps = 144
+if gpu_bias_high then
+  config.animation_fps = 30
+  config.max_fps = 165
+else
+  config.animation_fps = 24
+  config.max_fps = 120
+end
 config.status_update_interval = 1500
 config.enable_scroll_bar = false
 config.audible_bell = "Disabled"
