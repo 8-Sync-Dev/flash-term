@@ -1,0 +1,90 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json",
+
+  // === AGENTS — Max plan = Opus everywhere that matters ===
+  "agents": {
+    // Main orchestrator: Opus 4.6 for ultrawork
+    "sisyphus": {
+      "model": "anthropic/claude-opus-4-6",
+      "ultrawork": {
+        "model": "anthropic/claude-opus-4-6",
+        "variant": "max"
+      }
+    },
+
+    // Planner: inherits sisyphus model, add parallel guidance
+    "prometheus": {
+      "prompt_append": "Leverage deep & quick agents heavily, always in parallel."
+    },
+
+    // Plan reviewer
+    "metis": {
+      "model": "anthropic/claude-opus-4-6"
+    },
+
+    // Architecture consultation: Opus or GPT-5.4
+    "oracle": {
+      "model": "anthropic/claude-opus-4-6",
+      "variant": "high"
+    },
+
+    // Research agents: use fast/cheap models for speed
+    "librarian": {
+      "model": "google/gemini-3-flash"
+    },
+    "explore": {
+      "model": "google/gemini-3-flash"
+    }
+  },
+
+  // === CATEGORIES — Route tasks to optimal models ===
+  "categories": {
+    "quick": {
+      "model": "anthropic/claude-sonnet-4-6"
+    },
+    "unspecified-low": {
+      "model": "anthropic/claude-sonnet-4-6"
+    },
+    "unspecified-high": {
+      "model": "anthropic/claude-opus-4-6"
+    }
+  },
+
+  // === BACKGROUND TASKS — Max concurrency for Claude Max ===
+  "background_task": {
+    "defaultConcurrency": 5,
+    "staleTimeoutMs": 300000,
+    "providerConcurrency": {
+      "anthropic": 5,
+      "google": 10,
+      "openai": 5
+    },
+    "modelConcurrency": {
+      "anthropic/claude-opus-4-6": 3,
+      "anthropic/claude-sonnet-4-6": 5
+    }
+  },
+
+  // === SISYPHUS AGENT — Full orchestration ===
+  "sisyphus_agent": {
+    "disabled": false,
+    "default_builder_enabled": false,
+    "planner_enabled": true,
+    "replace_plan": true
+  },
+
+  // === TMUX — Visual agent panes (optional but recommended) ===
+  "tmux": {
+    "enabled": true,
+    "layout": "main-vertical",
+    "main_pane_size": 60,
+    "main_pane_min_width": 120,
+    "agent_pane_min_width": 40
+  },
+
+  // === BUILT-IN MCPs — All enabled ===
+  // "disabled_mcps": []  // websearch, context7, grep_app all ON by default
+
+  // === HOOKS — Keep all enabled for ultrawork ===
+  "disabled_hooks": []
+}

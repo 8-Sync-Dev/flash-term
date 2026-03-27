@@ -47,3 +47,9 @@ vendor/
 coverage/
 .cache/
 tmp/
+
+# bg-shell runtime state
+.bg-shell/
+
+# GSD migration artifacts
+.gsd.migrating/
