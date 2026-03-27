@@ -297,12 +297,12 @@ function Show-8SyncHint {
     Write-HintRow '8sync opencode status'            'Show source + bundle status and runtime readiness'
 
     Write-HintSection 'BACKGROUND'
-    Write-HintRow '8sync bg search <kw>'         'Search Wallhaven for 4K wallpapers'
-    Write-HintRow '8sync bg pick'                'Pick from cached results with fzf'
+    Write-HintRow '8sync bg search <kw>'         'Search wallhaven (default), --yandere, --safebooru, --all'
+    Write-HintRow '8sync bg pick'                'Pick from cache with fzf + imgcat preview'
     Write-HintRow '8sync bg set <id|path>'       'Set wallpaper by cache id, local path, or URL'
     Write-HintRow '8sync bg open <id>'           'Open wallpaper page in browser'
     Write-HintRow '8sync bg rotate [on N|off|time N]' 'Auto-rotate from bg/ every N min (default 5)'
-    Write-HintRow '8sync bg list'                'List downloaded images in bg/ folder'
+    Write-HintRow '8sync bg list [--preview]'    'List images with links (--preview: inline imgcat)'
     Write-HintRow '8sync bg clear cache'         'Clear wallpaper search cache'
     Write-HintRow '8sync bg remove <name|id|all>' 'Remove downloaded images'
 

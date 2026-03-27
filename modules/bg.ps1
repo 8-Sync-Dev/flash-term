@@ -73,20 +73,134 @@ function Search-Wallhaven {
     return $items
 }
 
+function Normalize-YandereEntry {
+    param([Parameter(Mandatory)] [object]$Item)
+
+    $tagList = @()
+    if ($Item.tags) {
+        $tagList = ($Item.tags -split '\s+') | Where-Object { $_ -and $_ -notmatch '^(rating|score|width|height):' } | Select-Object -First 8
+    }
+
+    return [pscustomobject]@{
+        id         = [string]$Item.id
+        resolution = "{0}x{1}" -f $Item.width, $Item.height
+        ratio      = if ($Item.height -gt 0) { [math]::Round($Item.width / $Item.height, 2) } else { 0 }
+        page       = "https://yande.re/post/show/{0}" -f $Item.id
+        short      = "https://yande.re/post/show/{0}" -f $Item.id
+        preview    = $Item.preview_url
+        file       = $Item.file_url
+        colors     = @()
+        tags       = $tagList
+        source     = 'yandere'
+        queriedUtc = [datetime]::UtcNow.ToString('o')
+    }
+}
+
+function Search-Yandere {
+    param(
+        [Parameter(Mandatory)] [string]$Keywords,
+        [int]$Limit = 24
+    )
+
+    $tagParts = @($Keywords -split '\s+')
+    $tagParts += 'width:3840..'
+    $tagParts += 'rating:safe'
+    $tagParts += 'order:score'
+    $tags = ($tagParts | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '+'
+    $uri = "https://yande.re/post.json?tags=$tags&limit=$Limit"
+
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Get -TimeoutSec 20
+    } catch {
+        Write-Warning 'yande.re request failed. Check network access and try again.'
+        return @()
+    }
+
+    if (-not $response -or $response.Count -eq 0) {
+        return @()
+    }
+
+    $items = @()
+    foreach ($entry in $response) {
+        $items += Normalize-YandereEntry -Item $entry
+    }
+    return $items
+}
+
+function Normalize-SafebooruEntry {
+    param([Parameter(Mandatory)] [object]$Item)
+
+    $tagList = @()
+    if ($Item.tags) {
+        $tagList = ($Item.tags -split '\s+') | Where-Object { $_ } | Select-Object -First 8
+    }
+
+    $imgUrl = "https://safebooru.org/images/{0}/{1}" -f $Item.directory, $Item.image
+
+    return [pscustomobject]@{
+        id         = [string]$Item.id
+        resolution = "{0}x{1}" -f $Item.width, $Item.height
+        ratio      = if ($Item.height -gt 0) { [math]::Round($Item.width / $Item.height, 2) } else { 0 }
+        page       = "https://safebooru.org/index.php?page=post&s=view&id={0}" -f $Item.id
+        short      = "https://safebooru.org/index.php?page=post&s=view&id={0}" -f $Item.id
+        preview    = "https://safebooru.org/thumbnails/{0}/thumbnail_{1}" -f $Item.directory, $Item.image
+        file       = $imgUrl
+        colors     = @()
+        tags       = $tagList
+        source     = 'safebooru'
+        queriedUtc = [datetime]::UtcNow.ToString('o')
+    }
+}
+
+function Search-Safebooru {
+    param(
+        [Parameter(Mandatory)] [string]$Keywords,
+        [int]$Limit = 24
+    )
+
+    $tagParts = @($Keywords -split '\s+')
+    $tagParts += 'wallpaper'
+    $tagParts += 'highres'
+    $tags = ($tagParts | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '+'
+    $uri = "https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags=$tags&limit=$Limit"
+
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Get -TimeoutSec 20
+    } catch {
+        Write-Warning 'Safebooru request failed. Check network access and try again.'
+        return @()
+    }
+
+    if (-not $response -or $response.Count -eq 0) {
+        return @()
+    }
+
+    $items = @()
+    foreach ($entry in $response) {
+        $items += Normalize-SafebooruEntry -Item $entry
+    }
+    return $items
+}
+
 function Show-BgHelp {
     Write-Host ''
     Write-Host 'Background commands:' -ForegroundColor Yellow
     Write-Host '  8sync bg help'
-    Write-Host '  8sync bg search <keywords>'
-    Write-Host '  8sync bg pick'
+    Write-Host '  8sync bg search <keywords>                    Search wallhaven (default)'
+    Write-Host '  8sync bg search --yandere <keywords>          Search yande.re (4K+ anime)'
+    Write-Host '  8sync bg search --safebooru <keywords>        Search safebooru (SFW anime)'
+    Write-Host '  8sync bg search --all <keywords>              Search all sources'
+    Write-Host '  8sync bg pick                                 fzf pick from cache'
     Write-Host '  8sync bg set <id|path|url>'
     Write-Host '  8sync bg open <id>'
     Write-Host ('  8sync bg rotate [on [N] | off | now | time <min> | status]  (default: {0} min)' -f $script:BgRotateDefaultMinutes)
-    Write-Host '  8sync bg list                                 List downloaded images'
+    Write-Host '  8sync bg list                                 List images with preview'
     Write-Host '  8sync bg clear cache                          Clear search cache'
     Write-Host '  8sync bg remove <filename|id|all>             Remove downloaded images'
     Write-Host ''
+    Write-Host '  Sources: wallhaven.cc (default) | yande.re (4K+ anime) | safebooru (SFW)' -ForegroundColor DarkGray
     Write-Host '  Rotate picks random images from bg/ folder.' -ForegroundColor DarkGray
+    Write-Host '  List uses wezterm imgcat for inline preview if available.' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -273,14 +387,62 @@ function Save-BgFromUrl {
 function Invoke-BgSearch {
     param([Parameter(Mandatory)] [string]$Keywords)
 
-    $results = Search-Wallhaven -Keywords $Keywords
-    if (-not $results -or $results.Count -eq 0) {
-        Write-Host 'No results found.' -ForegroundColor DarkYellow
+    # Parse source flags from keywords
+    $source = 'wallhaven'
+    $cleanKeywords = $Keywords
+    if ($Keywords -match '^--yandere\s+') {
+        $source = 'yandere'
+        $cleanKeywords = $Keywords -replace '^--yandere\s+', ''
+    } elseif ($Keywords -match '^--safebooru\s+') {
+        $source = 'safebooru'
+        $cleanKeywords = $Keywords -replace '^--safebooru\s+', ''
+    } elseif ($Keywords -match '^--all\s+') {
+        $source = 'all'
+        $cleanKeywords = $Keywords -replace '^--all\s+', ''
+    }
+
+    if (-not $cleanKeywords.Trim()) {
+        Write-Host 'Usage: 8sync bg search [--yandere|--safebooru|--all] <keywords>' -ForegroundColor DarkYellow
         return
     }
 
-    Write-BgCache -Items $results
-    Write-Host ("Saved {0} results to cache." -f ($results.Count)) -ForegroundColor Green
+    $allResults = @()
+
+    switch ($source) {
+        'wallhaven' {
+            Write-Host '  Searching wallhaven.cc ...' -ForegroundColor DarkGray
+            $allResults = @(Search-Wallhaven -Keywords $cleanKeywords)
+        }
+        'yandere' {
+            Write-Host '  Searching yande.re ...' -ForegroundColor DarkGray
+            $allResults = @(Search-Yandere -Keywords $cleanKeywords)
+        }
+        'safebooru' {
+            Write-Host '  Searching safebooru.org ...' -ForegroundColor DarkGray
+            $allResults = @(Search-Safebooru -Keywords $cleanKeywords)
+        }
+        'all' {
+            Write-Host '  Searching wallhaven.cc ...' -ForegroundColor DarkGray
+            $wh = @(Search-Wallhaven -Keywords $cleanKeywords)
+            Write-Host ("    wallhaven: {0} results" -f $wh.Count) -ForegroundColor DarkGray
+            Write-Host '  Searching yande.re ...' -ForegroundColor DarkGray
+            $yr = @(Search-Yandere -Keywords $cleanKeywords)
+            Write-Host ("    yande.re: {0} results" -f $yr.Count) -ForegroundColor DarkGray
+            Write-Host '  Searching safebooru.org ...' -ForegroundColor DarkGray
+            $sb = @(Search-Safebooru -Keywords $cleanKeywords)
+            Write-Host ("    safebooru: {0} results" -f $sb.Count) -ForegroundColor DarkGray
+            $allResults = @($wh) + @($yr) + @($sb)
+        }
+    }
+
+    if (-not $allResults -or $allResults.Count -eq 0) {
+        Write-Host '  No results found.' -ForegroundColor DarkYellow
+        return
+    }
+
+    Write-BgCache -Items $allResults
+    $sourceLabel = if ($source -eq 'all') { 'all sources' } else { $source }
+    Write-Host ("  Saved {0} results from {1} to cache." -f $allResults.Count, $sourceLabel) -ForegroundColor Green
 }
 
 function Invoke-BgPick {
@@ -295,11 +457,14 @@ function Invoke-BgPick {
         return
     }
 
+    # Build lines: id, resolution, source, tags, page
     $lines = $cache | ForEach-Object {
-        "{0}`t{1}`t{2}`t{3}" -f $_.id, $_.resolution, ($_.tags -join ','), $_.page
+        $src = if ($_.source) { $_.source } else { 'wallhaven' }
+        "{0}`t{1}`t{2}`t{3}`t{4}" -f $_.id, $_.resolution, $src, ($_.tags -join ','), $_.page
     }
 
-    $selected = $lines | fzf --delimiter "`t" --with-nth 1,2,3 --prompt='BG> ' --height=60% --layout=reverse --border
+    # fzf with text-only preview (imgcat escape sequences break fzf preview pane)
+    $selected = $lines | fzf --delimiter "`t" --with-nth 1,2,3 --prompt='BG> ' --height=60% --layout=reverse --border --preview "echo {4}" --preview-window=down:3:wrap
     if (-not $selected) {
         return
     }
@@ -336,7 +501,10 @@ function Invoke-BgSet {
         }
         'cache' {
             $entry = $target.Value
-            $fileName = ("wallhaven-{0}.jpg" -f $entry.id)
+            $src = if ($entry.source) { $entry.source } else { 'wallhaven' }
+            $ext = '.jpg'
+            if ($entry.file -match '\.(\w+)$') { $ext = '.' + $Matches[1] }
+            $fileName = ("{0}-{1}{2}" -f $src, $entry.id, $ext)
             $downloaded = Save-BgFromUrl -Url $entry.file -FileNameHint $fileName
             if ($downloaded) {
                 $finalPath = $downloaded
@@ -439,8 +607,8 @@ function Invoke-BgRotateNow {
         if ($entry) { $brightnessHint = Get-WallpaperBrightnessHint -Entry $entry }
     }
 
-    Write-CurrentBgLua -ImagePath $pick.FullName
-    Write-CurrentStyleLua -BrightnessHint $brightnessHint
+    Write-CurrentBgLua -Path $pick.FullName
+    Write-CurrentStyleLua -BgHint $brightnessHint
     Try-ReloadWezTerm
 
     $state = Read-BgRotateState
@@ -537,12 +705,29 @@ function Invoke-BgClearCache {
 }
 
 function Invoke-BgList {
+    param([string[]]$Rest)
+
     Ensure-BackgroundDir
     $files = Get-ChildItem -Path $script:BackgroundDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -match '\.(jpg|jpeg|png|bmp|gif|webp)$' } |
         Sort-Object -Property LastWriteTime -Descending
     if (-not $files -or $files.Count -eq 0) {
         Write-Host '  No downloaded images in bg/ folder.' -ForegroundColor DarkGray
         return
+    }
+
+    $showPreview = ($Rest -and $Rest -contains '--preview')
+    $hasImgcat = Test-CommandExists 'wezterm'
+
+    # Read current wallpaper path once
+    $currentPath = ''
+    if (Test-Path $script:CurrentBgLuaPath) {
+        try {
+            $raw = Get-Content -Raw $script:CurrentBgLuaPath -ErrorAction SilentlyContinue
+            if ($raw -match '\[\[(.+)\]\]') {
+                $currentPath = $Matches[1].Trim().Replace('\\\\', '\')
+            }
+        } catch {}
     }
 
     Write-Host ''
@@ -553,23 +738,35 @@ function Invoke-BgList {
         $sizeKB = [math]::Round($f.Length / 1024, 1)
         $date = $f.LastWriteTime.ToString('yyyy-MM-dd HH:mm')
         $marker = ''
-        # Check if this is the currently active wallpaper
-        if (Test-Path $script:CurrentBgLuaPath) {
+        if ($currentPath -eq $f.FullName) { $marker = ' *' }
+        $color = if ($marker) { 'Green' } else { 'White' }
+
+        # Build source-specific page link
+        $pageLink = ''
+        if ($f.Name -match '^wallhaven-(.+)\.\w+$') {
+            $pageLink = "https://wallhaven.cc/w/{0}" -f $Matches[1]
+        } elseif ($f.Name -match '^yandere-(\d+)\.\w+$') {
+            $pageLink = "https://yande.re/post/show/{0}" -f $Matches[1]
+        } elseif ($f.Name -match '^safebooru-(\d+)\.\w+$') {
+            $pageLink = "https://safebooru.org/index.php?page=post&s=view&id={0}" -f $Matches[1]
+        }
+
+        Write-Host ("  {0,3}. {1,-45} {2,8} KB  {3}{4}" -f $idx, $f.Name, $sizeKB, $date, $marker) -ForegroundColor $color
+        if ($pageLink) {
+            Write-Host ("       {0}" -f $pageLink) -ForegroundColor DarkGray
+        }
+
+        # Show inline thumbnail preview if --preview flag or small enough set
+        if ($showPreview -and $hasImgcat) {
             try {
-                $raw = Get-Content -Raw $script:CurrentBgLuaPath -ErrorAction SilentlyContinue
-                if ($raw -match '\[\[(.+)\]\]') {
-                    $currentPath = $Matches[1].Trim().Replace('\\\\', '\')
-                    if ($currentPath -eq $f.FullName) { $marker = ' *' }
-                }
+                & wezterm imgcat --width 40 $f.FullName 2>$null
             } catch {}
         }
-        $color = if ($marker) { 'Green' } else { 'White' }
-        Write-Host ("  {0,3}. {1,-45} {2,8} KB  {3}{4}" -f $idx, $f.Name, $sizeKB, $date, $marker) -ForegroundColor $color
         $idx++
     }
     Write-Host ''
-    if ($files | Where-Object { $_.Name -match '^wallhaven-' }) {
-        Write-Host '  Preview: https://wallhaven.cc/w/<id>  (id = number after "wallhaven-")' -ForegroundColor DarkGray
+    if (-not $showPreview -and $hasImgcat) {
+        Write-Host '  Tip: 8sync bg list --preview   to show inline image thumbnails' -ForegroundColor DarkGray
     }
     Write-Host '  * = currently active wallpaper' -ForegroundColor DarkGray
     Write-Host ''
@@ -611,12 +808,14 @@ function Invoke-BgRemove {
         return
     }
 
-    # Try as wallhaven id (wallhaven-<id>.jpg)
-    $idPath = Join-Path $script:BackgroundDir ("wallhaven-{0}.jpg" -f $target)
-    if (Test-Path $idPath) {
-        Remove-Item -Path $idPath -Force
-        Write-Host ("  Removed: wallhaven-{0}.jpg" -f $target) -ForegroundColor Green
-        return
+    # Try as source-id pattern (wallhaven-<id>.*, yandere-<id>.*, safebooru-<id>.*)
+    foreach ($prefix in @('wallhaven', 'yandere', 'safebooru')) {
+        $idMatches = Get-ChildItem -Path $script:BackgroundDir -Filter "$prefix-$target.*" -File -ErrorAction SilentlyContinue
+        if ($idMatches -and $idMatches.Count -gt 0) {
+            $idMatches | Remove-Item -Force
+            Write-Host ("  Removed: {0}" -f $idMatches[0].Name) -ForegroundColor Green
+            return
+        }
     }
 
     # Try partial filename match
@@ -679,7 +878,7 @@ function Invoke-BgCommand {
                 Write-Host 'Usage: 8sync bg clear cache' -ForegroundColor DarkYellow
             }
         }
-        'list'   { Invoke-BgList }
+        'list'   { Invoke-BgList -Rest ($Rest | Select-Object -Skip 1) }
         'remove' { Invoke-BgRemove -Rest ($Rest | Select-Object -Skip 1) }
         default  { Show-BgHelp }
     }
