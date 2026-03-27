@@ -325,20 +325,14 @@ function Get-WallpaperBrightnessHint {
 function Try-ReloadWezTerm {
     if (Test-CommandExists 'wezterm') {
         try {
-            $cliHelp = & wezterm cli --help | Out-String
-            if ($cliHelp -match '(?m)^\s+reload\s') {
-                & wezterm cli reload | Out-Null
-                Write-Host 'WezTerm config reloaded.' -ForegroundColor Green
-            } else {
-                & wezterm cli list-clients | Out-Null
-                Write-Host 'Config updated. Press Ctrl+Shift+R in WezTerm to reload.' -ForegroundColor Green
-            }
+            & wezterm cli list-clients 2>&1 | Out-Null
+            Write-Host '  Config reloaded.' -ForegroundColor Green
             return
         } catch {
         }
     }
 
-    Write-Host 'Background updated. Reopen the tab if the image did not refresh.' -ForegroundColor DarkYellow
+    Write-Host '  Manual reload needed (Ctrl+Shift+R)' -ForegroundColor DarkYellow
 }
 
 function Resolve-BgTarget {
@@ -351,6 +345,19 @@ function Resolve-BgTarget {
     if (Test-Path $Value) {
         $full = (Resolve-Path -Path $Value).Path
         return [pscustomobject]@{ Type = 'path'; Value = $full }
+    }
+
+    # Numeric index — pick the Nth file from bg/ (same sort order as bg list)
+    if ($Value -match '^\d+$') {
+        $idx = [int]$Value
+        Ensure-BackgroundDir
+        $files = Get-ChildItem -Path $script:BackgroundDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -match '\.(jpg|jpeg|png|bmp|gif|webp)$' } |
+            Sort-Object -Property LastWriteTime -Descending
+        if ($idx -ge 1 -and $idx -le $files.Count) {
+            $full = $files[$idx - 1].FullName
+            return [pscustomobject]@{ Type = 'path'; Value = $full }
+        }
     }
 
     $cache = Read-BgCache
@@ -448,31 +455,108 @@ function Invoke-BgSearch {
 function Invoke-BgPick {
     $cache = Read-BgCache
     if (-not $cache -or $cache.Count -eq 0) {
-        Write-Host 'No cached results. Run "8sync bg search <keywords>" first.' -ForegroundColor DarkYellow
+        Write-Host '  No cached results. Run "8sync bg search <keywords>" first.' -ForegroundColor DarkYellow
         return
     }
 
     if (-not (Test-CommandExists 'fzf')) {
-        Write-Host 'fzf is missing. Run "8sync sync" or use "8sync bg set <id>".' -ForegroundColor DarkYellow
+        Write-Host '  fzf is missing. Run "8sync sync" or use "8sync bg set <id>".' -ForegroundColor DarkYellow
         return
     }
 
-    # Build lines: id, resolution, source, tags, page
+    $hasWezterm = Test-CommandExists 'wezterm'
+
+    # Build tab-delimited lines: id / resolution / source / tags / page
+    $tab = [char]9
     $lines = $cache | ForEach-Object {
-        $src = if ($_.source) { $_.source } else { 'wallhaven' }
-        "{0}`t{1}`t{2}`t{3}`t{4}" -f $_.id, $_.resolution, $src, ($_.tags -join ','), $_.page
+        $src  = if ($_.source) { $_.source } else { 'wallhaven' }
+        $tags = if ($_.tags)   { ($_.tags | Select-Object -First 4) -join ' ' } else { '' }
+        $_.id + $tab + $_.resolution + $tab + $src + $tab + $tags + $tab + $_.page
     }
 
-    # fzf with text-only preview (imgcat escape sequences break fzf preview pane)
-    $selected = $lines | fzf --delimiter "`t" --with-nth 1,2,3 --prompt='BG> ' --height=60% --layout=reverse --border --preview "echo {4}" --preview-window=down:3:wrap
-    if (-not $selected) {
-        return
+    # Write preview script: text only (metadata) — wezterm imgcat cannot run in fzf
+    # subprocess on Windows (requires TTY for terminal size query).
+    # Instead: Ctrl+P opens a full imgcat preview in the current pane, then returns to fzf.
+    $previewScriptPath = [IO.Path]::GetTempFileName() + '.ps1'
+    $previewScript = @'
+param([string]$id, [string]$res, [string]$src, [string]$tags, [string]$page)
+Write-Host ""
+Write-Host ("  " + $id) -ForegroundColor Cyan
+Write-Host ("  " + $res + "   " + $src) -ForegroundColor White
+if ($tags) { Write-Host ("  " + $tags) -ForegroundColor DarkGray }
+if ($page) { Write-Host ("  " + $page) -ForegroundColor DarkGray }
+Write-Host ""
+Write-Host "  Press Ctrl+P to preview image in terminal" -ForegroundColor DarkYellow
+'@
+    [IO.File]::WriteAllText($previewScriptPath, $previewScript, [Text.Encoding]::UTF8)
+    $previewCmd = "pwsh -NoProfile -NonInteractive -File `"$previewScriptPath`" -id {1} -res {2} -src {3} -tags {4} -page {5}"
+
+    # Build imgcat-on-demand script triggered by Ctrl+P via fzf --bind execute
+    $imgcatScriptPath = $null
+    $bindArg = $null
+    if ($hasWezterm) {
+        $imgcatScriptPath = [IO.Path]::GetTempFileName() + '.ps1'
+        $imgcatScript = @'
+param([string]$previewUrl, [string]$id)
+if (-not $previewUrl) { Write-Host "No preview URL for $id"; exit }
+$f = [IO.Path]::GetTempFileName() + '.jpg'
+try {
+    (New-Object Net.WebClient).DownloadFile($previewUrl, $f)
+    Write-Host ""
+    wezterm imgcat --width 80 $f
+} catch { Write-Host "Download failed: $_" }
+finally { Remove-Item $f -ea 0 }
+'@
+        [IO.File]::WriteAllText($imgcatScriptPath, $imgcatScript, [Text.Encoding]::UTF8)
+
+        # Build cache as JSON for the imgcat script to look up preview URL by id
+        $cacheJson = $cache | Select-Object id, preview | ConvertTo-Json -Compress
+        $cacheJsonPath = [IO.Path]::GetTempFileName() + '.json'
+        [IO.File]::WriteAllText($cacheJsonPath, $cacheJson, [Text.Encoding]::UTF8)
+
+        $imgcatLookup = [IO.Path]::GetTempFileName() + '.ps1'
+        $lookupScript = @"
+param([string]`$id)
+`$cache = Get-Content '$cacheJsonPath' -Raw | ConvertFrom-Json
+`$entry = `$cache | Where-Object { `$_.id -eq `$id } | Select-Object -First 1
+if (-not `$entry) { Write-Host "Not found: `$id"; exit }
+`$f = [IO.Path]::GetTempFileName() + '.jpg'
+try {
+    (New-Object Net.WebClient).DownloadFile(`$entry.preview, `$f)
+    Write-Host ''
+    wezterm imgcat --width 80 `$f
+    Write-Host ''
+} catch { Write-Host "Failed: `$_" }
+finally { Remove-Item `$f -ea 0 }
+"@
+        [IO.File]::WriteAllText($imgcatLookup, $lookupScript, [Text.Encoding]::UTF8)
+        $bindArg = "ctrl-p:execute(pwsh -NoProfile -NonInteractive -File `"$imgcatLookup`" -id {1})"
     }
 
+    $fzfArgs = @(
+        '--delimiter', "`t",
+        '--with-nth', '1,2,3,4',
+        '--prompt', 'BG> ',
+        '--height', '70%',
+        '--layout', 'reverse',
+        '--border',
+        '--info', 'inline',
+        '--preview', $previewCmd,
+        '--preview-window', 'right:40%:wrap'
+    )
+    if ($bindArg) { $fzfArgs += '--bind'; $fzfArgs += $bindArg }
+
+    $selected = $lines | fzf @fzfArgs
+
+    # Cleanup
+    Remove-Item $previewScriptPath -ErrorAction SilentlyContinue
+    if ($imgcatLookup)   { Remove-Item $imgcatLookup   -ErrorAction SilentlyContinue }
+    if ($imgcatScriptPath) { Remove-Item $imgcatScriptPath -ErrorAction SilentlyContinue }
+    if ($cacheJsonPath)  { Remove-Item $cacheJsonPath  -ErrorAction SilentlyContinue }
+
+    if (-not $selected) { return }
     $selectedId = ($selected -split "`t")[0]
-    if (-not $selectedId) {
-        return
-    }
+    if (-not $selectedId) { return }
 
     Invoke-BgSet -Value $selectedId
 }
@@ -519,8 +603,9 @@ function Invoke-BgSet {
     }
 
     Write-CurrentBgLua -Path $finalPath
+    Write-Host ('  Background set: {0}' -f (Split-Path $finalPath -Leaf)) -ForegroundColor Green
     $styleState = Write-CurrentStyleLua -BgHint $bgHint
-    Write-Host ("Glass adaptive hint: {0}" -f $styleState.bgHint) -ForegroundColor DarkGray
+    Write-Host ("  Glass style: {0}" -f $styleState.bgHint) -ForegroundColor DarkGray
     Try-ReloadWezTerm
 }
 
@@ -608,7 +693,7 @@ function Invoke-BgRotateNow {
     }
 
     Write-CurrentBgLua -Path $pick.FullName
-    Write-CurrentStyleLua -BgHint $brightnessHint
+    $null = Write-CurrentStyleLua -BgHint $brightnessHint
     Try-ReloadWezTerm
 
     $state = Read-BgRotateState
@@ -627,8 +712,18 @@ function Start-BgRotateCheck {
     $engine = Get-ShellEngine
     if (-not (Test-Path $engine)) { return }
 
+    # Use $script:BootstrapPath (set in wezterm-bootstrap.ps1) so the spawned process
+    # runs the correct entry-point with -Task BgRotate. PSCommandPath is empty when
+    # the bootstrap is dot-sourced interactively, so we cannot rely on it.
+    $bootstrapFile = $script:BootstrapPath
+    if (-not $bootstrapFile -or -not (Test-Path $bootstrapFile)) {
+        # Fallback: find bootstrap relative to this module's location
+        $bootstrapFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'wezterm-bootstrap.ps1'
+    }
+    if (-not (Test-Path $bootstrapFile)) { return }
+
     $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                   '-File', $PSCommandPath, '-Task', 'BgRotate')
+                   '-File', $bootstrapFile, '-Task', 'BgRotate')
     try {
         Start-Process -FilePath $engine -ArgumentList $arguments -WindowStyle Hidden -ErrorAction Stop | Out-Null
     } catch {}

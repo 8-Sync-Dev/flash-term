@@ -28,6 +28,7 @@ $script:ToolPackages = [ordered]@{
 }
 
 $script:StateDir = Join-Path $PSScriptRoot '.state'
+$script:BootstrapPath = $PSCommandPath   # full path to wezterm-bootstrap.ps1 — used by bg rotate daemon
 $script:StatePath = Join-Path $script:StateDir 'tool-state.json'
 $script:SyncLockPath = Join-Path $script:StateDir 'sync.lock'
 $script:MissingCachePath = Join-Path $script:StateDir 'missing-cache.json'
@@ -46,6 +47,7 @@ $script:CleanLoopDefaultProfile = 'light'
 $script:CleanLoopKnownProfiles = @('light', 'balanced', 'deep')
 $script:CurrentBgLuaPath = Join-Path $PSScriptRoot 'current-bg.lua'
 $script:CurrentStyleLuaPath = Join-Path $PSScriptRoot 'current-style.lua'
+$script:CurrentGpuLuaPath = Join-Path $PSScriptRoot 'current-gpu.lua'
 $script:StartupProfilePath = Join-Path $script:StateDir 'startup-profile.json'
 $script:StartupProfileMaxEntries = 40
 $script:StartupModeDefault = 'balanced'
@@ -54,6 +56,7 @@ $script:StartupKnownModes = @('light', 'balanced')
 $script:HelixConfigDir = Join-Path $env:APPDATA 'helix'
 $script:HelixConfigPath = Join-Path $script:HelixConfigDir 'config.toml'
 $script:CurrentOpacityPath = Join-Path $PSScriptRoot 'current-opacity.lua'
+$script:GpuMinPercentDefault = 10
 $script:DefaultOpacity = 0.72
 $script:OpacityStep = 0.05
 $script:DefaultGlassStyle = 'neon_glass'
@@ -87,6 +90,7 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'helix.ps1')
 . (Join-Path $script:ModulesDir 'clean.ps1')
 . (Join-Path $script:ModulesDir 'theme.ps1')
+. (Join-Path $script:ModulesDir 'gpu.ps1')
 . (Join-Path $script:ModulesDir 'opencode.ps1')
 . (Join-Path $script:ModulesDir 'startup.ps1')
 
