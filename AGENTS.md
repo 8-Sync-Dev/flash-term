@@ -9,10 +9,11 @@ A WezTerm terminal configuration for Windows 11. Two primary source files:
 - **`wezterm.lua`** — Lua config loaded directly by WezTerm (appearance, fonts, keybindings, shell launch)
 - **`wezterm-bootstrap.ps1`** — PowerShell script sourced on every new shell tab (8sync toolkit, aliases, auto-sync)
 
-Two files are **generated at runtime** and must never be committed (they are in `.gitignore`):
+Four files are **generated at runtime** and must never be committed (they are in `.gitignore`):
 - `current-bg.lua` — written by `8sync bg set`, read by `wezterm.lua`
 - `current-opacity.lua` — written by `8sync hx opacity`, read by `wezterm.lua`
 - `current-style.lua` — written by `8sync theme` / `8sync bg set`, read by `wezterm.lua`
+- `current-gpu.lua` — written by `8sync gpu`, read by `wezterm.lua`
 
 ## Build / Lint / Test Commands
 
@@ -157,7 +158,8 @@ Never assume a managed tool is present. Use `Test-CommandExists` before setting 
 ### Generated Lua files
 - `current-bg.lua` format: `return [[C:\path\to\image.jpg]]`
 - `current-opacity.lua` format: `return 0.72`
-- Always call `Try-ReloadWezTerm` after writing either file.
+- `current-gpu.lua` format: `return { min_percent = 10, updated_utc = "2026-03-27T02:00:00.0000000Z" }`
+- Always call `Try-ReloadWezTerm` after writing any generated Lua state file.
 
 ### UI / help output
 - Help is rendered by `Show-8SyncHint` using `Write-HintRow` / `Write-HintSection` helpers.
@@ -188,6 +190,7 @@ Never assume a managed tool is present. Use `Test-CommandExists` before setting 
 | `current-bg.lua` | Generated: active wallpaper path | **No** |
 | `current-opacity.lua` | Generated: overlay opacity | **No** |
 | `current-style.lua` | Generated: active glass style/scene + bg hint | **No** |
+| `current-gpu.lua` | Generated: GPU policy threshold + timestamp | **No** |
 | `bg/` | Downloaded wallpaper images | **No** |
 | `fonts/` | Bundled Nerd Font | **No** |
 | `.state/` | Runtime state (JSON) | **No** |
@@ -197,7 +200,7 @@ Never assume a managed tool is present. Use `Test-CommandExists` before setting 
 
 - Do not add `Set-StrictMode` — it breaks dynamic alias creation patterns.
 - Do not use `exit` in the bootstrap — it would close the terminal tab.
-- Do not commit `current-bg.lua`, `current-opacity.lua`, `.state/`, `bg/`, or `fonts/`.
+- Do not commit `current-bg.lua`, `current-opacity.lua`, `current-style.lua`, `current-gpu.lua`, `.state/`, `bg/`, or `fonts/`.
 - Do not add Lua `require` calls for modules outside the WezTerm standard library.
 - Do not add hard dependencies on tools that might not be installed; always guard with `Test-CommandExists`.
 - Do not raise unhandled errors from background sync paths — they run in hidden processes with no user-visible output.

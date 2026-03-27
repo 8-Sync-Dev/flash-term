@@ -11,6 +11,7 @@ fonts/
 current-bg.lua
 current-opacity.lua
 current-style.lua
+current-gpu.lua
 
 # Tool-generated / local-only
 .serena/
@@ -18,3 +19,31 @@ nul
 
 # OpenCode export bundle: committed so machines can clone and reinstall
 # oc-bundle/ is intentionally tracked (excludes node_modules/lib/*.ps1/*.py)
+
+# ── GSD baseline (auto-generated) ──
+.gsd
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+venv/
+target/
+vendor/
+*.log
+coverage/
+.cache/
+tmp/

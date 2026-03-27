@@ -69,29 +69,27 @@ Cleans in order:
    gradle, maven, nuget, yarn, scoop, pnpm, bun, Teams, Discord, Slack, Spotify
 3. **WINDOWS** — WU downloads, Prefetch, CrashDumps, INetCache, Recent,
    JumpLists, ErrorReports, Thumbnails, D3DShader, GPU caches, WebCache
-4. **STALE ENVS** — Python venvs, conda envs, uv tools, Rust `target/`,
-   Go `vendor/`, `node_modules` older than threshold
+4. **STALE ENVS** — global Python env/tool locations only (conda env roots,
+   uv tool envs). Project folders are explicitly excluded.
 5. **MEMORY & NETWORK** — GC collect, EmptyWorkingSet, DNS/ARP/NetBIOS flush,
    clipboard clear, RAM usage report + top 5 hogs
 6. **DISK** — SSD TRIM or HDD defrag via `Optimize-Volume` (needs admin;
    skips gracefully without)
 
-#### `--projects` — stale git repo picker
+#### `--projects` — stale git repo report (safe mode)
 
 ```powershell
-8sync clean --projects                   # default: repos not touched > 90 days
+8sync clean --projects                   # report repos not touched > 90 days
 8sync clean --projects --days 30         # custom threshold
-8sync clean --projects --all             # delete all (requires YES confirm)
-8sync clean --projects --dry-run         # preview only
+8sync clean --projects --all             # accepted but ignored (no deletion)
+8sync clean --projects --dry-run         # same behavior (report only)
 ```
 
 - Scans `~/projects`, `~/dev`, `~/code`, `~/repos`, `~/workspace`,
   `~/Documents`, `~/Desktop`, `~/Downloads`, `~/src`, `~/work`, `~/github`, `~/lab`
 - Detects repos via `.git/` presence
 - Uses `git log -1 --format=%ct` for last commit date (fallback: COMMIT_EDITMSG mtime)
-- **fzf multi-select**: TAB to mark, Ctrl+A to select all, ENTER to confirm
-- **No fzf**: numbered list with manual index input
-- Always shows summary + requires typing `YES` before any deletion
+- **Safety hard-stop**: this mode no longer deletes projects
 
 #### `--deep` — dev artifact report
 
@@ -128,6 +126,26 @@ Output grouped by type with size + age. Remove items manually via package manage
 8sync clean --help
 8sync clean -h
 ```
+
+---
+
+### `8sync gpu` — adaptive GPU render policy
+
+Use this command to tune WezTerm GPU bias for smoother rendering on your machine.
+
+```powershell
+8sync gpu status              # show current minimum GPU target
+8sync gpu 10                  # recommended: bias to high-performance GPU mode
+8sync gpu 0                   # balanced power mode
+8sync gpu auto                # reset to default target
+8sync gpu off                 # same as 0
+8sync gpu help
+```
+
+- Writes `current-gpu.lua` and reloads WezTerm live
+- `>= 10` applies high-performance bias (`WebGpu` + `HighPerformance` + higher FPS)
+- `< 10` applies balanced policy (`WebGpu` low-power preference when available)
+- If WebGPU adapters cannot be enumerated, config safely falls back to `OpenGL`
 
 ---
 
@@ -264,6 +282,7 @@ Values: `+` (increase 0.05), `-` (decrease 0.05), or exact `0.0`–`1.0`.
 | `.state/sync.lock` | sync process | Prevents concurrent sync |
 | `.state/bg-cache.json` | `8sync bg search` | Wallhaven search results |
 | `.state/missing-cache.json` | shell startup | Cached missing tool list (TTL 5min) |
+| `current-gpu.lua` | `8sync gpu` | GPU target profile for WezTerm renderer policy |
 
 ---
 

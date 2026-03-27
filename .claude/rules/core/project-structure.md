@@ -25,6 +25,7 @@ wezterm/
 - `current-bg.lua`
 - `current-opacity.lua`
 - `current-style.lua`
+- `current-gpu.lua`
 - `.state/`
 - `bg/`
 - `fonts/`

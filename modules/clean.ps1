@@ -318,61 +318,61 @@ function Test-IsInsideGitRepo {
     return $false
 }
 
+function Test-IsProjectPath {
+    # Returns $true if $Path appears to be inside a software project/workspace.
+    # This guard is intentionally conservative to avoid deleting user projects.
+    param([Parameter(Mandatory)][string]$Path)
+
+    $markerFiles = @(
+        'package.json',
+        'pnpm-workspace.yaml',
+        'pyproject.toml',
+        'requirements.txt',
+        'Pipfile',
+        'Cargo.toml',
+        'go.mod',
+        '*.sln',
+        '*.csproj'
+    )
+
+    $current = $Path
+    $home    = $HOME.TrimEnd('\','/')
+    while ($current -and $current.Length -ge $home.Length) {
+        if ([System.IO.Directory]::Exists((Join-Path $current '.git'))) { return $true }
+
+        foreach ($marker in $markerFiles) {
+            try {
+                if ($marker.Contains('*')) {
+                    $hit = Get-ChildItem -Path $current -Filter $marker -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($hit) { return $true }
+                } elseif ([System.IO.File]::Exists((Join-Path $current $marker))) {
+                    return $true
+                }
+            } catch {}
+        }
+
+        $parent = [System.IO.Path]::GetDirectoryName($current)
+        if (-not $parent -or $parent -eq $current) { break }
+        $current = $parent
+    }
+
+    return $false
+}
+
 function Find-VenvDirs {
     param([string[]]$SearchRoots, [int]$StaleDays)
     $cutoff = (Get-Date).AddDays(-$StaleDays)
     $found  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     # Helper: add dir to found if it exists, is stale, and is safe to delete.
-    # Safety rules:
-    #   1. Must not be inside a git repo at all (catches target/, vendor/, .venv/ in repos)
-    #   2. Exception: node_modules/ inside a git repo WITH no recent git activity (>30d)
-    #      is allowed — handled by Track 7 separately with its own package.json check.
-    #   The $tryAdd used by Tracks 1-6 simply skips anything inside any git repo.
+    # Safety rule (hard): never target anything that appears to be inside a project.
     $tryAdd = {
         param([string]$dir)
         if ([System.IO.Directory]::Exists($dir)) {
             $lw = [System.IO.Directory]::GetLastWriteTime($dir)
             if ($lw -ge $cutoff) { return }
 
-            # Block if inside a git repo that has been active in the last 30 days
-            $current = $dir
-            $home    = $HOME.TrimEnd('\','/')
-            while ($current -and $current.Length -ge $home.Length) {
-                $gitDir = Join-Path $current '.git'
-                if ([System.IO.Directory]::Exists($gitDir)) {
-                    # Git repo found — check last commit date
-                    $recentActivity = $false
-                    try {
-                        $ts = & git -C $current log -1 --format='%ct' 2>$null
-                        if ($ts -and $ts -match '^\d+$') {
-                            $lastCommit = [System.DateTimeOffset]::FromUnixTimeSeconds([long]$ts).LocalDateTime
-                            if (([datetime]::Now - $lastCommit).TotalDays -lt 30) {
-                                $recentActivity = $true
-                            }
-                        }
-                    } catch {}
-                    # If no git log available, treat as active (safe default)
-                    if (-not $recentActivity) {
-                        # Try COMMIT_EDITMSG fallback
-                        $editmsg = Join-Path $gitDir 'COMMIT_EDITMSG'
-                        if ([System.IO.File]::Exists($editmsg)) {
-                            $mtime = [System.IO.File]::GetLastWriteTime($editmsg)
-                            if (([datetime]::Now - $mtime).TotalDays -lt 30) {
-                                $recentActivity = $true
-                            }
-                        } else {
-                            # No commit history at all — treat as active to be safe
-                            $recentActivity = $true
-                        }
-                    }
-                    if ($recentActivity) { return }   # Skip: repo is active
-                    break   # Repo found but inactive — allow deletion
-                }
-                $parent = [System.IO.Path]::GetDirectoryName($current)
-                if (-not $parent -or $parent -eq $current) { break }
-                $current = $parent
-            }
+            if (Test-IsProjectPath -Path $dir) { return }
 
             $null = $found.Add($dir)
         }
@@ -461,56 +461,8 @@ function Find-VenvDirs {
         } catch {}
     }
 
-    # -- Track 5: Rust target/ dirs --------------------------------------------
-    foreach ($root in $SearchRoots) {
-        if (-not (Test-Path $root)) { continue }
-        try {
-            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'Cargo.toml', $recurseOpt)) {
-                try {
-                    $targetDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'target'
-                    & $tryAdd $targetDir
-                } catch {}
-            }
-        } catch {}
-    }
-
-    # -- Track 6: Go vendor/ dirs ----------------------------------------------
-    foreach ($root in $SearchRoots) {
-        if (-not (Test-Path $root)) { continue }
-        try {
-            foreach ($f in [System.IO.Directory]::EnumerateFiles($root, 'go.mod', $recurseOpt)) {
-                try {
-                    $vendorDir = Join-Path ([System.IO.Path]::GetDirectoryName($f)) 'vendor'
-                    & $tryAdd $vendorDir
-                } catch {}
-            }
-        } catch {}
-    }
-
-    # -- Track 7: node_modules -------------------------------------------------
-    # Safety rules:
-    #   1. Parent dir MUST have package.json (proves it's a project root, not nested dep)
-    #   2. node_modules/ itself must not be inside a git repo (guard in $tryAdd)
-    #   3. Max depth 4 from search root to avoid deep nested hits
-    foreach ($root in $SearchRoots) {
-        if (-not (Test-Path $root)) { continue }
-        try {
-            foreach ($d in [System.IO.Directory]::EnumerateDirectories($root, 'node_modules', $recurseOpt)) {
-                try {
-                    # Depth check: count path separators relative to root
-                    $relDepth = ($d.Substring($root.Length).TrimStart('\','/') -split '[/\\]').Count
-                    if ($relDepth -gt 4) { continue }
-
-                    # Parent must have package.json — proves this is a project root
-                    $parent = [System.IO.Path]::GetDirectoryName($d)
-                    if (-not [System.IO.File]::Exists([System.IO.Path]::Combine($parent, 'package.json'))) { continue }
-
-                    $lw = [System.IO.Directory]::GetLastWriteTime($d)
-                    if ($lw -lt $cutoff) { & $tryAdd $d }   # $tryAdd also checks git repo guard
-                } catch {}
-            }
-        } catch {}
-    }
+    # Project build/output directories (target/, vendor/, node_modules/) are intentionally
+    # excluded from automatic deletion to avoid data loss in source repositories.
 
     return @($found)
 }
@@ -530,9 +482,9 @@ function Remove-VenvDir {
         $parent= [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($Path))
         Write-Host ('  {0}/{1}{2}  {3}' -f $parent, $name, $tag, (Format-Bytes $size)) -ForegroundColor $color
         if (-not $DryRun) {
-            # Final safety: never remove if inside a git repo
-            if (Test-IsInsideGitRepo -Path $Path) {
-                Write-Host ('  skipped (git repo): {0}' -f $Path) -ForegroundColor DarkGray
+            # Final safety: never remove if the path appears to belong to a project/workspace
+            if (Test-IsProjectPath -Path $Path) {
+                Write-Host ('  skipped (project path): {0}' -f $Path) -ForegroundColor DarkGray
                 return 0
             }
             Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
@@ -650,7 +602,9 @@ function Invoke-ProjectPicker {
     )
 
     Write-Host ''
-    Write-Host ('  8sync clean --projects  stale > {0}d{1}' -f $StaleDays, $(if ($DryRun) { '  dry-run' } else { '' })) -ForegroundColor Cyan
+    Write-Host ('  8sync clean --projects  stale > {0}d (report-only)' -f $StaleDays) -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Project deletion has been disabled for safety. This mode now only reports.' -ForegroundColor DarkYellow
     Write-Host ''
     Write-Host '  Scanning for stale git repos...' -ForegroundColor Yellow
 
@@ -666,137 +620,20 @@ function Invoke-ProjectPicker {
     Write-Host ('  Found {0} stale project(s):' -f $projects.Count) -ForegroundColor Yellow
     Write-Host ''
 
-    # Build display table for all paths
-    # Format: "<name padded> | <size> | <days> || <path>" -- path after "||" is the safe key
-    $lines = $projects | ForEach-Object {
-        $remote = if ($_.Remote) {
-            $r = $_.Remote -replace '^https?://(www\.)?', '' -replace '^git@([^:]+):', '$1/'
-            if ($r.Length -gt 32) { $r.Substring(0, 29) + '...' } else { $r }
-        } else { '' }
-        '{0,-36} {1,7}  {2,3}d  {3,-34}  || {4}' -f $_.Name, $_.SizeDisplay, $_.DaysOld, $remote, $_.Path
+    $totalSize = [long]0
+    foreach ($p in $projects) {
+        $totalSize += $p.SizeBytes
+        Write-Host ('  {0,-42} {1,8}  {2,4}d  {3}' -f $p.Name, $p.SizeDisplay, $p.DaysOld, $p.Path) -ForegroundColor White
     }
 
-    # Build a lookup: path -> project object (avoids any name-matching ambiguity)
-    $pathIndex = @{}
-    foreach ($p in $projects) { $pathIndex[$p.Path] = $p }
-
-    $toDelete = @()
-
+    Write-Host ''
+    Write-Host ('  Report only: {0} stale project(s), total size {1}.' -f $projects.Count, (Format-Bytes $totalSize)) -ForegroundColor DarkGray
     if ($All) {
-        # --all: show full list, then require explicit confirmation before deleting
-        Write-Host '  Projects to delete:' -ForegroundColor Yellow
-        foreach ($p in $projects) {
-            Write-Host ('  {0,-42} {1,8}  {2}d ago' -f $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor White
-        }
-        Write-Host ''
-        if (-not $DryRun) {
-            Write-Host ('  About to delete ALL {0} listed project(s). This cannot be undone.' -f $projects.Count) -ForegroundColor Red
-            Write-Host '  Type YES to confirm, or press ENTER to cancel: ' -ForegroundColor Yellow -NoNewline
-            $confirm = Read-Host
-            if ($confirm.Trim() -ne 'YES') {
-                Write-Host '  Cancelled.' -ForegroundColor DarkGray
-                Write-Host ''
-                return
-            }
-        }
-        $toDelete = $projects
-
-    } elseif (Test-CommandExists 'fzf') {
-        Write-Host '  [TAB=select  ENTER=confirm  ESC=cancel  Ctrl+A=select all]' -ForegroundColor DarkGray
-        Write-Host ''
-        $selected = $lines | fzf `
-            --multi `
-            --header='Select projects to DELETE (TAB to mark, ENTER to confirm)' `
-            --height=70% `
-            --layout=reverse `
-            --border `
-            --prompt='Delete> ' `
-            --bind='ctrl-a:select-all' `
-            --with-nth='1,2,3,4,5'
-
-        if (-not $selected) {
-            Write-Host '  Cancelled.' -ForegroundColor DarkGray
-            Write-Host ''
-            return
-        }
-
-        # Extract path from after "|| " separator -- exact match, no name ambiguity
-        $toDelete = @($selected | ForEach-Object {
-            if ($_ -match '\|\|\s+(.+)$') {
-                $path = $Matches[1].Trim()
-                if ($pathIndex.ContainsKey($path)) { $pathIndex[$path] }
-            }
-        } | Where-Object { $_ })
-
-    } else {
-        # No fzf -- plain numbered list
-        $i = 1
-        foreach ($p in $projects) {
-            Write-Host ('  [{0,2}] {1,-42} {2,8}  {3}d ago' -f $i, $p.Name, $p.SizeDisplay, $p.DaysOld) -ForegroundColor White
-            $i++
-        }
-        Write-Host ''
-        Write-Host '  Enter numbers to delete (e.g. 1,3,5  or "all"  or ENTER to cancel): ' -ForegroundColor Yellow -NoNewline
-        $rawInput = Read-Host
-        if (-not $rawInput -or $rawInput.Trim() -eq '') {
-            Write-Host '  Cancelled.' -ForegroundColor DarkGray
-            Write-Host ''
-            return
-        }
-        if ($rawInput.Trim().ToLowerInvariant() -eq 'all') {
-            $toDelete = $projects
-        } else {
-            $indices = $rawInput -split '[,\s]+' |
-                Where-Object { $_ -match '^\d+$' } |
-                ForEach-Object { [int]$_ - 1 } |
-                Where-Object { $_ -ge 0 -and $_ -lt $projects.Count }
-            $toDelete = @($indices | ForEach-Object { $projects[$_] })
-        }
+        Write-Host '  Note: --all is ignored because project deletion is disabled.' -ForegroundColor DarkGray
     }
-
-    if (-not $toDelete -or @($toDelete).Count -eq 0) {
-        Write-Host '  Nothing selected.' -ForegroundColor DarkGray
-        Write-Host ''
-        return
-    }
-
-    # Final summary + safety confirmation before actual delete
-    Write-Host ''
-    Write-Host ('  Selected {0} project(s) to delete:' -f @($toDelete).Count) -ForegroundColor Yellow
-    $totalFreed = [long]0
-    foreach ($p in @($toDelete)) {
-        Write-Host ('    {0,-42} {1,8}' -f $p.Name, $p.SizeDisplay) -ForegroundColor White
-        $totalFreed += $p.SizeBytes
-    }
-    Write-Host ('  Total: {0}' -f (Format-Bytes $totalFreed)) -ForegroundColor DarkGray
-    Write-Host ''
-
     if ($DryRun) {
-        Write-Host ('  >> would free {0} from {1} project(s)' -f (Format-Bytes $totalFreed), @($toDelete).Count) -ForegroundColor DarkYellow
-        Write-Host '  run without --dry-run to apply' -ForegroundColor DarkGray
-        Write-Host ''
-        return
+        Write-Host '  Note: --dry-run is redundant in report-only mode.' -ForegroundColor DarkGray
     }
-
-    Write-Host '  Type YES to confirm permanent deletion, or press ENTER to cancel: ' -ForegroundColor Red -NoNewline
-    $confirm = Read-Host
-    if ($confirm.Trim() -ne 'YES') {
-        Write-Host '  Cancelled. Nothing deleted.' -ForegroundColor DarkGray
-        Write-Host ''
-        return
-    }
-
-    Write-Host ''
-    Write-Host ('  Deleting {0} project(s)...' -f @($toDelete).Count) -ForegroundColor Yellow
-    foreach ($p in @($toDelete)) {
-        Write-Host ('  {0}  {1}' -f $p.Name, $p.SizeDisplay) -ForegroundColor Green
-        try {
-            Remove-Item -Path $p.Path -Recurse -Force -ErrorAction SilentlyContinue
-        } catch {}
-    }
-
-    Write-Host ''
-    Write-Host ('  >> freed {0} from {1} project(s)' -f (Format-Bytes $totalFreed), @($toDelete).Count) -ForegroundColor Green
     Write-Host ''
 }
 
@@ -1679,7 +1516,7 @@ function Invoke-SystemClean {
 
     Write-Host ''
     Write-Host ('  8sync clean  >{0}d stale{1}' -f $StaleDays, $dTag) -ForegroundColor Cyan
-    Write-Host '  SAFE: OS/browser/tool caches only. Git repos and source files are never touched.' -ForegroundColor DarkGray
+    Write-Host '  SAFE: OS/browser/tool caches + global env/tool caches only. Project folders are never deleted.' -ForegroundColor DarkGray
     Write-Host ''
 
     # -- Temp --------------------------------------------------------------
@@ -1853,10 +1690,16 @@ function Invoke-SystemClean {
     Write-Host ''
     Write-Host ('  STALE ENVS  (>{0}d)' -f $StaleDays) -ForegroundColor Yellow
     $searchRoots = @(
-        $HOME,
-        (Join-Path $HOME 'projects'), (Join-Path $HOME 'dev'),  (Join-Path $HOME 'code'),
-        (Join-Path $HOME 'repos'),    (Join-Path $HOME 'workspace'), (Join-Path $HOME 'Documents')
-    ) | Where-Object { Test-Path $_ }
+        (Join-Path $HOME '.conda\envs'),
+        (Join-Path $HOME 'miniconda3\envs'),
+        (Join-Path $HOME 'miniforge3\envs'),
+        (Join-Path $HOME 'mambaforge\envs'),
+        (Join-Path $HOME 'anaconda3\envs'),
+        (Join-Path $HOME 'anaconda\envs'),
+        (Join-Path $env:LOCALAPPDATA 'conda\conda\envs'),
+        (Join-Path $env:USERPROFILE 'AppData\Local\miniconda3\envs'),
+        (Join-Path $env:APPDATA 'uv\tools')
+    ) | Where-Object { Test-Path $_ } | Select-Object -Unique
 
     if ($searchRoots.Count -gt 0) {
         $venvDirs = Find-VenvDirs -SearchRoots $searchRoots -StaleDays $StaleDays
@@ -1922,14 +1765,14 @@ function Invoke-CleanCommand {
             '--loop'     { $doLoop = $true }
             { $_ -in '--help', 'help', '-h' } {
                 Write-Host ''
-                Write-HintSection 'CLEAN -- deep system / cache / venv / RAM / disk / project optimizer'
-                Write-HintRow '8sync clean'                          'Full clean: temp/cache/venv/RAM/disk (stale > 7d)'
+                Write-HintSection 'CLEAN -- deep system / cache / global env / RAM / disk'
+                Write-HintRow '8sync clean'                          'Full clean: temp/cache/global env/RAM/disk (stale > 7d)'
                 Write-HintRow '8sync clean --days N'                 'Custom stale threshold  e.g. --days 14'
                 Write-HintRow '8sync clean --dry-run'                'Preview only -- nothing deleted'
-                Write-HintRow '8sync clean --projects'               'Pick stale git repos to delete (fzf multi-select)'
-                Write-HintRow '8sync clean --projects --all'         'Delete ALL stale git repos, no picker'
+                Write-HintRow '8sync clean --projects'               'Report stale git repos only (deletion disabled for safety)'
+                Write-HintRow '8sync clean --projects --all'         'Alias accepted but ignored (deletion disabled)'
                 Write-HintRow '8sync clean --projects --days N'      'Stale threshold for projects (default: 90d)'
-                Write-HintRow '8sync clean --projects --dry-run'     'Preview project deletions only'
+                Write-HintRow '8sync clean --projects --dry-run'     'Report stale projects (same as without --dry-run)'
                 Write-HintRow '8sync clean --deep'                   'Report stale MCP/npm/pip/cargo/go artifacts'
                 Write-HintRow '8sync clean --deep --delete'          'Delete stale artifacts with per-type confirmation'
                 Write-HintRow '8sync clean --deep --delete --all'    'Delete ALL stale artifacts, skip per-type prompt'
