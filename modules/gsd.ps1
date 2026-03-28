@@ -19,9 +19,9 @@ function Resolve-GsdAgentDir {
 function Show-GsdHelp {
     Write-Host ''
     Write-HintSection 'GSD -- Model routing setup'
-    Write-HintRow '8sync gsd setup'                   'Copy PREFERENCES.md + models.json -> ~/.gsd (replace)'
-    Write-HintRow '8sync gsd setup --dry-run'         'Preview paths without writing anything'
-    Write-HintRow '8sync gsd key z-coding-plan <key>' 'Set Z_CODING_PLAN_API_KEY (session + persist)'
+    Write-HintRow '8sync gsd setup'                   'Copy PREFERENCES.md -> ~/.gsd (replace)'
+    Write-HintRow '8sync gsd setup --dry-run'         'Preview path without writing anything'
+    Write-HintRow '8sync gsd key zai <key>'           'Set ZAI_API_KEY (session + persist)'
     Write-HintRow '8sync gsd status'                  'Show GSD paths, logged-in providers, key status'
     Write-HintRow '8sync gsd help'                    'Show this help'
     Write-Host ''
@@ -39,7 +39,6 @@ function Invoke-GsdSetup {
 
     $copies = @(
         @{ Src = Join-Path $bundleDir 'PREFERENCES.md'; Dest = Join-Path $gsdHome  'PREFERENCES.md' }
-        @{ Src = Join-Path $bundleDir 'models.json';    Dest = Join-Path $agentDir 'models.json'    }
     )
 
     Write-Host ''
@@ -82,7 +81,7 @@ function Invoke-GsdSetup {
 
 # Known providers and their env var names
 $script:GsdProviderKeys = [ordered]@{
-    'z-coding-plan'    = 'Z_CODING_PLAN_API_KEY'
+    'zai'              = 'ZAI_API_KEY'
     'anthropic'        = 'ANTHROPIC_API_KEY'
     'openai'           = 'OPENAI_API_KEY'
     'google'           = 'GOOGLE_API_KEY'
