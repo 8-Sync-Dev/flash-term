@@ -296,6 +296,9 @@ function Show-8SyncHint {
     Write-HintRow '8sync opencode reinstall'         'Force reinstall from ./oc-bundle -> ~/.config/opencode and run npm i'
     Write-HintRow '8sync opencode --dry-run'         'Preview exported/applied files only, no changes'
     Write-HintRow '8sync opencode status'            'Show source + bundle status and runtime readiness'
+    Write-HintRow '8sync gsd setup'                 'Copy PREFERENCES.md + models.json -> ~/.gsd (replace existing)'
+    Write-HintRow '8sync gsd key <api-key>'         'Set Z_CODING_PLAN_API_KEY (current session + persist)'
+    Write-HintRow '8sync gsd status'                'Show GSD paths, logged-in providers, API key status'
 
     Write-HintSection 'BACKGROUND'
     Write-HintRow '8sync bg search <kw>'         'Search wallhaven (default), --yandere, --safebooru, --all'

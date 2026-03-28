@@ -150,6 +150,7 @@ function Register-8SyncAlias {
             'hx'     { Invoke-HxCommand -Rest $Rest }
             'theme'  { Invoke-ThemeCommand -Rest $Rest }
             'opencode' { Invoke-OpencodeCommand -Rest $Rest }
+            'gsd'      { Invoke-GsdCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }

@@ -93,6 +93,7 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'gpu.ps1')
 . (Join-Path $script:ModulesDir 'opencode.ps1')
 . (Join-Path $script:ModulesDir 'startup.ps1')
+. (Join-Path $script:ModulesDir 'gsd.ps1')
 
 Ensure-PreferredPaths
 
