@@ -151,6 +151,7 @@ function Register-8SyncAlias {
             'theme'  { Invoke-ThemeCommand -Rest $Rest }
             'opencode' { Invoke-OpencodeCommand -Rest $Rest }
             'gsd'      { Invoke-GsdCommand -Rest $Rest }
+            'gguf'     { Invoke-GgufCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }

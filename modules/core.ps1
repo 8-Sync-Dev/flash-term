@@ -300,6 +300,16 @@ function Show-8SyncHint {
     Write-HintRow '8sync gsd key <api-key>'         'Set Z_CODING_PLAN_API_KEY (current session + persist)'
     Write-HintRow '8sync gsd status'                'Show GSD paths, logged-in providers, API key status'
 
+    Write-HintSection 'GGUF'
+    Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
+    Write-HintRow '8sync gguf serve --preset <max|high|medium|low>'     'Resource preset (GPU layers, ctx, threads)'
+    Write-HintRow '8sync gguf serve --profile <name>'                   'Launch from saved profile'
+    Write-HintRow '8sync gguf presets'                                   'List all presets with GPU/CPU/context details'
+    Write-HintRow '8sync gguf profiles'                                  'List saved server profiles'
+    Write-HintRow '8sync gguf save --profile <n> --engine-path <d> --model-path <f>' 'Save profile for quick re-launch'
+    Write-HintRow '8sync gguf status'                                    'Show running llama-server PIDs + ports'
+    Write-HintRow '8sync gguf stop'                                      'Kill all running llama-server processes'
+
     Write-HintSection 'BACKGROUND'
     Write-HintRow '8sync bg search <kw>'         'Search wallhaven (default), --yandere, --safebooru, --all'
     Write-HintRow '8sync bg pick'                'Pick from cache with fzf + imgcat preview'
