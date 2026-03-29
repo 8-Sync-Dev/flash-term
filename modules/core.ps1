@@ -282,6 +282,7 @@ function Show-8SyncHint {
     Write-HintSection 'COMMANDS'
     Write-HintRow '8sync help'              'Show this help'
     Write-HintRow '8sync status'            'Installed tools + last sync time'
+    Write-HintRow '8sync reload'            'Hot-reload all modules in current session (no new tab needed)'
     Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
     Write-HintRow '8sync sync --check'     'Dry-run: show missing + available updates, no changes'
     Write-HintRow '8sync clean [--days N]'         'Deep clean: temp/cache/global env/RAM/disk (default: stale > 7 days)'

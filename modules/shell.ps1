@@ -50,7 +50,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','sync','clean','gpu','bg','hx','theme','opencode','gsd','gguf')
+    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','gsd','gguf')
 
         # subcommands per mode
         $subMap = @{
