@@ -60,6 +60,12 @@ function Show-GsdHelp {
     Write-HintRow '8sync gsd key <provider> <key>'       'Set API key (session + persist to user env)'
     Write-HintRow '8sync gsd keys'                       'List all providers, env vars + setup guide'
     Write-HintRow '8sync gsd status'                     'Show paths, auth providers, key status'
+    Write-HintRow '8sync gsd add gguf'                   'Detect running llama-server and register it in models.json'
+    Write-HintRow '8sync gsd add gguf --port N'          'Target a specific port (default: probe 8080/8081/8082/1234/11434)'
+    Write-HintRow '8sync gsd add gguf --name <id>'       'Override provider id (default: gguf-local-<model>)'
+    Write-HintRow '8sync gsd add gguf --dry-run'         'Preview without writing models.json'
+    Write-HintRow '8sync gsd remove gguf'                'Remove all gguf-local-* providers from models.json'
+    Write-HintRow '8sync gsd remove gguf --name <id>'    'Remove a specific provider by id'
     Write-HintRow '8sync gsd help'                       'Show this help'
     Write-Host ''
     Write-HintSection 'Plans (multi-provider)'
@@ -496,6 +502,217 @@ function Invoke-GsdStatus {
     }
 }
 
+# ---------------------------------------------------------------------------
+# GSD gguf provider management
+# ---------------------------------------------------------------------------
+
+function Get-GsdModelsJsonPath {
+    $agentDir = Resolve-GsdAgentDir
+    return Join-Path $agentDir 'models.json'
+}
+
+function Read-GsdModelsJson {
+    $path = Get-GsdModelsJsonPath
+    if (-not (Test-Path $path)) { return $null }
+    try { Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { Write-Warning "gsd: cannot parse models.json -- $_"; return $null }
+}
+
+function Write-GsdModelsJson {
+    param([object]$Data)
+    $path = Get-GsdModelsJsonPath
+    # Preserve as tidy JSON — Depth 10 handles nested model arrays
+    $Data | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding UTF8
+}
+
+function Probe-GgufServer {
+    # Try common llama-server ports. Returns first live server info or $null.
+    param([string]$Port = '')
+
+    $ports = if ($Port) { @([int]$Port) } else { @(8080, 8081, 8082, 1234, 11434) }
+
+    foreach ($p in $ports) {
+        try {
+            $resp = Invoke-RestMethod "http://localhost:$p/v1/models" `
+                        -TimeoutSec 3 -ErrorAction Stop
+            return [pscustomobject]@{
+                Port    = $p
+                BaseUrl = "http://localhost:$p/v1"
+                Models  = @($resp.data)
+            }
+        } catch {}
+    }
+    return $null
+}
+
+function Invoke-GsdAddGguf {
+    param([string[]]$Rest)
+
+    $dryRun    = $Rest -contains '--dry-run'
+    $portArg   = ''
+    $nameArg   = ''           # optional provider id override
+    $roleArg   = ''           # optional: plan|exec|worker (wires into PREFERENCES)
+
+    for ($i = 0; $i -lt $Rest.Count; $i++) {
+        switch ($Rest[$i]) {
+            '--port'   { $portArg  = $Rest[++$i] }
+            '--name'   { $nameArg  = $Rest[++$i] }
+            '--role'   { $roleArg  = $Rest[++$i] }
+        }
+    }
+
+    Write-Host ''
+    Write-HintSection 'GSD -- Add GGUF server as provider'
+    Write-Host ''
+
+    # ── Probe server ──────────────────────────────────────────────────────────
+    Write-Host '  Probing llama-server on localhost...' -ForegroundColor DarkGray
+    $server = Probe-GgufServer -Port $portArg
+    if (-not $server) {
+        $tried = if ($portArg) { "port $portArg" } else { 'ports 8080, 8081, 8082, 1234, 11434' }
+        Write-Host ''
+        Write-Host ("  [!!] No llama-server found on {0}." -f $tried) -ForegroundColor Red
+        Write-Host '       Start one first:  8sync gguf serve --profile <name>' -ForegroundColor DarkGray
+        Write-Host '       Then retry:       8sync gsd add gguf' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ("  [OK] Server found on port {0}  ->  {1}" -f $server.Port, $server.BaseUrl) -ForegroundColor Green
+    Write-Host ''
+
+    # ── List models from server ───────────────────────────────────────────────
+    $models = $server.Models
+    if (-not $models -or $models.Count -eq 0) {
+        Write-Host '  [!!] Server returned no models from /v1/models.' -ForegroundColor Red
+        return
+    }
+
+    Write-Host ("  Models available on server ({0}):" -f $models.Count) -ForegroundColor DarkGray
+    foreach ($m in $models) {
+        $mid = if ($m.id) { $m.id } else { $m }
+        Write-Host ("    {0}" -f $mid) -ForegroundColor White
+    }
+    Write-Host ''
+
+    # ── Build provider entry ──────────────────────────────────────────────────
+    # Provider id: user-supplied or derived from first model filename stem
+    $firstModelId = if ($models[0].id) { $models[0].id } else { [string]$models[0] }
+    $stem         = [System.IO.Path]::GetFileNameWithoutExtension($firstModelId) -replace '[^a-zA-Z0-9\-]', '-'
+    $providerId   = if ($nameArg) { $nameArg } else { "gguf-local-$stem" }
+
+    # Build models array — one entry per model reported by the server
+    $modelEntries = foreach ($m in $models) {
+        $mid   = if ($m.id)   { $m.id }   else { [string]$m }
+        $mname = if ($m.name) { $m.name } else {
+            [System.IO.Path]::GetFileNameWithoutExtension($mid)
+        }
+        [pscustomobject]@{
+            id            = $mid
+            name          = "$mname (local GGUF)"
+            reasoning     = $false
+            input         = @('text')
+            cost          = [pscustomobject]@{ input = 0; output = 0; cacheRead = 0; cacheWrite = 0 }
+            contextWindow = 32768
+            maxTokens     = 8192
+        }
+    }
+
+    $providerEntry = [pscustomobject]@{
+        baseUrl = $server.BaseUrl
+        api     = 'openai-completions'
+        models  = @($modelEntries)
+    }
+
+    # ── Load and patch models.json ────────────────────────────────────────────
+    $data = Read-GsdModelsJson
+    if (-not $data) {
+        $data = [pscustomobject]@{ providers = [pscustomobject]@{} }
+    }
+    if (-not $data.PSObject.Properties['providers']) {
+        $data | Add-Member -NotePropertyName 'providers' -NotePropertyValue ([pscustomobject]@{})
+    }
+
+    $alreadyExists = $data.providers.PSObject.Properties[$providerId] -ne $null
+
+    Write-Host ("  Provider id : {0}" -f $providerId)          -ForegroundColor Cyan
+    Write-Host ("  Base URL    : {0}" -f $server.BaseUrl)       -ForegroundColor DarkGray
+    Write-Host ("  Models      : {0}" -f ($modelEntries | ForEach-Object { $_.id }) -join ', ') -ForegroundColor DarkGray
+    if ($alreadyExists) {
+        Write-Host ("  (overwriting existing provider '{0}')" -f $providerId) -ForegroundColor DarkYellow
+    }
+    Write-Host ''
+
+    if ($dryRun) {
+        Write-Host '  [dry-run] models.json not modified. Remove --dry-run to apply.' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    $data.providers | Add-Member -NotePropertyName $providerId -NotePropertyValue $providerEntry -Force
+    Write-GsdModelsJson $data
+
+    $mjPath = Get-GsdModelsJsonPath
+    Write-Host ("  [OK] Written to {0}" -f $mjPath) -ForegroundColor Green
+    Write-Host ''
+    Write-Host '  Next steps:' -ForegroundColor DarkGray
+    Write-Host ("    /model  to browse and select the new model in pi/GSD") -ForegroundColor DarkGray
+    Write-Host ("    8sync gsd status  to verify provider is visible") -ForegroundColor DarkGray
+    if ($roleArg) {
+        Write-Host ("    --role '{0}' noted -- wire manually in PREFERENCES.md for now" -f $roleArg) -ForegroundColor DarkYellow
+    }
+    Write-Host ''
+}
+
+function Invoke-GsdRemoveGguf {
+    param([string[]]$Rest)
+
+    $dryRun  = $Rest -contains '--dry-run'
+    $nameArg = ''
+    for ($i = 0; $i -lt $Rest.Count; $i++) {
+        if ($Rest[$i] -eq '--name') { $nameArg = $Rest[++$i] }
+    }
+
+    $data = Read-GsdModelsJson
+    if (-not $data) { Write-Warning 'gsd: models.json not found'; return }
+
+    # Find gguf-local-* providers
+    $ggufProviders = $data.providers.PSObject.Properties |
+        Where-Object { $_.Name -like 'gguf-local-*' -or ($nameArg -and $_.Name -eq $nameArg) }
+
+    if (-not $ggufProviders) {
+        Write-Host '  No gguf-local-* providers found in models.json.' -ForegroundColor DarkGray
+        Write-Host '  Add one first: 8sync gsd add gguf' -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Host ''
+    Write-HintSection 'GSD -- Remove GGUF provider'
+    Write-Host ''
+
+    foreach ($prop in $ggufProviders) {
+        Write-Host ("  Removing: {0}  ->  {1}" -f $prop.Name, $prop.Value.baseUrl) -ForegroundColor Yellow
+        if (-not $dryRun) {
+            # PSObject can't remove properties directly — rebuild without the key
+            $newProviders = [pscustomobject]@{}
+            foreach ($p in $data.providers.PSObject.Properties) {
+                if ($p.Name -ne $prop.Name) {
+                    $newProviders | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value
+                }
+            }
+            $data.providers = $newProviders
+        }
+    }
+
+    if ($dryRun) {
+        Write-Host '  [dry-run] models.json not modified.' -ForegroundColor DarkYellow
+    } else {
+        Write-GsdModelsJson $data
+        Write-Host ("  [OK] Updated {0}" -f (Get-GsdModelsJsonPath)) -ForegroundColor Green
+    }
+    Write-Host ''
+}
+
 function Invoke-GsdCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -522,6 +739,20 @@ function Invoke-GsdCommand {
         'status' { Invoke-GsdStatus }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
         'keys'   { Show-GsdKeys }
+        'add'    {
+            $addSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
+            switch ($addSub) {
+                'gguf'   { Invoke-GsdAddGguf -Rest ($Rest | Select-Object -Skip 2) }
+                default  { Write-Host '  Usage: 8sync gsd add gguf [--port N] [--name <id>] [--dry-run]' -ForegroundColor DarkGray }
+            }
+        }
+        'remove' {
+            $remSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
+            switch ($remSub) {
+                'gguf'   { Invoke-GsdRemoveGguf -Rest ($Rest | Select-Object -Skip 2) }
+                default  { Write-Host '  Usage: 8sync gsd remove gguf [--name <id>]' -ForegroundColor DarkGray }
+            }
+        }
         'help'   { Show-GsdHelp }
         default  { Show-GsdHelp }
     }

@@ -299,6 +299,8 @@ function Show-8SyncHint {
     Write-HintRow '8sync gsd setup'                 'Copy PREFERENCES.md + models.json -> ~/.gsd (replace existing)'
     Write-HintRow '8sync gsd key <api-key>'         'Set Z_CODING_PLAN_API_KEY (current session + persist)'
     Write-HintRow '8sync gsd status'                'Show GSD paths, logged-in providers, API key status'
+    Write-HintRow '8sync gsd add gguf'              'Register running llama-server as GSD provider in models.json'
+    Write-HintRow '8sync gsd remove gguf'           'Remove gguf-local-* providers from models.json'
 
     Write-HintSection 'GGUF'
     Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
