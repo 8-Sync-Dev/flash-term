@@ -1,6 +1,6 @@
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # 8sync gsd -- GSD model routing setup
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 function Resolve-GsdHome {
     if (-not [string]::IsNullOrWhiteSpace($env:GSD_HOME) -and (Test-Path $env:GSD_HOME)) {
@@ -16,28 +16,64 @@ function Resolve-GsdAgentDir {
     return Join-Path (Resolve-GsdHome) 'agent'
 }
 
+function Show-GsdPlans {
+    Write-Host ''
+    Write-HintSection 'GSD Plans -- 8sync gsd setup --plan <name>'
+    Write-Host ''
+    Write-Host '  -- Multi-provider (mixing best models) ---------------------------------' -ForegroundColor DarkGray
+    Write-HintRow 'max'                  'Opus plan + kimi K2.5 exec (SWE 76.8%) + groq free workers'
+    Write-HintRow 'pro'                  'Sonnet plan/completion + kimi+codex exec + groq free'
+    Write-HintRow 'normal'               'No Claude cost: codex+gemini plan + glm-5-turbo exec + groq'
+    Write-Host ''
+    Write-Host '  -- Single-provider (one ecosystem only) --------------------------------' -ForegroundColor DarkGray
+    Write-HintRow 'claude-max'           '100% Claude: Opus plan + Sonnet exec + Haiku workers'
+    Write-HintRow 'codex-max'            '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex exec'
+    Write-HintRow 'gemini-max'           '100% Google: gemini-3.1-pro plan+exec (2M ctx, free)'
+    Write-Host ''
+    Write-Host '  -- The Big Three combo (best of all worlds) ----------------------------' -ForegroundColor DarkGray
+    Write-HintRow 'claude-codex-gemini'  'Opus plan + codex exec + gemini research -- best of all three'
+    Write-Host ''
+    Write-Host '  -- Required logins per plan --------------------------------------------' -ForegroundColor DarkGray
+    Write-Host '  max                : /login anthropic  github-copilot  google-gemini-cli  openai-codex' -ForegroundColor White
+    Write-Host '                       + 8sync gsd key kimi-coding  zai  groq' -ForegroundColor DarkGray
+    Write-Host '  pro                : /login anthropic  google-gemini-cli  openai-codex' -ForegroundColor White
+    Write-Host '                       + 8sync gsd key kimi-coding  zai  groq' -ForegroundColor DarkGray
+    Write-Host '  normal             : /login google-gemini-cli  openai-codex' -ForegroundColor White
+    Write-Host '                       + 8sync gsd key zai  groq' -ForegroundColor DarkGray
+    Write-Host '  claude-max         : /login anthropic  (Opus+Sonnet+Haiku only)' -ForegroundColor White
+    Write-Host '  codex-max          : /login openai-codex  (gpt-5.x only)' -ForegroundColor White
+    Write-Host '  gemini-max         : /login google-gemini-cli  (gemini-3.1-pro free)' -ForegroundColor White
+    Write-Host '  claude-codex-gemini: /login anthropic  openai-codex  google-gemini-cli' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Apply: 8sync gsd setup --plan <name>' -ForegroundColor DarkGray
+    Write-Host '  Check: /gsd prefs   /model' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Show-GsdHelp {
     Write-Host ''
     Write-HintSection 'GSD -- Model routing setup'
-    Write-HintRow '8sync gsd setup'                  'Apply default PREFERENCES.md -> ~/.gsd'
-    Write-HintRow '8sync gsd setup --plan max'        'Strongest: Opus+kimi K2.5+codex (coding SOTA)'
-    Write-HintRow '8sync gsd setup --plan pro'        'Balanced: Sonnet+kimi+groq free (no Opus cost)'
-    Write-HintRow '8sync gsd setup --plan normal'     'Low cost: glm-5-turbo+codex+groq free only'
-    Write-HintRow '8sync gsd setup --dry-run'         'Preview without writing'
-    Write-HintRow '8sync gsd key <provider> <key>'    'Set API key (session + persist to user env)'
-    Write-HintRow '8sync gsd keys'                    'List all providers, env vars + setup guide'
-    Write-HintRow '8sync gsd status'                  'Show paths, auth providers, key status'
-    Write-HintRow '8sync gsd help'                    'Show this help'
+    Write-HintRow '8sync gsd setup'                      'Apply default PREFERENCES.md -> ~/.gsd'
+    Write-HintRow '8sync gsd setup --plan <name>'        'Apply named plan (see below)'
+    Write-HintRow '8sync gsd setup --plan'               'List all plans with descriptions'
+    Write-HintRow '8sync gsd setup --dry-run'            'Preview without writing'
+    Write-HintRow '8sync gsd key <provider> <key>'       'Set API key (session + persist to user env)'
+    Write-HintRow '8sync gsd keys'                       'List all providers, env vars + setup guide'
+    Write-HintRow '8sync gsd status'                     'Show paths, auth providers, key status'
+    Write-HintRow '8sync gsd help'                       'Show this help'
     Write-Host ''
-    Write-HintSection 'Plans'
-    Write-HintRow 'max'    'Opus 4.6 planning, kimi K2.5 exec (SWE 76.8%), groq free workers'
-    Write-HintRow 'pro'    'Sonnet 4.6 planning/completion only, kimi+codex exec, groq free'
-    Write-HintRow 'normal' 'No Claude cost: codex+gemini plan, glm-5-turbo exec, groq free all'
+    Write-HintSection 'Plans (multi-provider)'
+    Write-HintRow 'max'    'Opus plan + kimi K2.5 exec (SWE 76.8%) + groq free workers'
+    Write-HintRow 'pro'    'Sonnet plan/completion + kimi+codex exec + groq free'
+    Write-HintRow 'normal' 'No Claude: codex+gemini plan + glm-5-turbo exec + groq'
+    Write-HintSection 'Plans (single-provider)'
+    Write-HintRow 'claude-max'  '100% Claude: Opus plan + Sonnet exec + Haiku workers'
+    Write-HintRow 'codex-max'   '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex exec'
+    Write-HintRow 'gemini-max'  '100% Google: gemini-3.1-pro plan+exec (2M ctx, free)'
+    Write-HintSection 'Plans (combo)'
+    Write-HintRow 'claude-codex-gemini' 'Big Three: Opus plan + codex exec + gemini research'
     Write-Host ''
-    Write-Host '  OAuth logins (in pi):  /login' -ForegroundColor DarkGray
-    Write-Host '  max needs:   anthropic  github-copilot  google-gemini-cli  openai-codex' -ForegroundColor DarkGray
-    Write-Host '  pro needs:   anthropic  google-gemini-cli  openai-codex' -ForegroundColor DarkGray
-    Write-Host '  normal needs: google-gemini-cli  openai-codex' -ForegroundColor DarkGray
+    Write-Host '  Run "8sync gsd setup --plan" (no value) for full plan details' -ForegroundColor DarkGray
     Write-Host '  Verify: /gsd prefs   /model' -ForegroundColor DarkGray
     Write-Host ''
 }
@@ -50,13 +86,14 @@ function Invoke-GsdSetup {
 
     $bundleDir  = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\gsd-config'))
     $gsdHome    = Resolve-GsdHome
-    $validPlans = @('max', 'pro', 'normal')
+    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'codex-max', 'gemini-max', 'claude-codex-gemini')
     $planLower  = $Plan.ToLowerInvariant().Trim()
 
     if ($planLower -ne '' -and $validPlans -notcontains $planLower) {
         Write-Host ''
-        Write-Host ("  [error] Unknown plan '{0}'. Valid: max, pro, normal" -f $Plan) -ForegroundColor Red
-        Write-Host '  Usage: 8sync gsd setup --plan max|pro|normal' -ForegroundColor DarkGray
+        Write-Host ("  [error] Unknown plan '{0}'." -f $Plan) -ForegroundColor Red
+        Write-Host '  Valid: max | pro | normal | claude-max | codex-max | gemini-max | claude-codex-gemini' -ForegroundColor DarkGray
+        Write-Host '  Run "8sync gsd setup --plan" (no value) for full descriptions.' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
@@ -102,22 +139,46 @@ function Invoke-GsdSetup {
         Write-Host ("  Plan '{0}' applied. Required setup:" -f $planLabel) -ForegroundColor Cyan
         switch ($planLower) {
             'max' {
-                Write-Host '  /login  → anthropic  github-copilot  google-gemini-cli  openai-codex' -ForegroundColor Yellow
-                Write-Host '  keys    → 8sync gsd key kimi-coding <key>' -ForegroundColor Yellow
+                Write-Host '  /login -> anthropic  github-copilot  google-gemini-cli  openai-codex' -ForegroundColor Yellow
+                Write-Host '  keys   -> 8sync gsd key kimi-coding <key>' -ForegroundColor Yellow
                 Write-Host '            8sync gsd key zai <key>' -ForegroundColor Yellow
                 Write-Host '            8sync gsd key groq <key>' -ForegroundColor Yellow
             }
             'pro' {
-                Write-Host '  /login  → anthropic  google-gemini-cli  openai-codex' -ForegroundColor Yellow
-                Write-Host '  keys    → 8sync gsd key kimi-coding <key>' -ForegroundColor Yellow
+                Write-Host '  /login -> anthropic  google-gemini-cli  openai-codex' -ForegroundColor Yellow
+                Write-Host '  keys   -> 8sync gsd key kimi-coding <key>' -ForegroundColor Yellow
                 Write-Host '            8sync gsd key zai <key>' -ForegroundColor Yellow
                 Write-Host '            8sync gsd key groq <key>' -ForegroundColor Yellow
             }
             'normal' {
-                Write-Host '  /login  → google-gemini-cli  openai-codex' -ForegroundColor Yellow
-                Write-Host '  keys    → 8sync gsd key zai <key>' -ForegroundColor Yellow
+                Write-Host '  /login -> google-gemini-cli  openai-codex' -ForegroundColor Yellow
+                Write-Host '  keys   -> 8sync gsd key zai <key>' -ForegroundColor Yellow
                 Write-Host '            8sync gsd key groq <key>' -ForegroundColor Yellow
                 Write-Host '  optional: 8sync gsd key google <key>  (gemini-2.5-pro free tier)' -ForegroundColor DarkGray
+            }
+            'claude-max' {
+                Write-Host '  /login -> anthropic' -ForegroundColor Yellow
+                Write-Host '  Models : Opus 4-6 plan/research -> Sonnet 4-6 exec -> Haiku 4-5 simple' -ForegroundColor DarkGray
+                Write-Host '  100% Claude -- no external providers needed' -ForegroundColor DarkGray
+            }
+            'codex-max' {
+                Write-Host '  /login -> openai-codex  (ChatGPT OAuth, free)' -ForegroundColor Yellow
+                Write-Host '  OR key -> 8sync gsd key openai <key>  (paid API)' -ForegroundColor Yellow
+                Write-Host '  Models : gpt-5.4 plan -> gpt-5.3-codex exec -> gpt-5.1-codex-max simple' -ForegroundColor DarkGray
+                Write-Host '  100% OpenAI -- no Anthropic/Google needed' -ForegroundColor DarkGray
+            }
+            'gemini-max' {
+                Write-Host '  /login -> google-gemini-cli  (Cloud Code Assist, free)' -ForegroundColor Yellow
+                Write-Host '  optional: /login github-copilot  (copilot/gemini-3.1-pro)' -ForegroundColor DarkGray
+                Write-Host '  optional: 8sync gsd key google <key>  (gemini-2.5-pro API fallback)' -ForegroundColor DarkGray
+                Write-Host '  Models : gemini-3.1-pro-preview all roles (2M ctx)' -ForegroundColor DarkGray
+                Write-Host '  100% Google -- no Anthropic/OpenAI needed' -ForegroundColor DarkGray
+            }
+            'claude-codex-gemini' {
+                Write-Host '  /login -> anthropic  openai-codex  google-gemini-cli' -ForegroundColor Yellow
+                Write-Host '  optional: /login github-copilot  (extra model access)' -ForegroundColor DarkGray
+                Write-Host '  Models : Opus plan -> codex exec -> gemini research (best of three)' -ForegroundColor DarkGray
+                Write-Host '  The Big Three -- Anthropic + OpenAI + Google' -ForegroundColor Cyan
             }
         }
         Write-Host ''
@@ -147,24 +208,24 @@ $script:GsdProviderKeys = [ordered]@{
 
 # Human-readable notes shown in 8sync gsd keys
 $script:GsdProviderNotes = @{
-    'zai'          = 'z.ai console — glm-5-turbo $1.2/$4/M  (stable, agentic)'
-    'kimi-coding'  = 'platform.moonshot.cn — Kimi K2.5 SWE-bench 76.8%  (free credits)'
-    'groq'         = 'console.groq.com — kimi-k2+qwen3-32b FREE daily reset'
-    'google'       = 'aistudio.google.com — gemini-2.5-pro 5RPM/25RPD free tier'
-    'openrouter'   = 'openrouter.ai — aggregator, 200+ models incl. free tier'
-    'anthropic'    = 'console.anthropic.com — paid key OR use /login OAuth (free)'
-    'openai'       = 'platform.openai.com — paid key OR use /login openai-codex (free)'
-    'xai'          = 'console.x.ai — grok-4.20 $X/M, free credits on signup'
-    'mistral'      = 'console.mistral.ai — pixtral-large, free tier available'
-    'context7'     = 'context7.com — documentation lookup (already set)'
-    'jina'         = 'jina.ai — web reader/search'
-    'brave'        = 'brave.com/search/api — web search'
-    'tavily'       = 'tavily.com — web search'
+    'zai'          = 'z.ai console - glm-5-turbo $1.2/$4/M  (stable, agentic)'
+    'kimi-coding'  = 'platform.moonshot.cn - Kimi K2.5 SWE-bench 76.8%  (free credits)'
+    'groq'         = 'console.groq.com - kimi-k2+qwen3-32b FREE daily reset'
+    'google'       = 'aistudio.google.com - gemini-2.5-pro 5RPM/25RPD free tier'
+    'openrouter'   = 'openrouter.ai - aggregator, 200+ models incl. free tier'
+    'anthropic'    = 'console.anthropic.com - paid key OR use /login OAuth (free)'
+    'openai'       = 'platform.openai.com - paid key OR use /login openai-codex (free)'
+    'xai'          = 'console.x.ai - grok-4.20 free credits on signup'
+    'mistral'      = 'console.mistral.ai - pixtral-large, free tier available'
+    'context7'     = 'context7.com - documentation lookup (already set)'
+    'jina'         = 'jina.ai - web reader/search'
+    'brave'        = 'brave.com/search/api - web search'
+    'tavily'       = 'tavily.com - web search'
 }
 
 function Show-GsdKeys {
     Write-Host ''
-    Write-HintSection 'GSD API Keys — all providers'
+    Write-HintSection 'GSD API Keys -- all providers'
     Write-Host '  Usage: 8sync gsd key <provider> <api-key>' -ForegroundColor DarkGray
     Write-Host ''
 
@@ -204,10 +265,10 @@ function Show-GsdKeys {
 
     Write-Host ''
     Write-Host '  OAuth providers (no key needed, use /login in pi):' -ForegroundColor DarkGray
-    Write-Host '    anthropic        /login anthropic' -ForegroundColor White
-    Write-Host '    github-copilot   /login github-copilot   (requires Copilot subscription)' -ForegroundColor White
+    Write-Host '    anthropic         /login anthropic' -ForegroundColor White
+    Write-Host '    github-copilot    /login github-copilot   (requires Copilot subscription)' -ForegroundColor White
     Write-Host '    google-gemini-cli /login google-gemini-cli (free via Cloud Code Assist)' -ForegroundColor White
-    Write-Host '    openai-codex     /login openai-codex      (free via ChatGPT OAuth)' -ForegroundColor White
+    Write-Host '    openai-codex      /login openai-codex      (free via ChatGPT OAuth)' -ForegroundColor White
     Write-Host ''
 }
 
@@ -286,14 +347,15 @@ function Invoke-GsdStatus {
 
     # Current plan detection
     $prefPath = Join-Path $gsdHome 'PREFERENCES.md'
+    $detectedPlan = ''
     if (Test-Path $prefPath) {
         $bundleDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\gsd-config'))
         $detectedPlan = 'unknown/custom'
-        foreach ($p in @('max','pro','normal')) {
+        foreach ($p in @('max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini')) {
             $planFile = Join-Path $bundleDir ("PREFERENCES-{0}.md" -f $p)
             if (Test-Path $planFile) {
-                $a = (Get-FileHash $prefPath  -Algorithm MD5).Hash
-                $b = (Get-FileHash $planFile  -Algorithm MD5).Hash
+                $a = (Get-FileHash $prefPath -Algorithm MD5).Hash
+                $b = (Get-FileHash $planFile -Algorithm MD5).Hash
                 if ($a -eq $b) { $detectedPlan = $p; break }
             }
         }
@@ -302,7 +364,7 @@ function Invoke-GsdStatus {
     }
 
     # Per-plan requirements: which OAuth logins + which API keys are needed
-    $script:PlanRequirements = @{
+    $planRequirements = @{
         'max'    = @{
             oauth = @('anthropic','github-copilot','google-gemini-cli','openai-codex')
             keys  = @('kimi-coding','zai','groq')
@@ -314,6 +376,22 @@ function Invoke-GsdStatus {
         'normal' = @{
             oauth = @('google-gemini-cli','openai-codex')
             keys  = @('zai','groq')
+        }
+        'claude-max' = @{
+            oauth = @('anthropic')
+            keys  = @()
+        }
+        'codex-max' = @{
+            oauth = @('openai-codex')
+            keys  = @()
+        }
+        'gemini-max' = @{
+            oauth = @('google-gemini-cli')
+            keys  = @()
+        }
+        'claude-codex-gemini' = @{
+            oauth = @('anthropic','openai-codex','google-gemini-cli')
+            keys  = @()
         }
     }
 
@@ -360,23 +438,23 @@ function Invoke-GsdStatus {
         $fromFile = $envFileLines | Where-Object { $_ -match ('^' + [regex]::Escape($varName) + '\s*=') } | Select-Object -First 1
 
         if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
-            $status = 'set (env)';   $color = 'Green'
+            $status = 'set (env)';        $color = 'Green'
         } elseif (-not [string]::IsNullOrWhiteSpace($fromUser)) {
-            $status = 'set (user)';  $color = 'Green'
+            $status = 'set (user)';       $color = 'Green'
         } elseif ($fromFile) {
-            $status = 'set (.env only)'; $color = 'DarkYellow'
+            $status = 'set (.env only)';  $color = 'DarkYellow'
         } else {
-            $status = 'not set';     $color = 'DarkGray'
+            $status = 'not set';          $color = 'DarkGray'
         }
         Write-Host ("    {0,-15} {1,-22} {2}" -f $provider, $varName, $status) -ForegroundColor $color
     }
 
     Write-Host ''
 
-    # ── Checklist: what this plan still needs ──────────────────────────────────
-    if ($script:PlanRequirements.ContainsKey($detectedPlan)) {
-        $req         = $script:PlanRequirements[$detectedPlan]
-        $missing     = [System.Collections.Generic.List[string]]::new()
+    # Checklist: what this plan still needs
+    if ($detectedPlan -ne '' -and $planRequirements.ContainsKey($detectedPlan)) {
+        $req     = $planRequirements[$detectedPlan]
+        $missing = [System.Collections.Generic.List[string]]::new()
 
         # Check OAuth
         $loggedIn = @()
@@ -411,7 +489,7 @@ function Invoke-GsdStatus {
         } else {
             Write-Host ("  Checklist: {0} item(s) missing for plan '{1}'" -f $missing.Count, $detectedPlan) -ForegroundColor Yellow
             foreach ($m in $missing) {
-                Write-Host ("    ✗  {0}" -f $m) -ForegroundColor Red
+                Write-Host ("    [x] {0}" -f $m) -ForegroundColor Red
             }
         }
         Write-Host ''
@@ -424,11 +502,17 @@ function Invoke-GsdCommand {
         [string[]]$Rest
     )
 
-    $dryRun = $Rest -contains '--dry-run'
+    $dryRun  = $Rest -contains '--dry-run'
     $planArg = ''
     $planIdx = [Array]::IndexOf($Rest, '--plan')
-    if ($planIdx -ge 0 -and $planIdx + 1 -lt $Rest.Count) {
-        $planArg = $Rest[$planIdx + 1]
+    if ($planIdx -ge 0) {
+        if ($planIdx + 1 -lt $Rest.Count -and $Rest[$planIdx + 1] -notlike '--*') {
+            $planArg = $Rest[$planIdx + 1]
+        } else {
+            # --plan with no value -> show plan list
+            Show-GsdPlans
+            return
+        }
     }
 
     $sub = if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
