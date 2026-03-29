@@ -273,7 +273,7 @@ function Show-GgufDetect {
     Write-Host ("  Context    : {0}K tokens" -f [math]::Round($ap.ctx_size / 1024)) -ForegroundColor White
     Write-Host ("  Parallel   : {0} slots"   -f $ap.parallel)  -ForegroundColor White
     Write-Host ("  Batch size : {0}"          -f $ap.batch_size) -ForegroundColor White
-    Write-Host ("  Flash attn : {0}"          -f $(if ($ap.flash_attn) { 'yes' } else { 'no' })) -ForegroundColor White
+    Write-Host ("  Flash attn : {0}"          -f $(if ($ap.flash_attn) { 'on' } else { 'off' })) -ForegroundColor White
     Write-Host ''
     Write-Host '  To use this preset:' -ForegroundColor DarkGray
     Write-Host ("    8sync gguf serve --engine-path <dir> --model-path <file>") -ForegroundColor Yellow
@@ -735,23 +735,32 @@ function Invoke-GgufServe {
     }
 
     # ── Build args ───────────────────────────────────────────────────────────
-    $args = @(
+    # Flag reference (llama-server current):
+    #   --threads N         generation threads
+    #   --threads-batch N   prompt/batch threads  (default: same as --threads)
+    #   --ctx-size N        context window
+    #   --parallel N / -np  server slots
+    #   -b / --batch-size N logical batch  (default: 2048)
+    #   -ub / --ubatch-size N physical batch (default: 512)
+    #   --flash-attn [on|off|auto]  NOT a bare flag
+    $serverArgs = @(
         '--model',         "`"$modelPath`"",
         '--host',          $hostArg,
         '--port',          $portArg,
         '--n-gpu-layers',  $preset.n_gpu_layers,
         '--threads',       $preset.cpu_threads,
+        '--threads-batch', $preset.cpu_threads,
         '--ctx-size',      $preset.ctx_size,
         '--parallel',      $preset.parallel,
-        '--batch-size',    $preset.batch_size
+        '-b',              $preset.batch_size,
+        '--flash-attn',    $(if ($preset.flash_attn) { 'on' } else { 'off' })
     )
-    if ($preset.flash_attn) { $args += '--flash-attn' }
 
     # extra_args from profile
     if ($profileName) {
         $pr = (Read-GgufJson (Get-GgufProfilesPath)).profiles.$profileName
         if ($pr.extra_args -and $pr.extra_args.Count -gt 0) {
-            $args += $pr.extra_args
+            $serverArgs += $pr.extra_args
         }
     }
 
@@ -770,13 +779,13 @@ function Invoke-GgufServe {
     Write-Host ("    Context    : {0}K tokens" -f $ctxK)        -ForegroundColor White
     Write-Host ("    Parallel   : {0} slots" -f $preset.parallel) -ForegroundColor White
     Write-Host ("    Batch size : {0}" -f $preset.batch_size)   -ForegroundColor White
-    Write-Host ("    Flash attn : {0}" -f $(if ($preset.flash_attn) { 'yes' } else { 'no' })) -ForegroundColor White
+    Write-Host ("    Flash attn : {0}" -f $(if ($preset.flash_attn) { 'on' } else { 'off' })) -ForegroundColor White
     if ($preset.notes) {
         Write-Host ("    Note       : {0}" -f $preset.notes) -ForegroundColor DarkYellow
     }
     Write-Host ''
     Write-Host ("  Command:") -ForegroundColor DarkGray
-    Write-Host ("    {0} {1}" -f $exePath, ($args -join ' ')) -ForegroundColor Yellow
+    Write-Host ("    {0} {1}" -f $exePath, ($serverArgs -join ' ')) -ForegroundColor Yellow
     Write-Host ''
 
     if ($dryRun) {
@@ -789,7 +798,7 @@ function Invoke-GgufServe {
     Write-Host ''
 
     try {
-        & $exePath @args
+        & $exePath @serverArgs
     } catch {
         Write-Warning ("gguf: server exited with error: {0}" -f $_)
     }
