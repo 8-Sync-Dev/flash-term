@@ -61,7 +61,7 @@ function Register-8SyncCompleter {
             clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
             opencode = @('export','apply','reinstall','install','setup','status','--dry-run','--force','help')
-            gsd      = @('setup','key','status','help','--dry-run')
+            gsd      = @('setup','key','keys','status','help','--dry-run','--plan')
         }
 
         if ($count -le 1) {
