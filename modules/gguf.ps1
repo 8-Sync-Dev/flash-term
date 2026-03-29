@@ -5,6 +5,7 @@
 # Usage:
 #   8sync gguf serve  --engine-path <dir> --model-path <file> [options]
 #   8sync gguf serve  --profile <name>    [--preset <name>] [--port N]
+#   8sync gguf detect                     Scan GPU/CPU/RAM -> recommended preset + flags
 #   8sync gguf presets                    List built-in + custom presets
 #   8sync gguf profiles                   List saved profiles
 #   8sync gguf save   --profile <name> --engine-path <d> --model-path <f> [opts]
@@ -25,6 +26,137 @@ function Resolve-GgufConfigDir {
 
 function Get-GgufPresetsPath  { Join-Path (Resolve-GgufConfigDir) 'presets.json'  }
 function Get-GgufProfilesPath { Join-Path (Resolve-GgufConfigDir) 'profiles.json' }
+
+# ---------------------------------------------------------------------------
+# Hardware detection
+# ---------------------------------------------------------------------------
+
+function Get-GgufHardware {
+    # Returns: [pscustomobject]@{ GpuName; VramGB; CpuCores; CpuThreads; RamGB; GpuSource }
+    # VRAM: nvidia-smi first (accurate), fallback Win32_VideoController (DWORD-overflows >4GB)
+
+    $vramGB     = 0
+    $gpuName    = 'Unknown'
+    $gpuSource  = 'none'
+
+    # -- nvidia-smi (most accurate for NVIDIA) --------------------------------
+    $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    if ($smi) {
+        try {
+            $raw = & nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null |
+                   Select-Object -First 1
+            if ($raw -match '^(.+),\s*(\d+)') {
+                $gpuName   = $Matches[1].Trim()
+                $vramGB    = [math]::Round([int]$Matches[2] / 1024, 1)
+                $gpuSource = 'nvidia-smi'
+            }
+        } catch {}
+    }
+
+    # -- WMI fallback (works for AMD / Intel, DWORD wraps at 4GB so we clamp) -
+    if ($gpuSource -eq 'none') {
+        try {
+            $gpus = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+                    Where-Object { $_.AdapterRAM -and $_.AdapterRAM -gt 0 } |
+                    Sort-Object AdapterRAM -Descending
+            if ($gpus) {
+                $best      = $gpus | Select-Object -First 1
+                $gpuName   = $best.Name
+                # AdapterRAM is DWORD — max it can hold is ~4GB; anything at ~4GB may be overflow
+                $raw_gb    = [math]::Round($best.AdapterRAM / 1GB, 1)
+                $vramGB    = $raw_gb
+                $gpuSource = 'wmi'
+                if ($raw_gb -ge 3.9) {
+                    # Flag as potentially truncated — can't know the real size
+                    $gpuSource = 'wmi-truncated'
+                }
+            }
+        } catch {}
+    }
+
+    # -- CPU / RAM ------------------------------------------------------------
+    $cpuCores   = 4
+    $cpuThreads = 8
+    $ramGB      = 8
+    try {
+        $cpu        = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        $cpuCores   = [int]$cpu.NumberOfCores
+        $cpuThreads = [int]$cpu.NumberOfLogicalProcessors
+        $ramGB      = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+    } catch {}
+
+    return [pscustomobject]@{
+        GpuName    = $gpuName
+        VramGB     = $vramGB
+        CpuCores   = $cpuCores
+        CpuThreads = $cpuThreads
+        RamGB      = $ramGB
+        GpuSource  = $gpuSource
+    }
+}
+
+function Get-GgufAutoPreset {
+    # Returns recommended preset name + derived n_gpu_layers for the detected hardware.
+    # Logic:
+    #   >= 12 GB VRAM -> max    (99 layers — let llama.cpp decide)
+    #    8-12 GB VRAM -> high   (cap at 40 layers — fits most 7-13B Q8 models)
+    #    4-8  GB VRAM -> medium (20 layers — partial offload)
+    #    < 4  GB VRAM -> low    (CPU only)
+    #
+    # ctx_size scales with RAM so large-RAM machines get bigger windows.
+    # CPU threads = min(physical_cores, 8) — leave headroom for OS.
+
+    param([pscustomobject]$Hw)
+
+    $vram    = $Hw.VramGB
+    $threads = [math]::Min($Hw.CpuCores, 8)
+
+    if ($vram -ge 12) {
+        return [pscustomobject]@{
+            Preset     = 'max'
+            n_gpu_layers = 99
+            cpu_threads  = [math]::Max(2, $threads - 6)
+            ctx_size     = if ($Hw.RamGB -ge 32) { 65536 } else { 32768 }
+            parallel     = if ($vram -ge 20) { 8 } elseif ($vram -ge 16) { 4 } else { 2 }
+            batch_size   = 512
+            flash_attn   = $true
+            Reason       = ("${vram}GB VRAM >= 12GB -> full GPU offload, large context")
+        }
+    } elseif ($vram -ge 8) {
+        return [pscustomobject]@{
+            Preset     = 'high'
+            n_gpu_layers = 40
+            cpu_threads  = [math]::Max(2, $threads - 4)
+            ctx_size     = 16384
+            parallel     = 2
+            batch_size   = 256
+            flash_attn   = $true
+            Reason       = ("${vram}GB VRAM 8-12GB -> most layers on GPU, 40 offloaded")
+        }
+    } elseif ($vram -ge 4) {
+        return [pscustomobject]@{
+            Preset     = 'medium'
+            n_gpu_layers = 20
+            cpu_threads  = $threads
+            ctx_size     = 8192
+            parallel     = 1
+            batch_size   = 128
+            flash_attn   = $false
+            Reason       = ("${vram}GB VRAM 4-8GB -> partial GPU offload, 20 layers")
+        }
+    } else {
+        return [pscustomobject]@{
+            Preset     = 'low'
+            n_gpu_layers = 0
+            cpu_threads  = $Hw.CpuThreads   # CPU-only: use all logical threads
+            ctx_size     = 4096
+            parallel     = 1
+            batch_size   = 64
+            flash_attn   = $false
+            Reason       = ("${vram}GB VRAM < 4GB -> CPU-only mode")
+        }
+    }
+}
 
 # ---------------------------------------------------------------------------
 # JSON helpers
@@ -111,6 +243,46 @@ function Show-GgufPresets {
     Write-Host ''
 }
 
+function Show-GgufDetect {
+    # Detect hardware and show recommended preset with full reasoning
+    $hw = Get-GgufHardware
+    $ap = Get-GgufAutoPreset $hw
+
+    Write-Host ''
+    Write-HintSection 'GGUF Hardware Detection'
+    Write-Host ''
+
+    Write-Host '  -- Hardware found -------------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host ("  GPU   : {0}" -f $hw.GpuName) -ForegroundColor White
+    $vramLabel = if ($hw.GpuSource -eq 'wmi-truncated') {
+        '{0} GB (WMI truncated -- may be higher; install nvidia-smi for accuracy)' -f $hw.VramGB
+    } else {
+        '{0} GB  [source: {1}]' -f $hw.VramGB, $hw.GpuSource
+    }
+    Write-Host ("  VRAM  : {0}" -f $vramLabel) -ForegroundColor $(if ($hw.GpuSource -eq 'wmi-truncated') { 'DarkYellow' } else { 'White' })
+    Write-Host ("  CPU   : {0} cores / {1} threads" -f $hw.CpuCores, $hw.CpuThreads) -ForegroundColor White
+    Write-Host ("  RAM   : {0} GB" -f $hw.RamGB) -ForegroundColor White
+    Write-Host ''
+
+    Write-Host '  -- Recommended preset ---------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host ("  Preset     : {0}" -f $ap.Preset)        -ForegroundColor Cyan
+    Write-Host ("  Reason     : {0}" -f $ap.Reason)        -ForegroundColor DarkGray
+    Write-Host ("  GPU layers : {0}" -f $ap.n_gpu_layers)  -ForegroundColor White
+    Write-Host ("  CPU threads: {0}" -f $ap.cpu_threads)   -ForegroundColor White
+    Write-Host ("  Context    : {0}K tokens" -f [math]::Round($ap.ctx_size / 1024)) -ForegroundColor White
+    Write-Host ("  Parallel   : {0} slots"   -f $ap.parallel)  -ForegroundColor White
+    Write-Host ("  Batch size : {0}"          -f $ap.batch_size) -ForegroundColor White
+    Write-Host ("  Flash attn : {0}"          -f $(if ($ap.flash_attn) { 'yes' } else { 'no' })) -ForegroundColor White
+    Write-Host ''
+    Write-Host '  To use this preset:' -ForegroundColor DarkGray
+    Write-Host ("    8sync gguf serve --engine-path <dir> --model-path <file>") -ForegroundColor Yellow
+    Write-Host ("    (auto-detect is the default when --preset is omitted)") -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  To override: --preset max|high|medium|low or a custom name from presets.json' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Show-GgufProfiles {
     $data = Read-GgufJson (Get-GgufProfilesPath)
     if (-not $data -or -not $data.profiles) {
@@ -150,11 +322,14 @@ function Show-GgufHelp {
     Write-Host ''
     Write-Host '  -- Launch ----------------------------------------------------------------' -ForegroundColor DarkGray
     Write-HintRow '8sync gguf serve --engine-path <dir> --model-path <file>' `
-                  'Start llama-server with default preset (high)'
+                  'Start llama-server -- auto-detects GPU/CPU, picks best preset'
     Write-HintRow '8sync gguf serve --preset max'   'Override resource preset (max/high/medium/low)'
     Write-HintRow '8sync gguf serve --profile <n>'  'Load saved profile by name (engine+model+preset)'
     Write-HintRow '8sync gguf serve --port 8080'    'Override listening port (default: 8080)'
     Write-HintRow '8sync gguf serve --dry-run'      'Print the llama-server command without running it'
+    Write-Host ''
+    Write-Host '  -- Detection ------------------------------------------------------------' -ForegroundColor DarkGray
+    Write-HintRow '8sync gguf detect'               'Scan GPU/CPU/RAM and show recommended preset + flags'
     Write-Host ''
     Write-Host '  -- Presets (resource profiles) -------------------------------------------' -ForegroundColor DarkGray
     Write-HintRow '8sync gguf presets'              'List all presets with GPU/CPU/ctx details'
@@ -348,15 +523,43 @@ function Invoke-GgufServe {
     }
 
     # ── Defaults ─────────────────────────────────────────────────────────────
-    if (-not $presetName) { $presetName = 'high' }
-    if (-not $portArg)    { $portArg    = '8080'  }
-    if (-not $hostArg)    { $hostArg    = '0.0.0.0' }
+    if (-not $portArg) { $portArg = '8080'    }
+    if (-not $hostArg) { $hostArg = '0.0.0.0' }
 
-    # ── Resolve preset ───────────────────────────────────────────────────────
-    $preset = Get-GgufPreset $presetName
-    if (-not $preset) {
-        Write-Warning ("gguf: preset '{0}' not found. Run: 8sync gguf presets" -f $presetName)
-        return
+    # ── Resolve preset (auto-detect if not specified) ────────────────────────
+    $autoDetected = $false
+    $autoPreset   = $null
+    if (-not $presetName) {
+        Write-Host '  [auto-detect] Scanning hardware...' -ForegroundColor DarkGray
+        $hw          = Get-GgufHardware
+        $autoPreset  = Get-GgufAutoPreset $hw
+        $presetName  = $autoPreset.Preset
+        $autoDetected = $true
+        Write-Host ("  [auto-detect] GPU: {0} ({1} GB VRAM)  CPU: {2}c/{3}t  RAM: {4} GB" -f `
+            $hw.GpuName, $hw.VramGB, $hw.CpuCores, $hw.CpuThreads, $hw.RamGB) -ForegroundColor DarkGray
+        Write-Host ("  [auto-detect] Chosen preset: {0}  -- {1}" -f $presetName, $autoPreset.Reason) -ForegroundColor Cyan
+        Write-Host ''
+    }
+
+    # ── Resolve preset values ─────────────────────────────────────────────────
+    $preset = $null
+    if ($autoDetected -and $autoPreset) {
+        # Build a synthetic preset object from auto-detect results
+        $preset = [pscustomobject]@{
+            n_gpu_layers = $autoPreset.n_gpu_layers
+            cpu_threads  = $autoPreset.cpu_threads
+            ctx_size     = $autoPreset.ctx_size
+            parallel     = $autoPreset.parallel
+            batch_size   = $autoPreset.batch_size
+            flash_attn   = $autoPreset.flash_attn
+            notes        = $autoPreset.Reason
+        }
+    } else {
+        $preset = Get-GgufPreset $presetName
+        if (-not $preset) {
+            Write-Warning ("gguf: preset '{0}' not found. Run: 8sync gguf presets" -f $presetName)
+            return
+        }
     }
 
     # ── Locate llama-server executable ──────────────────────────────────────
@@ -460,6 +663,7 @@ function Invoke-GgufCommand {
         'serve'    { Invoke-GgufServe   -Rest ($Rest | Select-Object -Skip 1) }
         'presets'  { Show-GgufPresets  }
         'profiles' { Show-GgufProfiles }
+        'detect'   { Show-GgufDetect   }
         'save'     { Invoke-GgufSave    -Rest ($Rest | Select-Object -Skip 1) }
         'status'   { Show-GgufStatus   }
         'stop'     { Invoke-GgufStop   }

@@ -62,7 +62,7 @@ function Register-8SyncCompleter {
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
             opencode = @('export','apply','reinstall','install','setup','status','--dry-run','--force','help')
             gsd      = @('setup','key','keys','status','help','--dry-run','--plan','max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini')
-            gguf     = @('serve','presets','profiles','save','status','stop','help','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--dry-run')
+            gguf     = @('serve','presets','profiles','detect','save','status','stop','help','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--dry-run')
         }
 
         if ($count -le 1) {
