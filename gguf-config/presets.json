@@ -11,7 +11,7 @@
       "parallel": 4,
       "batch_size": 512,
       "flash_attn": true,
-      "notes": "Requires high-end GPU (RTX 3080+). OOM -> try 'high' instead."
+      "notes": "Requires high-end GPU (RTX 3080+). Includes KV q8_0, cont-batching, jinja, metrics."
     },
     "high": {
       "description": "Most layers on GPU, balanced context — good for 6-8 GB VRAM cards",

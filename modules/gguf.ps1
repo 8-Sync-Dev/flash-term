@@ -736,24 +736,36 @@ function Invoke-GgufServe {
 
     # ── Build args ───────────────────────────────────────────────────────────
     # Flag reference (llama-server current):
-    #   --threads N         generation threads
-    #   --threads-batch N   prompt/batch threads  (default: same as --threads)
-    #   --ctx-size N        context window
-    #   --parallel N / -np  server slots
-    #   -b / --batch-size N logical batch  (default: 2048)
-    #   -ub / --ubatch-size N physical batch (default: 512)
+    #   --threads N           generation threads
+    #   --threads-batch N     prompt/batch threads  (default: same as --threads)
+    #   --ctx-size N          context window
+    #   --parallel N / -np    server slots
+    #   -b N                  logical batch  (default: 2048)
+    #   -ub N                 physical micro-batch (default: 512)
     #   --flash-attn [on|off|auto]  NOT a bare flag
+    #   --cache-type-k q8_0   KV cache quantization (saves VRAM)
+    #   --cache-type-v q8_0
+    #   --cont-batching       continuous batching (better throughput)
+    #   --jinja               enable Jinja2 chat template
+    #   --metrics             expose /metrics endpoint (Prometheus)
+    #   --no-mmap             don't use mmap (helps with large models)
     $serverArgs = @(
-        '--model',         "`"$modelPath`"",
-        '--host',          $hostArg,
-        '--port',          $portArg,
-        '--n-gpu-layers',  $preset.n_gpu_layers,
-        '--threads',       $preset.cpu_threads,
-        '--threads-batch', $preset.cpu_threads,
-        '--ctx-size',      $preset.ctx_size,
-        '--parallel',      $preset.parallel,
-        '-b',              $preset.batch_size,
-        '--flash-attn',    $(if ($preset.flash_attn) { 'on' } else { 'off' })
+        '--model',           "`"$modelPath`"",
+        '--host',            $hostArg,
+        '--port',            $portArg,
+        '--n-gpu-layers',    $preset.n_gpu_layers,
+        '--threads',         $preset.cpu_threads,
+        '--threads-batch',   $preset.cpu_threads,
+        '--ctx-size',        $preset.ctx_size,
+        '--parallel',        $preset.parallel,
+        '-b',                $preset.batch_size,
+        '-ub',               512,
+        '--flash-attn',      $(if ($preset.flash_attn) { 'on' } else { 'off' }),
+        '--cache-type-k',    'q8_0',
+        '--cache-type-v',    'q8_0',
+        '--cont-batching',
+        '--jinja',
+        '--metrics'
     )
 
     # extra_args from profile
