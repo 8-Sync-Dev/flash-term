@@ -316,6 +316,143 @@ function Show-GgufProfiles {
     Write-Host ''
 }
 
+function Show-GgufHint {
+    # Scan every prerequisite and print status + install instructions.
+    # Checks: NVIDIA driver, nvidia-smi, CUDA toolkit, nvcc, llama-server binary,
+    # and whether the user's configured engine-path is reachable.
+
+    Write-Host ''
+    Write-HintSection 'GGUF -- Prerequisites checklist'
+    Write-Host ''
+
+    $allOk  = $true
+    $nvidia = $false
+
+    # ── Helper: print one row ─────────────────────────────────────────────────
+    function Write-CheckRow {
+        param([bool]$Ok, [string]$Label, [string]$Detail)
+        $icon  = if ($Ok) { '[OK]' } else { '[!!]' }
+        $color = if ($Ok) { 'Green' } else { 'Red' }
+        Write-Host ("  {0,-5} {1,-32} {2}" -f $icon, $Label, $Detail) -ForegroundColor $color
+    }
+
+    # ── 1. NVIDIA driver / nvidia-smi ────────────────────────────────────────
+    $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    if ($smi) {
+        $verLine = & nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>$null | Select-Object -First 1
+        Write-CheckRow $true 'NVIDIA driver' ("nvidia-smi found   driver: {0}" -f $verLine.Trim())
+        $nvidia = $true
+    } else {
+        Write-CheckRow $false 'NVIDIA driver' 'nvidia-smi not found in PATH'
+        Write-Host '         -> nvidia-smi ships with the NVIDIA display driver.' -ForegroundColor DarkGray
+        Write-Host '            Install: https://www.nvidia.com/en-us/drivers/' -ForegroundColor DarkGray
+        Write-Host '            Or via winget: winget install NVIDIA.NVIDIAAPP' -ForegroundColor DarkGray
+        $allOk = $false
+    }
+    Write-Host ''
+
+    # ── 2. CUDA Toolkit ───────────────────────────────────────────────────────
+    $nvcc      = Get-Command nvcc -ErrorAction SilentlyContinue
+    $cudaEnv   = $env:CUDA_PATH
+    $cudaFound = $nvcc -or ($cudaEnv -and (Test-Path $cudaEnv))
+
+    if ($cudaFound) {
+        $cudaVer = ''
+        if ($nvcc) {
+            try { $cudaVer = (& nvcc --version 2>$null | Select-String 'release' | Select-Object -First 1).ToString().Trim() } catch {}
+        } elseif ($cudaEnv) {
+            $cudaVer = "CUDA_PATH=$cudaEnv"
+        }
+        Write-CheckRow $true 'CUDA Toolkit' $cudaVer
+    } else {
+        Write-CheckRow $false 'CUDA Toolkit' 'nvcc not found, CUDA_PATH not set'
+        Write-Host '         -> Required to run llama-server with GPU support (CUDA backend).' -ForegroundColor DarkGray
+        Write-Host '            Download: https://developer.nvidia.com/cuda-downloads' -ForegroundColor DarkGray
+        Write-Host '            Choose:   Windows > x86_64 > exe (local)' -ForegroundColor DarkGray
+        Write-Host '            After install: restart shell, confirm with: nvcc --version' -ForegroundColor DarkGray
+        Write-Host '            Minimum version: CUDA 11.8   Recommended: 12.x / 13.x' -ForegroundColor DarkGray
+        $allOk = $false
+    }
+    Write-Host ''
+
+    # ── 3. llama-server binary ────────────────────────────────────────────────
+    # Check PATH first, then the saved profile engine paths
+    $llamaInPath = Get-Command llama-server -ErrorAction SilentlyContinue
+    if (-not $llamaInPath) {
+        $llamaInPath = Get-Command 'llama-server.exe' -ErrorAction SilentlyContinue
+    }
+    if ($llamaInPath) {
+        Write-CheckRow $true 'llama-server (PATH)' $llamaInPath.Source
+    } else {
+        Write-CheckRow $false 'llama-server (PATH)' 'not found in PATH'
+        Write-Host '         -> llama.cpp server binary — needed to serve GGUF models.' -ForegroundColor DarkGray
+        Write-Host '            Option A: pre-built release (recommended):' -ForegroundColor DarkGray
+        Write-Host '              https://github.com/ggml-org/llama.cpp/releases' -ForegroundColor DarkGray
+        Write-Host '              Download: llama-<ver>-bin-win-cuda-cu<X.Y>-x64.zip' -ForegroundColor DarkGray
+        Write-Host '              Match cu version to your CUDA Toolkit (e.g. cu12, cu13)' -ForegroundColor DarkGray
+        Write-Host '            Option B: build from source (needs cmake + Visual Studio):' -ForegroundColor DarkGray
+        Write-Host '              git clone https://github.com/ggml-org/llama.cpp' -ForegroundColor DarkGray
+        Write-Host '              cmake -B build -DGGML_CUDA=ON && cmake --build build -j' -ForegroundColor DarkGray
+        Write-Host '            After download/build, point --engine-path at the folder.' -ForegroundColor DarkGray
+        $allOk = $false
+    }
+    Write-Host ''
+
+    # ── 4. Engine path in saved profiles ─────────────────────────────────────
+    $prData = Read-GgufJson (Get-GgufProfilesPath)
+    if ($prData -and $prData.profiles) {
+        $profileProps = $prData.profiles.PSObject.Properties
+        if ($profileProps) {
+            Write-Host '  -- Saved profile engine paths -------------------------------------------' -ForegroundColor DarkGray
+            foreach ($prop in $profileProps) {
+                $pr = $prop.Value
+                $epOk = Test-Path $pr.engine_path
+                $mpOk = Test-Path $pr.model_path
+                Write-CheckRow $epOk ("Profile [{0}] engine" -f $prop.Name) $pr.engine_path
+                Write-CheckRow $mpOk ("Profile [{0}] model"  -f $prop.Name) $pr.model_path
+            }
+            Write-Host ''
+        }
+    }
+
+    # ── 5. GPU summary ────────────────────────────────────────────────────────
+    if ($nvidia) {
+        Write-Host '  -- GPU summary ----------------------------------------------------------' -ForegroundColor DarkGray
+        try {
+            $rows = & nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv,noheader,nounits 2>$null
+            foreach ($row in $rows) {
+                $parts = $row -split ',\s*'
+                if ($parts.Count -ge 4) {
+                    $vramGB = [math]::Round([int]$parts[2] / 1024, 1)
+                    Write-Host ("  GPU {0}: {1}   {2} GB VRAM   driver {3}" -f `
+                        $parts[0].Trim(), $parts[1].Trim(), $vramGB, $parts[3].Trim()) -ForegroundColor White
+                }
+            }
+        } catch {}
+        Write-Host ''
+    }
+
+    # ── 6. Summary ────────────────────────────────────────────────────────────
+    Write-Host '  -- Quick-start ----------------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host '  1. Install NVIDIA driver  -> nvidia-smi available automatically' -ForegroundColor DarkGray
+    Write-Host '  2. Install CUDA Toolkit   -> https://developer.nvidia.com/cuda-downloads' -ForegroundColor DarkGray
+    Write-Host '  3. Download llama.cpp release (CUDA build) matching your cu version' -ForegroundColor DarkGray
+    Write-Host '     -> https://github.com/ggml-org/llama.cpp/releases' -ForegroundColor DarkGray
+    Write-Host '  4. Download a GGUF model  -> https://huggingface.co (filter: GGUF)' -ForegroundColor DarkGray
+    Write-Host '  5. Run:' -ForegroundColor DarkGray
+    Write-Host '     8sync gguf serve \' -ForegroundColor Yellow
+    Write-Host '       --engine-path "C:\path\to\llama-cpp\bin" \' -ForegroundColor Yellow
+    Write-Host '       --model-path  "C:\path\to\model.gguf"' -ForegroundColor Yellow
+    Write-Host ''
+
+    if ($allOk) {
+        Write-Host '  All prerequisites found. Ready to serve.' -ForegroundColor Green
+    } else {
+        Write-Host '  Fix the [!!] items above, then re-run: 8sync gguf hint' -ForegroundColor DarkYellow
+    }
+    Write-Host ''
+}
+
 function Show-GgufHelp {
     Write-Host ''
     Write-HintSection 'GGUF -- Local llama-server launcher'
@@ -330,6 +467,7 @@ function Show-GgufHelp {
     Write-Host ''
     Write-Host '  -- Detection ------------------------------------------------------------' -ForegroundColor DarkGray
     Write-HintRow '8sync gguf detect'               'Scan GPU/CPU/RAM and show recommended preset + flags'
+    Write-HintRow '8sync gguf hint'                 'Full prerequisites checklist: driver, CUDA, llama.cpp install guide'
     Write-Host ''
     Write-Host '  -- Presets (resource profiles) -------------------------------------------' -ForegroundColor DarkGray
     Write-HintRow '8sync gguf presets'              'List all presets with GPU/CPU/ctx details'
@@ -664,6 +802,7 @@ function Invoke-GgufCommand {
         'presets'  { Show-GgufPresets  }
         'profiles' { Show-GgufProfiles }
         'detect'   { Show-GgufDetect   }
+        'hint'     { Show-GgufHint    }
         'save'     { Invoke-GgufSave    -Rest ($Rest | Select-Object -Skip 1) }
         'status'   { Show-GgufStatus   }
         'stop'     { Invoke-GgufStop   }

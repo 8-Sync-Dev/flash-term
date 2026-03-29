@@ -302,6 +302,7 @@ function Show-8SyncHint {
 
     Write-HintSection 'GGUF'
     Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
+    Write-HintRow '8sync gguf hint'                                      'Prerequisites checklist (driver, CUDA, llama.cpp)'
     Write-HintRow '8sync gguf serve --preset <max|high|medium|low>'     'Resource preset (GPU layers, ctx, threads)'
     Write-HintRow '8sync gguf serve --profile <name>'                   'Launch from saved profile'
     Write-HintRow '8sync gguf presets'                                   'List all presets with GPU/CPU/context details'
