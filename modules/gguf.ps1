@@ -459,11 +459,22 @@ function Show-GgufHelp {
     Write-Host ''
     Write-Host '  -- Launch ----------------------------------------------------------------' -ForegroundColor DarkGray
     Write-HintRow '8sync gguf serve --engine-path <dir> --model-path <file>' `
-                  'Start llama-server -- auto-detects GPU/CPU, picks best preset'
+                  'Start llama-server API (OpenAI-compatible, for GSD/pi/other clients)'
     Write-HintRow '8sync gguf serve --preset max'   'Override resource preset (max/high/medium/low)'
     Write-HintRow '8sync gguf serve --profile <n>'  'Load saved profile by name (engine+model+preset)'
     Write-HintRow '8sync gguf serve --port 8080'    'Override listening port (default: 8080)'
     Write-HintRow '8sync gguf serve --dry-run'      'Print the llama-server command without running it'
+    Write-Host ''
+    Write-Host '  -- Chat (interactive REPL, no server needed) ----------------------------' -ForegroundColor DarkGray
+    Write-HintRow '8sync gguf chat --engine-path <dir> --model-path <file>' `
+                  'Start interactive multi-turn chat session (uses llama-cli)'
+    Write-HintRow '8sync gguf chat --profile <n>'   'Load saved profile to start chat'
+    Write-HintRow '8sync gguf chat --preset high'   'Override GPU/ctx resource preset'
+    Write-HintRow '8sync gguf chat --temp 0.7'      'Sampling temperature (default: 0.7)'
+    Write-HintRow '8sync gguf chat --ctx 8192'      'Context window size override'
+    Write-HintRow '8sync gguf chat --system <txt>'  'Set system prompt for the session'
+    Write-HintRow '8sync gguf chat --gpu-layers N'  'Manual GPU layer override'
+    Write-HintRow '8sync gguf chat --dry-run'       'Print llama-cli command without launching'
     Write-Host ''
     Write-Host '  -- Detection ------------------------------------------------------------' -ForegroundColor DarkGray
     Write-HintRow '8sync gguf detect'               'Scan GPU/CPU/RAM and show recommended preset + flags'
@@ -504,10 +515,10 @@ function Show-GgufHelp {
 # Parse args helper
 # ---------------------------------------------------------------------------
 function Get-ArgValue {
-    param([string[]]$Args, [string]$Flag)
-    $idx = [Array]::IndexOf($Args, $Flag)
-    if ($idx -ge 0 -and $idx + 1 -lt $Args.Count -and $Args[$idx + 1] -notlike '--*') {
-        return $Args[$idx + 1]
+    param([string[]]$ArgList, [string]$Flag)
+    $idx = [Array]::IndexOf($ArgList, $Flag)
+    if ($idx -ge 0 -and $idx + 1 -lt $ArgList.Count -and $ArgList[$idx + 1] -notlike '--*') {
+        return $ArgList[$idx + 1]
     }
     return ''
 }
@@ -705,10 +716,10 @@ function Invoke-GgufServe {
     $modelPath  = $modelPath.Trim('"').Trim("'")
 
     $exeCandidates = @(
-        Join-Path $enginePath 'llama-server.exe',
-        Join-Path $enginePath 'llama-server',
-        Join-Path $enginePath 'server.exe',
-        Join-Path $enginePath 'server'
+        (Join-Path $enginePath 'llama-server.exe'),
+        (Join-Path $enginePath 'llama-server'),
+        (Join-Path $enginePath 'server.exe'),
+        (Join-Path $enginePath 'server')
     )
     $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
@@ -787,6 +798,143 @@ function Invoke-GgufServe {
 # ---------------------------------------------------------------------------
 # Main dispatcher
 # ---------------------------------------------------------------------------
+function Invoke-GgufChat {
+    param([string[]]$Rest)
+
+    $dryRun      = $Rest -contains '--dry-run'
+    $profileName = Get-ArgValue $Rest '--profile'
+    $presetName  = Get-ArgValue $Rest '--preset'
+    $enginePath  = Get-ArgValue $Rest '--engine-path'
+    $modelPath   = Get-ArgValue $Rest '--model-path'
+    $ctxArg      = Get-ArgValue $Rest '--ctx'
+    $systemArg   = Get-ArgValue $Rest '--system'
+    $tempArg     = Get-ArgValue $Rest '--temp'
+    $gpuArg      = Get-ArgValue $Rest '--gpu-layers'
+
+    # ── Load profile if given ────────────────────────────────────────────────
+    if ($profileName) {
+        $data = Read-GgufJson (Get-GgufProfilesPath)
+        if (-not $data -or -not $data.profiles.PSObject.Properties[$profileName]) {
+            Write-Warning ("gguf chat: profile '{0}' not found. Run: 8sync gguf profiles" -f $profileName)
+            return
+        }
+        $pr = $data.profiles.$profileName
+        if (-not $enginePath) { $enginePath = $pr.engine_path }
+        if (-not $modelPath)  { $modelPath  = $pr.model_path  }
+        if (-not $presetName) { $presetName = $pr.preset      }
+    }
+
+    # ── Validate required args ───────────────────────────────────────────────
+    if (-not $enginePath) {
+        Write-Warning 'gguf chat: --engine-path <dir> is required (or use --profile <name>)'
+        Write-Host '  Example: --engine-path "C:\Users\Admin\Documents\llama-cpp-cu13\src-run"' -ForegroundColor DarkGray
+        return
+    }
+    if (-not $modelPath) {
+        Write-Warning 'gguf chat: --model-path <file> is required (or use --profile <name>)'
+        Write-Host '  Example: --model-path "C:\Users\Admin\Downloads\Qwen3.5-4B.Q8_0.gguf"' -ForegroundColor DarkGray
+        return
+    }
+
+    # ── Locate llama-cli ─────────────────────────────────────────────────────
+    $enginePath = $enginePath.Trim('"').Trim("'")
+    $modelPath  = $modelPath.Trim('"').Trim("'")
+
+    $cliCandidates = @(
+        (Join-Path $enginePath 'llama-cli.exe'),
+        (Join-Path $enginePath 'llama-cli'),
+        (Join-Path $enginePath 'main.exe'),
+        (Join-Path $enginePath 'main')
+    )
+    $cliPath = $cliCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    if (-not $cliPath) {
+        Write-Warning ("gguf chat: cannot find llama-cli in '{0}'" -f $enginePath)
+        Write-Host '  Expected: llama-cli.exe or main.exe alongside llama-server.exe' -ForegroundColor DarkGray
+        return
+    }
+    if (-not (Test-Path $modelPath)) {
+        Write-Warning ("gguf chat: model file not found: {0}" -f $modelPath)
+        return
+    }
+
+    # ── Resolve preset for GPU layers + ctx ──────────────────────────────────
+    $nGpuLayers = 99
+    $ctxSize    = 8192
+
+    if ($gpuArg) {
+        $nGpuLayers = [int]$gpuArg
+    } elseif ($presetName) {
+        $p = Get-GgufPreset $presetName
+        if ($p) { $nGpuLayers = $p.n_gpu_layers; $ctxSize = $p.ctx_size }
+    } else {
+        # Auto-detect
+        $hw = Get-GgufHardware
+        $ap = Get-GgufAutoPreset $hw
+        $nGpuLayers = $ap.n_gpu_layers
+        $ctxSize    = [math]::Min($ap.ctx_size, 16384)  # cap for interactive
+        Write-Host ("  [auto-detect] {0} ({1}GB VRAM) -> preset '{2}'  {3} GPU layers  {4}K ctx" -f `
+            $hw.GpuName, $hw.VramGB, $ap.Preset, $nGpuLayers, [math]::Round($ctxSize/1024)) `
+            -ForegroundColor DarkGray
+    }
+
+    if ($ctxArg) { $ctxSize = [int]$ctxArg }
+
+    # ── Temperature ──────────────────────────────────────────────────────────
+    $temp = if ($tempArg) { $tempArg } else { '0.7' }
+
+    # ── Build args ───────────────────────────────────────────────────────────
+    $cliArgs = @(
+        '--model',          "`"$modelPath`"",
+        '--n-gpu-layers',   $nGpuLayers,
+        '--ctx-size',       $ctxSize,
+        '--temp',           $temp,
+        '--conversation',           # multi-turn chat mode
+        '--display-prompt'          # show prompt so user sees turn boundary
+    )
+    if ($systemArg) {
+        $cliArgs += @('--system-prompt', "`"$systemArg`"")
+    }
+
+    # ── Print summary ─────────────────────────────────────────────────────────
+    $ctxK = [math]::Round($ctxSize / 1024)
+    $modelName = [System.IO.Path]::GetFileName($modelPath)
+    Write-Host ''
+    Write-HintSection ("GGUF Chat -- {0}" -f $modelName)
+    Write-Host ''
+    Write-Host ("  Binary : {0}" -f $cliPath)                                  -ForegroundColor DarkGray
+    Write-Host ("  Model  : {0}" -f $modelPath)                                 -ForegroundColor White
+    Write-Host ("  GPU    : {0} layers   Ctx: {1}K   Temp: {2}" -f $nGpuLayers, $ctxK, $temp) -ForegroundColor DarkGray
+    if ($systemArg) {
+        Write-Host ("  System : {0}" -f $systemArg)                             -ForegroundColor DarkGray
+    }
+    Write-Host ''
+    Write-Host '  Controls: type your message + Enter to send.' -ForegroundColor DarkGray
+    Write-Host '            Ctrl+C to exit.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($dryRun) {
+        Write-Host ("  Command: {0} {1}" -f $cliPath, ($cliArgs -join ' ')) -ForegroundColor Yellow
+        Write-Host '  [dry-run] Remove --dry-run to start.' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    Write-Host '  Starting chat session...' -ForegroundColor Green
+    Write-Host ('  ' + ('─' * 60)) -ForegroundColor DarkGray
+    Write-Host ''
+
+    try {
+        & $cliPath @cliArgs
+    } catch {
+        Write-Warning ("gguf chat: exited with error: {0}" -f $_)
+    }
+
+    Write-Host ''
+    Write-Host '  Chat session ended.' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Invoke-GgufCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -799,6 +947,7 @@ function Invoke-GgufCommand {
 
     switch ($sub) {
         'serve'    { Invoke-GgufServe   -Rest ($Rest | Select-Object -Skip 1) }
+        'chat'     { Invoke-GgufChat    -Rest ($Rest | Select-Object -Skip 1) }
         'presets'  { Show-GgufPresets  }
         'profiles' { Show-GgufProfiles }
         'detect'   { Show-GgufDetect   }
