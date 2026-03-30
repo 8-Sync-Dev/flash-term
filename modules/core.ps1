@@ -14,7 +14,17 @@
 function Test-CommandExists {
     param([Parameter(Mandatory)] [string]$Name)
 
-    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+    if (-not $script:CommandExistsCache) {
+        $script:CommandExistsCache = @{}
+    }
+
+    if ($script:CommandExistsCache.ContainsKey($Name)) {
+        return [bool]$script:CommandExistsCache[$Name]
+    }
+
+    $exists = $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+    $script:CommandExistsCache[$Name] = $exists
+    return $exists
 }
 
 function Get-ScoopCommand {
@@ -101,6 +111,33 @@ function Get-MissingPackages {
 function Clear-MissingCache {
     # Call after any install/update so next Get-MissingPackages re-scans
     Remove-Item $script:MissingCachePath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-StartupBackgroundGate {
+    Ensure-StateDir
+
+    $nowUtc = [datetime]::UtcNow
+    if (Test-Path $script:StartupBackgroundGatePath) {
+        try {
+            $raw = Get-Content -Raw $script:StartupBackgroundGatePath | ConvertFrom-Json
+            if ($raw -and $raw.lastRunUtc) {
+                $ageSeconds = ($nowUtc - [datetime]$raw.lastRunUtc).TotalSeconds
+                if ($ageSeconds -lt $script:StartupBackgroundGateSeconds) {
+                    return $false
+                }
+            }
+        } catch {
+        }
+    }
+
+    try {
+        [pscustomobject]@{
+            lastRunUtc = $nowUtc.ToString('o')
+        } | ConvertTo-Json | Set-Content -Path $script:StartupBackgroundGatePath -Encoding UTF8
+    } catch {
+    }
+
+    return $true
 }
 
 function Ensure-StateDir {

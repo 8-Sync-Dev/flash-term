@@ -42,6 +42,10 @@
 }
 
 function Register-8SyncCompleter {
+    if ($script:EightSyncCompleterRegistered) {
+        return
+    }
+
     # Tab / inline completion for: 8sync <mode> <subcommand>
     $completer = {
         param($wordToComplete, $commandAst, $cursorPosition)
@@ -91,5 +95,6 @@ function Register-8SyncCompleter {
     try {
         Register-ArgumentCompleter -CommandName '8sync'  -ScriptBlock $completer -ErrorAction SilentlyContinue
         Register-ArgumentCompleter -CommandName '/8sync' -ScriptBlock $completer -ErrorAction SilentlyContinue
+        $script:EightSyncCompleterRegistered = $true
     } catch {}
 }

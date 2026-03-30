@@ -548,12 +548,18 @@ wezterm.on("update-status", function(window, pane)
 end)
 
 wezterm.on("format-tab-title", function(tab, tabs, panes, cfg, hover, max_width)
-  local title = tab.active_pane.title or ""
-  if title == "" then
-    title = basename(tab.active_pane.foreground_process_name or "shell")
+  local cwd = pane_cwd(tab.active_pane)
+  local process = basename(tab.active_pane.foreground_process_name or "shell")
+  local cwd_label = truncate_text(cwd ~= "" and basename(cwd) or "~", 14)
+  local process_label = truncate_text(process ~= "" and process or "shell", 12)
+  local label = cwd_label
+
+  if process_label ~= "" and process_label ~= cwd_label then
+    label = cwd_label .. " · " .. process_label
   end
+
   local max_chars = math.max(6, max_width - 8)
-  local label = truncate_text(title, max_chars)
+  label = truncate_text(label, max_chars)
   local tab_colors = active_style.tab
   local fg = tab.is_active and tab_colors.active_fg or tab_colors.inactive_fg
   local bg = tab.is_active and tab_colors.active_bg or tab_colors.inactive_bg
@@ -632,7 +638,7 @@ config.freetype_load_target = "Normal"
 config.freetype_render_target = "HorizontalLcd"
 
 config.window_decorations = "INTEGRATED_BUTTONS|RESIZE"
-config.win32_system_backdrop = "Acrylic"
+config.win32_system_backdrop = "Mica"
 config.window_padding = { left = 12, right = 12, top = 9, bottom = 9 }
 config.initial_cols = 150
 config.initial_rows = 42
@@ -803,3 +809,4 @@ table.insert(config.keys, {
 })
 
 return config
+

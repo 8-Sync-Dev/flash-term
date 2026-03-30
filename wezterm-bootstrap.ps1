@@ -50,7 +50,9 @@ $script:CurrentStyleLuaPath = Join-Path $PSScriptRoot 'current-style.lua'
 $script:CurrentGpuLuaPath = Join-Path $PSScriptRoot 'current-gpu.lua'
 $script:StartupProfilePath = Join-Path $script:StateDir 'startup-profile.json'
 $script:StartupProfileMaxEntries = 40
-$script:StartupModeDefault = 'balanced'
+$script:StartupBackgroundGatePath = Join-Path $script:StateDir 'startup-background-gate.json'
+$script:StartupBackgroundGateSeconds = 20
+$script:StartupModeDefault = 'light'
 $script:StartupKnownModes = @('light', 'balanced')
 
 $script:HelixConfigDir = Join-Path $env:APPDATA 'helix'
@@ -95,8 +97,6 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'startup.ps1')
 . (Join-Path $script:ModulesDir 'gsd.ps1')
 . (Join-Path $script:ModulesDir 'gguf.ps1')
-
-Ensure-PreferredPaths
 
 try {
     switch ($Task) {

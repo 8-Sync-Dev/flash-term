@@ -1,9 +1,4 @@
 ﻿function Register-ShellEngineInits {
-    $startupMode = Get-StartupMode
-    if ($startupMode -eq 'light') {
-        return
-    }
-
     # Run zoxide and starship init AFTER all aliases are registered.
     # Both spawn an external process and Invoke-Expression the output --
     # typically 50-150ms each. Moving them here means the prompt appears
@@ -235,6 +230,9 @@ function Test-NerdFontInstalled {
 }
 
 function Ensure-NerdFont {
+    if ($script:NerdFontChecked) { return }
+    $script:NerdFontChecked = $true
+
     if (Test-NerdFontInstalled) { return }
     Write-Host '[8sync] JetBrainsMono Nerd Font not found.' -ForegroundColor DarkYellow
     Write-Host '  To install: scoop bucket add nerd-fonts && scoop install JetBrainsMono-NF' -ForegroundColor DarkGray
@@ -245,6 +243,7 @@ function Start-WezTermShell {
     $boot = [System.Diagnostics.Stopwatch]::StartNew()
     $phaseMs = [ordered]@{}
     $phase = [System.Diagnostics.Stopwatch]::StartNew()
+    $runBackgroundChecks = Test-StartupBackgroundGate
 
     $markPhase = {
         param([Parameter(Mandatory)] [string]$Name)
@@ -283,17 +282,24 @@ function Start-WezTermShell {
     Set-ToolAliases
     & $markPhase 'aliases-and-engines'
 
-    if ($startupMode -eq 'light') {
-        Start-CleanLoopCheck
-        & $markPhase 'background-checks(light)'
+    if ($runBackgroundChecks) {
+        if ($startupMode -eq 'light') {
+            Start-CleanLoopCheck
+            & $markPhase 'background-checks(light)'
+        } else {
+            Start-AutoSync
+            Start-BgRotateCheck
+            Start-CleanLoopCheck
+            & $markPhase 'background-checks(full)'
+        }
     } else {
-        Start-AutoSync
-        Start-BgRotateCheck
-        Start-CleanLoopCheck
-        & $markPhase 'background-checks(full)'
+        & $markPhase 'background-checks(skipped)'
     }
 
-    $missingPackages = Get-MissingPackages
+    $missingPackages = @()
+    if ($startupMode -ne 'light') {
+        $missingPackages = Get-MissingPackages
+    }
     & $markPhase 'missing-cache'
 
     if ($missingPackages.Count -gt 0) {

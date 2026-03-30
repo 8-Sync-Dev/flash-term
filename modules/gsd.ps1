@@ -63,7 +63,7 @@ function Show-GsdPlans {
 }
 
 # ---------------------------------------------------------------------------
-# Interactive plan picker — fzf provider multi-select -> generate PREFERENCES.md
+# Interactive plan picker - fzf provider multi-select -> generate PREFERENCES.md
 # ---------------------------------------------------------------------------
 
 # Provider catalogue: id | label | description | type
@@ -71,10 +71,10 @@ $script:GsdProviderMenu = @(
     [pscustomobject]@{ Id='anthropic';         Label='Anthropic Claude';        Desc='claude-opus-4-6 (plan/research) + sonnet-4-6 (exec) + haiku-4-5 (simple/subagent)';  Type='oauth' }
     [pscustomobject]@{ Id='github-copilot';    Label='GitHub Copilot';          Desc='gemini-3.1-pro-preview 80.6% SWE + gpt-5-codex (needs Copilot subscription)';        Type='oauth' }
     [pscustomobject]@{ Id='google-gemini-cli'; Label='Google Gemini CLI';       Desc='gemini-3.1-pro-preview FREE 80.6% SWE, 2M ctx (Cloud Code Assist)';                  Type='oauth' }
-    [pscustomobject]@{ Id='openai-codex';      Label='OpenAI Codex (OAuth)';    Desc='gpt-5.3-codex FREE via ChatGPT — PLANNING ONLY (hits rate-limit during exec)';       Type='oauth' }
+    [pscustomobject]@{ Id='openai-codex';      Label='OpenAI Codex (OAuth)';    Desc='gpt-5.3-codex FREE via ChatGPT - PLANNING ONLY (hits rate-limit during exec)';       Type='oauth' }
     [pscustomobject]@{ Id='zai';               Label='ZAI (z.ai) API key';      Desc='glm-5.1(exec,S+) glm-4.6v(vision+video,$0.30/M,c10) glm-4.5(c20) cascade $0.06-$4/M'; Type='key'   }
-    [pscustomobject]@{ Id='groq';              Label='Groq API key';            Desc='kimi-k2-instruct + qwen3-32b FREE daily reset — cheap subagent/simple tier';         Type='key'   }
-    [pscustomobject]@{ Id='kimi-coding';       Label='Kimi Coding API key';     Desc='Kimi K2.5 ~77% SWE ($0.14/$2.5/M) — top exec/subagent for cost-perf';               Type='key'   }
+    [pscustomobject]@{ Id='groq';              Label='Groq API key';            Desc='kimi-k2-instruct + qwen3-32b FREE daily reset - cheap subagent/simple tier';         Type='key'   }
+    [pscustomobject]@{ Id='kimi-coding';       Label='Kimi Coding API key';     Desc='Kimi K2.5 ~77% SWE ($0.14/$2.5/M) - top exec/subagent for cost-perf';               Type='key'   }
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,14 +101,14 @@ function Build-GsdModelsYaml {
     # ── Resolve per-role model lists ─────────────────────────────────────────
     # Each list is ordered: [primary, fallback1, fallback2, ...]
     # Rules:
-    #   planning/research  — frontier first (Opus > gemini > copilot/gemini > codex), then zai
-    #   execution          — best agentic exec: kimi > glm-5.1 > glm-5-turbo > sonnet > haiku
+    #   planning/research  - frontier first (Opus > gemini > copilot/gemini > codex), then zai
+    #   execution          - best agentic exec: kimi > glm-5.1 > glm-5-turbo > sonnet > haiku
     #                        codex NOT here (rate-limit pause bug)
-    #   execution_simple   — cheapest reliable: groq > glm-4.x > haiku
-    #   completion         — quality summary: sonnet > glm-5.1 > haiku > groq
-    #   subagent           — parallel workers: kimi > glm-5.x > groq > haiku
+    #   execution_simple   - cheapest reliable: groq > glm-4.x > haiku
+    #   completion         - quality summary: sonnet > glm-5.1 > haiku > groq
+    #   subagent           - parallel workers: kimi > glm-5.x > groq > haiku
     #                        codex NOT here (same reason)
-    #   validation         — falls back to planning chain (pi default: m.validation ?? m.planning)
+    #   validation         - falls back to planning chain (pi default: m.validation ?? m.planning)
 
     $planModels     = [System.Collections.Generic.List[string]]::new()
     $researchModels = [System.Collections.Generic.List[string]]::new()
@@ -117,7 +117,7 @@ function Build-GsdModelsYaml {
     $compModels     = [System.Collections.Generic.List[string]]::new()
     $subModels      = [System.Collections.Generic.List[string]]::new()
 
-    # planning / research — frontier depth first
+    # planning / research - frontier depth first
     if ($hasAnthropic)  { $planModels.Add('anthropic/claude-opus-4-6');           $researchModels.Add('anthropic/claude-opus-4-6') }
     if ($hasCopilot)    { $planModels.Add('github-copilot/gemini-3.1-pro-preview'); $researchModels.Add('github-copilot/gemini-3.1-pro-preview') }
     if ($hasGemini)     { $planModels.Add('google-gemini-cli/gemini-3.1-pro-preview'); $researchModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
@@ -127,7 +127,7 @@ function Build-GsdModelsYaml {
     if ($hasZai)        { $planModels.Add('zai/glm-5-turbo') }
     if ($hasGroq)       { $planModels.Add('groq/kimi-k2-instruct') }
 
-    # execution — best agentic exec (NO codex)
+    # execution - best agentic exec (NO codex)
     if ($hasKimi)       { $execModels.Add('kimi-coding/kimi-k2.5') }
     if ($hasZai)        { $execModels.Add('zai/glm-5.1'); $execModels.Add('zai/glm-5-turbo'); $execModels.Add('zai/glm-5') }
     if ($hasKimi -and -not $execModels.Contains('kimi-coding/kimi-k2.5')) { $execModels.Add('kimi-coding/kimi-k2.5') }
@@ -137,14 +137,14 @@ function Build-GsdModelsYaml {
     if ($hasGroq)       { $execModels.Add('groq/kimi-k2-instruct') }
     if ($hasAnthropic)  { $execModels.Add('anthropic/claude-haiku-4-5') }
 
-    # execution_simple — cheapest first (NO codex)
+    # execution_simple - cheapest first (NO codex)
     if ($hasGroq)       { $simpleModels.Add('groq/kimi-k2-instruct'); $simpleModels.Add('groq/qwen/qwen3-32b') }
     if ($hasZai)        { $simpleModels.Add('zai/glm-4.7'); $simpleModels.Add('zai/glm-4.7-flash'); $simpleModels.Add('zai/glm-4.6') }
     if ($hasKimi)       { $simpleModels.Add('kimi-coding/kimi-k2.5') }
     if ($hasAnthropic)  { $simpleModels.Add('anthropic/claude-haiku-4-5') }
     if ($hasGemini -and $simpleModels.Count -eq 0) { $simpleModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
 
-    # completion — quality summary
+    # completion - quality summary
     if ($hasAnthropic)  { $compModels.Add('anthropic/claude-sonnet-4-6') }
     if ($hasZai)        { $compModels.Add('zai/glm-5.1'); $compModels.Add('zai/glm-5-turbo') }
     if ($hasKimi)       { $compModels.Add('kimi-coding/kimi-k2.5') }
@@ -153,7 +153,7 @@ function Build-GsdModelsYaml {
     if ($hasGroq)       { $compModels.Add('groq/kimi-k2-instruct') }
     if ($hasAnthropic)  { $compModels.Add('anthropic/claude-haiku-4-5') }
 
-    # subagent — parallel workers (NO codex)
+    # subagent - parallel workers (NO codex)
     if ($hasKimi)       { $subModels.Add('kimi-coding/kimi-k2.5') }
     if ($hasZai)        { $subModels.Add('zai/glm-5.1'); $subModels.Add('zai/glm-5-turbo'); $subModels.Add('zai/glm-5') }
     if ($hasGroq)       { $subModels.Add('groq/kimi-k2-instruct'); $subModels.Add('groq/qwen/qwen3-32b') }
@@ -200,7 +200,10 @@ function Build-GsdModelsYaml {
     $execLabel = if ($execModels.Count -gt 0) { $execModels[0] } else { 'none' }
 
     $codexNote = if ($hasCodex) {
-        "`n  # NOTE: openai-codex is in planning/research only — NOT in exec/subagent/completion`n  #   (usage-limit error pauses auto-mode indefinitely instead of continuing fallback chain)"
+@'
+  # NOTE: openai-codex is in planning/research only - NOT in exec/subagent/completion
+  #   (usage-limit error pauses auto-mode indefinitely instead of continuing fallback chain)
+'@
     } else { '' }
 
     $yaml = @"
@@ -718,7 +721,7 @@ $script:GsdProviderKeys = [ordered]@{
     'openai'       = 'OPENAI_API_KEY'
     'xai'          = 'XAI_API_KEY'
     'mistral'      = 'MISTRAL_API_KEY'
-    # Search providers (pi reads these via process.env — same mechanism)
+    # Search providers (pi reads these via process.env - same mechanism)
     'tavily'       = 'TAVILY_API_KEY'
     'brave'        = 'BRAVE_API_KEY'
     'ollama'       = 'OLLAMA_API_KEY'
@@ -729,20 +732,20 @@ $script:GsdProviderKeys = [ordered]@{
 
 # Human-readable notes shown in 8sync gsd keys
 $script:GsdProviderNotes = @{
-    'zai'          = 'z.ai — glm-5.1(S+) glm-5-turbo(c1) glm-5(c2) glm-4.7(c2) glm-4.5(c20) glm-4.6v(vision,c10,$0.30) glm-4.5v(vision,c10,$0.60)'
-    'kimi-coding'  = 'platform.moonshot.cn — Kimi K2.5 SWE 76.8% ($0.14/$2.5/M)'
-    'groq'         = 'console.groq.com — kimi-k2+qwen3-32b FREE daily reset'
-    'google'       = 'aistudio.google.com — gemini-2.5-pro API key (5RPM free tier)'
-    'openrouter'   = 'openrouter.ai — DeepSeek V3.2($0.28/$0.42) R1 + 200+ models, free tier có'
-    'anthropic'    = 'console.anthropic.com — paid key OR /login OAuth'
-    'openai'       = 'platform.openai.com — paid key OR /login openai-codex (free)'
-    'xai'          = 'console.x.ai — grok-4 free credits on signup'
-    'mistral'      = 'console.mistral.ai — pixtral-large, free tier'
-    'tavily'       = 'tavily.com/app/api-keys — web search, 1000 free/mo | /search-provider tavily'
-    'brave'        = 'brave.com/search/api — web search, 2000 free/mo | /search-provider brave'
+    'zai'          = 'z.ai - glm-5.1(S+) glm-5-turbo(c1) glm-5(c2) glm-4.7(c2) glm-4.5(c20) glm-4.6v(vision,c10,$0.30) glm-4.5v(vision,c10,$0.60)'
+    'kimi-coding'  = 'platform.moonshot.cn - Kimi K2.5 SWE 76.8% ($0.14/$2.5/M)'
+    'groq'         = 'console.groq.com - kimi-k2+qwen3-32b FREE daily reset'
+    'google'       = 'aistudio.google.com - gemini-2.5-pro API key (5RPM free tier)'
+    'openrouter'   = 'openrouter.ai - DeepSeek V3.2($0.28/$0.42) R1 + 200+ models, free tier có'
+    'anthropic'    = 'console.anthropic.com - paid key OR /login OAuth'
+    'openai'       = 'platform.openai.com - paid key OR /login openai-codex (free)'
+    'xai'          = 'console.x.ai - grok-4 free credits on signup'
+    'mistral'      = 'console.mistral.ai - pixtral-large, free tier'
+    'tavily'       = 'tavily.com/app/api-keys - web search, 1000 free/mo | /search-provider tavily'
+    'brave'        = 'brave.com/search/api - web search, 2000 free/mo | /search-provider brave'
     'ollama'       = 'local Ollama server token (optional) | /search-provider ollama'
-    'context7'     = 'context7.com/dashboard — doc lookup (already bundled in pi)'
-    'jina'         = 'jina.ai/api — fetch_page/web reader (optional, higher rate limit)'
+    'context7'     = 'context7.com/dashboard - doc lookup (already bundled in pi)'
+    'jina'         = 'jina.ai/api - fetch_page/web reader (optional, higher rate limit)'
 }
 
 function Show-GsdKeys {
@@ -794,7 +797,7 @@ function Show-GsdKeys {
     Write-Host '    anthropic          /login anthropic' -ForegroundColor White
     Write-Host '    github-copilot     /login github-copilot   (needs Copilot subscription)' -ForegroundColor White
     Write-Host '    google-gemini-cli  /login google-gemini-cli (free via Cloud Code Assist)' -ForegroundColor White
-    Write-Host '    openai-codex       /login openai-codex      (free via ChatGPT OAuth — planning only)' -ForegroundColor White
+    Write-Host '    openai-codex       /login openai-codex      (free via ChatGPT OAuth - planning only)' -ForegroundColor White
     Write-Host ''
     Write-Host '  Search provider active in pi: /search-provider [tavily|brave|ollama|auto]' -ForegroundColor DarkGray
     Write-Host '  Set key first: 8sync gsd key tavily <key>   then /search-provider tavily' -ForegroundColor DarkGray
@@ -1044,7 +1047,7 @@ function Read-GsdModelsJson {
 function Write-GsdModelsJson {
     param([object]$Data)
     $path = Get-GsdModelsJsonPath
-    # Preserve as tidy JSON — Depth 10 handles nested model arrays
+    # Preserve as tidy JSON - Depth 10 handles nested model arrays
     $Data | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding UTF8
 }
 
@@ -1124,7 +1127,7 @@ function Invoke-GsdAddGguf {
     $stem         = [System.IO.Path]::GetFileNameWithoutExtension($firstModelId) -replace '[^a-zA-Z0-9\-]', '-'
     $providerId   = if ($nameArg) { $nameArg } else { "gguf-local-$stem" }
 
-    # Build models array — one entry per model reported by the server
+    # Build models array - one entry per model reported by the server
     $modelEntries = foreach ($m in $models) {
         $mid   = if ($m.id)   { $m.id }   else { [string]$m }
         $mname = if ($m.name) { $m.name } else {
@@ -1216,7 +1219,7 @@ function Invoke-GsdRemoveGguf {
     foreach ($prop in $ggufProviders) {
         Write-Host ("  Removing: {0}  ->  {1}" -f $prop.Name, $prop.Value.baseUrl) -ForegroundColor Yellow
         if (-not $dryRun) {
-            # PSObject can't remove properties directly — rebuild without the key
+            # PSObject can't remove properties directly - rebuild without the key
             $newProviders = [pscustomobject]@{}
             foreach ($p in $data.providers.PSObject.Properties) {
                 if ($p.Name -ne $prop.Name) {

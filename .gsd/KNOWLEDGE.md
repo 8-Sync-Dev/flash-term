@@ -81,3 +81,14 @@ All new 8sync top-level subcommands live in a dedicated `modules/[name].ps1` fil
 `wezterm cli --help` lists only mux operations (list, list-clients, spawn, split-pane, etc.). There is **no** `reload`, `reload-configuration`, or `reload-config` subcommand. WezTerm reloads its config automatically via a file-watcher whenever any `*.lua` state file is written. The correct liveness probe is `wezterm cli list-clients` — if it exits 0, WezTerm is running and the file-watcher is active.
 
 **Pattern:** `Try-ReloadWezTerm` uses `list-clients` as a pure liveness check. After the check succeeds, print "  Config reloaded." — the reload itself was already triggered by `Write-CurrentBgLua` / `Write-CurrentStyleLua` writing the state file. If `list-clients` fails (WezTerm not running), print the manual reload hint instead.
+
+---
+
+## Performance optimization must not change the visual identity without explicit approval
+
+**Context:** WezTerm UX tuning / prompt + chrome appearance  
+In this repo, requests like "optimize startup", "make it smoother", or "reduce lag" do **not** imply permission to change the established visual style. That includes prompt wording/layout, Acrylic vs Mica backdrop, fancy tab bar behavior, tab-title presentation, and other user-facing styling choices.
+
+**Rule:** Treat visual appearance and prompt wording as stable unless the user explicitly asks to redesign them. Performance work should prefer startup-path, caching, lazy-init, background-check throttling, command lookup caching, and other non-visual optimizations first.
+
+**Operational guidance:** If a change is visible to the user, ask or confirm before applying it. When optimizing WezTerm or shell startup, preserve the existing look-and-feel by default and isolate style changes from performance changes.
