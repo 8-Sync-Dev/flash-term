@@ -18,40 +18,47 @@ function Resolve-GsdAgentDir {
 
 function Show-GsdPlans {
     Write-Host ''
-    Write-HintSection 'GSD Plans -- 8sync gsd setup --plan <name>'
+    Write-HintSection 'GSD Setup -- profiles and model stacks'
     Write-Host ''
-    Write-Host '  -- Multi-provider (mixing best models) ---------------------------------' -ForegroundColor DarkGray
-    Write-HintRow 'max'                  'Opus plan + kimi K2.5 exec (SWE 76.8%) + groq free workers'
-    Write-HintRow 'pro'                  'Sonnet plan/completion + kimi+codex exec + groq free'
-    Write-HintRow 'normal'               'No Claude cost: gemini plan + glm-5.1 exec + groq (codex planning only)'
+    Write-Host '  Preferred style: use --model with one or more brands joined by +.' -ForegroundColor DarkGray
+    Write-HintRow '8sync gsd setup --model codex'              'Single-brand stack: only OpenAI/Codex routes are generated'
+    Write-HintRow '8sync gsd setup --model codex+glm'          'Cost/perf stack: Codex for planning, GLM for execution/simple workers'
+    Write-HintRow '8sync gsd setup --model claude+codex+gemini' 'Big-three stack: Claude planning + Codex/Codex-adjacent planning + Gemini research'
+    Write-HintRow '8sync gsd setup --pick'                     'Interactive picker: choose providers with fzf, then auto-generate routing'
+    Write-HintRow '8sync gsd setup --auto'                     'No interaction: detect valid logins/keys and generate best available routing'
     Write-Host ''
-    Write-Host '  -- Single-provider (one ecosystem only) --------------------------------' -ForegroundColor DarkGray
+    Write-Host '  Brand tokens accepted in --model ---------------------------------------' -ForegroundColor DarkGray
+    Write-HintRow 'claude'   'Anthropic OAuth; strongest planning/review profile'
+    Write-HintRow 'codex'    'OpenAI Codex/OpenAI OAuth; planning-heavy, kept out of exec fallback when unstable'
+    Write-HintRow 'gemini'   'Google Gemini CLI OAuth; large context and strong research'
+    Write-HintRow 'glm'      'ZAI key; strong execution/cost balance for large repos'
+    Write-HintRow 'kimi'     'Kimi Coding key; very strong execution/subagent for price'
+    Write-HintRow 'groq'     'Free/cheap worker tier for simple fan-out tasks'
+    Write-HintRow 'copilot'  'GitHub Copilot OAuth; unlocks extra Gemini route'
+    Write-Host ''
+    Write-Host '  Legacy profile presets (still supported) --------------------------------' -ForegroundColor DarkGray
+    Write-HintRow 'max'                  'Opus plan + kimi K2.5 exec + groq free workers'
+    Write-HintRow 'pro'                  'Sonnet plan/completion + kimi+codex planning + groq free'
+    Write-HintRow 'normal'               'No Claude cost: gemini plan + glm-5.1 exec + groq'
     Write-HintRow 'claude-max'           '100% Claude: Opus plan + Sonnet exec + Haiku workers'
-    Write-HintRow 'codex-max'            '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex exec'
+    Write-HintRow 'codex-max'            '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex planning-heavy stack'
     Write-HintRow 'gemini-max'           '100% Google: gemini-3.1-pro plan+exec (2M ctx, free)'
-    Write-HintRow 'glm-max'              '100% ZAI: glm-5.1 plan/exec + glm-4.5(c20) subagent — no OAuth needed'
+    Write-HintRow 'glm-max'              '100% ZAI: glm-5.1 plan/exec + glm-4.x workers; no OAuth needed'
+    Write-HintRow 'claude-codex-gemini'  'Best-of-three preset: Claude plan + Codex planning + Gemini research'
     Write-Host ''
-    Write-Host '  -- The Big Three combo (best of all worlds) ----------------------------' -ForegroundColor DarkGray
-    Write-HintRow 'claude-codex-gemini'  'Opus plan + codex exec + gemini research -- best of all three'
+    Write-Host '  Real examples -----------------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host '  8sync gsd setup --model codex' -ForegroundColor White
+    Write-Host '      Use one ecosystem only. Good if you want predictable billing and simple mental model.' -ForegroundColor DarkGray
+    Write-Host '  8sync gsd setup --model codex+glm' -ForegroundColor White
+    Write-Host '      Good default for large coding projects: keep premium reasoning, offload execution/simple tasks to GLM.' -ForegroundColor DarkGray
+    Write-Host '  8sync gsd setup --model claude+codex+gemini --dry-run' -ForegroundColor White
+    Write-Host '      Preview the generated routing block before writing ~/.gsd/PREFERENCES.md.' -ForegroundColor DarkGray
+    Write-Host '  8sync gsd setup --plan max' -ForegroundColor White
+    Write-Host '      Apply the old curated preset directly.' -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host '  -- Interactive picker --------------------------------------------------' -ForegroundColor DarkGray
-    Write-Host '  8sync gsd setup --pick    Select providers with fzf -> auto-derive plan' -ForegroundColor White
-    Write-Host ''
-    Write-Host '  -- Required logins per plan --------------------------------------------' -ForegroundColor DarkGray
-    Write-Host '  max                : /login anthropic  github-copilot  google-gemini-cli  openai-codex' -ForegroundColor White
-    Write-Host '                       + 8sync gsd key kimi-coding  zai  groq' -ForegroundColor DarkGray
-    Write-Host '  pro                : /login anthropic  google-gemini-cli  openai-codex' -ForegroundColor White
-    Write-Host '                       + 8sync gsd key kimi-coding  zai  groq' -ForegroundColor DarkGray
-    Write-Host '  normal             : /login google-gemini-cli  openai-codex (planning)' -ForegroundColor White
-    Write-Host '                       + 8sync gsd key zai  groq' -ForegroundColor DarkGray
-    Write-Host '  claude-max         : /login anthropic  (Opus+Sonnet+Haiku only)' -ForegroundColor White
-    Write-Host '  codex-max          : /login openai-codex  (gpt-5.x only)' -ForegroundColor White
-    Write-Host '  gemini-max         : /login google-gemini-cli  (gemini-3.1-pro free)' -ForegroundColor White
-    Write-Host '  claude-codex-gemini: /login anthropic  openai-codex  google-gemini-cli' -ForegroundColor White
-    Write-Host ''
-    Write-Host '  Apply: 8sync gsd setup --plan <name>' -ForegroundColor DarkGray
-    Write-Host '  Pick:  8sync gsd setup --pick' -ForegroundColor DarkGray
-    Write-Host '  Check: /gsd prefs   /model' -ForegroundColor DarkGray
+    Write-Host '  Apply: 8sync gsd setup --model <brand[+brand...]>' -ForegroundColor DarkGray
+    Write-Host '  Legacy: 8sync gsd setup --plan <name>' -ForegroundColor DarkGray
+    Write-Host '  Check : 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -197,13 +204,13 @@ function Build-GsdModelsYaml {
     } else { '' }
 
     $yaml = @"
-  # ══════════════════════════════════════════════════════════════════════════════
-  # PLAN: custom (generated by 8sync gsd setup --pick)
+  # ============================================================================
+  # PLAN: custom (generated by 8sync gsd setup)
   # Providers: $providerList
-  # planning  → $planLabel
-  # execution → $execLabel
+  # planning  -> $planLabel
+  # execution -> $execLabel
   # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')$codexNote
-  # ══════════════════════════════════════════════════════════════════════════════
+  # ============================================================================
 
 $(Format-ModelBlock 'planning'         $planModels)
 
@@ -424,42 +431,163 @@ function Invoke-GsdPlanPicker {
 
 function Show-GsdHelp {
     Write-Host ''
-    Write-HintSection 'GSD -- Model routing setup'
-    Write-HintRow '8sync gsd setup'                      'Apply default PREFERENCES.md -> ~/.gsd'
-    Write-HintRow '8sync gsd setup --plan <name>'        'Apply named plan (see below)'
-    Write-HintRow '8sync gsd setup --plan'               'List all plans with descriptions'
-    Write-HintRow '8sync gsd setup --auto'               'Auto-detect valid logins/keys -> generate PREFERENCES.md'
-    Write-HintRow '8sync gsd setup --pick'               'Interactive fzf: pick providers -> generate PREFERENCES.md'
-    Write-HintRow '8sync gsd setup --dry-run'            'Preview without writing'
-    Write-HintRow '8sync gsd key <provider> <key>'       'Set API key — LLM: zai kimi-coding groq google openai xai mistral'
-    Write-HintRow '                                  '    'Search: tavily brave ollama  |  Tools: context7 jina'
-    Write-HintRow '8sync gsd keys'                       'List all providers grouped (LLM / Search / Tools) + status'
-    Write-HintRow '8sync gsd status'                     'Show paths, auth providers, key status'
-    Write-HintRow '8sync gsd add gguf'                   'Detect running llama-server and register it in models.json'
-    Write-HintRow '8sync gsd add gguf --port N'          'Target a specific port (default: probe 8080/8081/8082/1234/11434)'
-    Write-HintRow '8sync gsd add gguf --name <id>'       'Override provider id (default: gguf-local-<model>)'
-    Write-HintRow '8sync gsd add gguf --dry-run'         'Preview without writing models.json'
-    Write-HintRow '8sync gsd remove gguf'                'Remove all gguf-local-* providers from models.json'
-    Write-HintRow '8sync gsd remove gguf --name <id>'    'Remove a specific provider by id'
-    Write-HintRow '8sync gsd help'                       'Show this help'
+    Write-HintSection 'GSD -- model stack setup for large coding projects'
     Write-Host ''
-    Write-HintSection 'Plans (multi-provider)'
-    Write-HintRow 'max'    'Opus plan + kimi K2.5 exec (SWE 76.8%) + groq free workers'
-    Write-HintRow 'pro'    'Sonnet plan/completion + kimi+codex exec + groq free'
-    Write-HintRow 'normal' 'No Claude: gemini plan + glm-5.1 exec + groq (codex planning only)'
-    Write-HintRow 'glm-max'    '100% ZAI: glm-5.1 plan/exec + glm-4.5(c20) subagent workers'
-    Write-HintSection 'Plans (single-provider)'
-    Write-HintRow 'claude-max'  '100% Claude: Opus plan + Sonnet exec + Haiku workers'
-    Write-HintRow 'codex-max'   '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex exec'
-    Write-HintRow 'gemini-max'  '100% Google: gemini-3.1-pro plan+exec (2M ctx, free)'
-    Write-HintSection 'Plans (combo)'
-    Write-HintRow 'claude-codex-gemini' 'Big Three: Opus plan + codex exec + gemini research'
+    Write-Host '  Core commands' -ForegroundColor Cyan
+    Write-Host '    8sync gsd setup --model <stack>' -ForegroundColor White
+    Write-Host '        Preferred. Generate routing from brand stack, e.g. codex+glm.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --model' -ForegroundColor White
+    Write-Host '        Show accepted brand tokens, examples, and preset guidance.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --plan <name>' -ForegroundColor White
+    Write-Host '        Legacy preset apply. Still supported for one-shot setup.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --plan' -ForegroundColor White
+    Write-Host '        List presets, brand tokens, and real examples.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --auto' -ForegroundColor White
+    Write-Host '        Auto-detect valid logins/keys and generate best available routing.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --pick' -ForegroundColor White
+    Write-Host '        Interactive fzf picker with provider status.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --dry-run' -ForegroundColor White
+    Write-Host '        Preview generated routing without writing ~/.gsd/PREFERENCES.md.' -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host '  Interactive: 8sync gsd setup --auto   (auto-detect, no interaction)' -ForegroundColor DarkGray
-    Write-Host '               8sync gsd setup --pick   (fzf provider picker)' -ForegroundColor DarkGray
-    Write-Host '  Run "8sync gsd setup --plan" (no value) for full plan details' -ForegroundColor DarkGray
-    Write-Host '  Verify: /gsd prefs   /model' -ForegroundColor DarkGray
+    Write-Host '  Key and status' -ForegroundColor Cyan
+    Write-Host '    8sync gsd key <provider> <key>' -ForegroundColor White
+    Write-Host '        LLM: zai kimi-coding groq google openai xai mistral' -ForegroundColor DarkGray
+    Write-Host '        Search: tavily brave ollama   Tools: context7 jina' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd keys' -ForegroundColor White
+    Write-Host '        List all providers grouped by type and show current status.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd status' -ForegroundColor White
+    Write-Host '        Show active files, auth providers, key status, and missing setup.' -ForegroundColor DarkGray
     Write-Host ''
+    Write-Host '  Quick start' -ForegroundColor Cyan
+    Write-Host '    --model codex' -ForegroundColor White
+    Write-Host '        Single-brand. Use only the selected ecosystem.' -ForegroundColor DarkGray
+    Write-Host '    --model codex+glm' -ForegroundColor White
+    Write-Host '        Recommended default for cost/perf on big repos.' -ForegroundColor DarkGray
+    Write-Host '    --model claude+codex+gemini' -ForegroundColor White
+    Write-Host '        Highest-quality mixed stack for planning and research.' -ForegroundColor DarkGray
+    Write-Host '    --auto' -ForegroundColor White
+    Write-Host '        Best when you already logged in / set keys and want zero thinking.' -ForegroundColor DarkGray
+    Write-Host '    --pick' -ForegroundColor White
+    Write-Host '        Best when you want interactive selection and visible provider status.' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Accepted --model brands' -ForegroundColor Cyan
+    Write-Host '    claude  -> anthropic' -ForegroundColor White
+    Write-Host '    codex   -> openai-codex' -ForegroundColor White
+    Write-Host '    gemini  -> google-gemini-cli' -ForegroundColor White
+    Write-Host '    glm     -> zai' -ForegroundColor White
+    Write-Host '    kimi    -> kimi-coding' -ForegroundColor White
+    Write-Host '    groq    -> groq' -ForegroundColor White
+    Write-Host '    copilot -> github-copilot' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Real examples' -ForegroundColor Cyan
+    Write-Host '    8sync gsd setup --model codex' -ForegroundColor White
+    Write-Host '        One provider only. Simple billing, simple behavior.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --model codex+glm' -ForegroundColor White
+    Write-Host '        Premium planning + cheaper execution/workers.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --model glm+kimi+groq' -ForegroundColor White
+    Write-Host '        No OAuth stack. Key-based and cost-controlled.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --model claude+codex+gemini --dry-run' -ForegroundColor White
+    Write-Host '        Preview mixed high-end routing before apply.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --plan max' -ForegroundColor White
+    Write-Host '        Apply existing curated preset directly.' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Rule of thumb' -ForegroundColor Cyan
+    Write-Host '    no +  => single brand only' -ForegroundColor DarkGray
+    Write-Host '    +     => mixed stack; 8sync auto-builds role routing from strengths/cost' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Detailed guide: 8sync gsd setup --model    or    8sync gsd setup --plan' -ForegroundColor DarkGray
+    Write-Host '  Verify: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Resolve-GsdModelStack {
+    param([string]$ModelArg)
+
+    if ([string]::IsNullOrWhiteSpace($ModelArg)) { return @() }
+
+    $aliases = @{
+        'claude'  = 'anthropic'
+        'anthropic' = 'anthropic'
+        'codex'   = 'openai-codex'
+        'openai'  = 'openai-codex'
+        'gemini'  = 'google-gemini-cli'
+        'google'  = 'google-gemini-cli'
+        'glm'     = 'zai'
+        'zai'     = 'zai'
+        'kimi'    = 'kimi-coding'
+        'kimi-coding' = 'kimi-coding'
+        'groq'    = 'groq'
+        'copilot' = 'github-copilot'
+        'github-copilot' = 'github-copilot'
+    }
+
+    $result = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
+
+    foreach ($raw in ($ModelArg -split '\+')) {
+        $token = $raw.Trim().ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($token)) { continue }
+        if (-not $aliases.ContainsKey($token)) {
+            Write-Host ''
+            Write-Host ("  [error] Unknown model brand '{0}' in --model '{1}'." -f $token, $ModelArg) -ForegroundColor Red
+            Write-Host '  Accepted: claude, codex, gemini, glm, kimi, groq, copilot' -ForegroundColor DarkGray
+            Write-Host '  Example : 8sync gsd setup --model codex+glm' -ForegroundColor DarkGray
+            Write-Host ''
+            return $null
+        }
+
+        $providerId = $aliases[$token]
+        if ($seen.Add($providerId)) {
+            $result.Add($providerId)
+        }
+    }
+
+    return $result.ToArray()
+}
+
+function Invoke-GsdSetupFromModel {
+    param(
+        [Parameter(Mandatory)] [string]$Model,
+        [switch]$DryRun
+    )
+
+    $selectedProviders = Resolve-GsdModelStack -ModelArg $Model
+    if ($null -eq $selectedProviders -or $selectedProviders.Count -eq 0) {
+        return
+    }
+
+    $yaml = Build-GsdModelsYaml -Selected $selectedProviders
+    if (-not $yaml) {
+        Write-Host ''
+        Write-Host '  [error] Could not generate routing from this model stack.' -ForegroundColor Red
+        Write-Host '  Hint: pick at least one execution-capable brand such as glm, kimi, claude, gemini, groq.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $gsdHome  = Resolve-GsdHome
+    $destPath = Join-Path $gsdHome 'PREFERENCES.md'
+
+    Write-Host ''
+    Write-Host ("  [gsd] Setup model routing  model={0}" -f $Model) -ForegroundColor Cyan
+    Write-Host ("  providers: {0}" -f ($selectedProviders -join ', ')) -ForegroundColor DarkGray
+    Write-Host ("  dest     : {0}" -f $destPath) -ForegroundColor DarkGray
+    Write-Host ''
+
+    $yaml -split "`n" | Select-Object -First 18 | ForEach-Object {
+        Write-Host ("    {0}" -f $_) -ForegroundColor DarkGray
+    }
+    if (($yaml -split "`n").Count -gt 18) {
+        Write-Host '    ...' -ForegroundColor DarkGray
+    }
+    Write-Host ''
+
+    $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
+    if ($ok -and -not $DryRun) {
+        Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
+        Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
+        Write-Host ''
+    }
 }
 
 function Invoke-GsdSetup {
@@ -1223,6 +1351,7 @@ function Invoke-GsdCommand {
     $dryRun   = $Rest -contains '--dry-run'
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
+
     $planArg = ''
     $planIdx = [Array]::IndexOf($Rest, '--plan')
     if ($planIdx -ge 0) {
@@ -1234,13 +1363,30 @@ function Invoke-GsdCommand {
         }
     }
 
+    $modelArg = ''
+    $modelIdx = [Array]::IndexOf($Rest, '--model')
+    if ($modelIdx -ge 0) {
+        if ($modelIdx + 1 -lt $Rest.Count -and $Rest[$modelIdx + 1] -notlike '--*') {
+            $modelArg = $Rest[$modelIdx + 1]
+        } else {
+            Show-GsdPlans
+            return
+        }
+    }
+
     $sub = if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
 
     switch ($sub) {
         'setup'  {
-            if ($autoMode)  { Invoke-GsdAutoSetup -DryRun:$dryRun }
-            elseif ($pickMode) { Invoke-GsdPlanPicker -DryRun:$dryRun }
-            else { Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg }
+            if ($autoMode) {
+                Invoke-GsdAutoSetup -DryRun:$dryRun
+            } elseif ($pickMode) {
+                Invoke-GsdPlanPicker -DryRun:$dryRun
+            } elseif (-not [string]::IsNullOrWhiteSpace($modelArg)) {
+                Invoke-GsdSetupFromModel -DryRun:$dryRun -Model $modelArg
+            } else {
+                Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg
+            }
         }
         'status' { Invoke-GsdStatus }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
