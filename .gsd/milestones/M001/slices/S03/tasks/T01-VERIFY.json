@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T01",
+  "unitId": "M001/S03/T01",
+  "timestamp": 1774597645420,
+  "passed": true,
+  "discoverySource": "task-plan",
+  "checks": [
+    {
+      "command": "pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command \"& wezterm cli --help 2>&1\"",
+      "exitCode": 0,
+      "durationMs": 448,
+      "verdict": "pass"
+    }
+  ]
+}

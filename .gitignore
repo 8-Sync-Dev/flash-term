@@ -15,14 +15,24 @@ current-gpu.lua
 
 # Tool-generated / local-only
 .serena/
-nul
 
-# OpenCode export bundle: committed so machines can clone and reinstall
-# oc-bundle/ is intentionally tracked (excludes node_modules/lib/*.ps1/*.py)
+# ── GSD runtime (machine-specific, never commit) ──────────────────────────
+.gsd/activity/
+.gsd/journal/
+.gsd/runtime/
+.gsd/worktrees/
+.gsd/gsd.db
+.gsd/gsd.db-journal
+.gsd/gsd.db-wal
+.gsd/gsd.db-shm
+.gsd/metrics.json
+.gsd/state-manifest.json
+.gsd.migrating/
 
-# ── GSD baseline (auto-generated) ──
-.gsd
-.DS_Store
+# ── bg-shell runtime state ────────────────────────────────────────────────
+.bg-shell/
+
+# ── OS / editor junk ──────────────────────────────────────────────────────
 Thumbs.db
 *.swp
 *.swo
@@ -33,6 +43,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# ── Language / build output ───────────────────────────────────────────────
 node_modules/
 .next/
 dist/
@@ -47,9 +59,3 @@ vendor/
 coverage/
 .cache/
 tmp/
-
-# bg-shell runtime state
-.bg-shell/
-
-# GSD migration artifacts
-.gsd.migrating/
