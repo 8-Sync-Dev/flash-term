@@ -702,9 +702,14 @@ config.colors = {
   },
 }
 config.inactive_pane_hsb = {
-  saturation = 0.82,
-  brightness = 0.74,
+  saturation = 0.90,
+  brightness = 0.92,
 }
+
+-- Keep background tabs alive: prevent Windows from throttling unfocused panes.
+-- WezTerm always reads PTY for all panes, but Windows may throttle timer resolution
+-- for background windows, causing long-running processes to appear stalled.
+-- The real fix is in wezterm-bootstrap.ps1 (process priority + timer keepalive).
 
 config.window_frame = {
   font = active_style.frame.font,

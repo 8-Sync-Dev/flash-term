@@ -132,4 +132,32 @@ try {
     Write-Warning "Bootstrap error: $_"
 }
 
+# ── Prevent Windows from throttling background tabs ──────────────────────
+# Windows reduces timer resolution for background windows, which causes
+# processes in unfocused WezTerm tabs to stall. Two countermeasures:
+#   1. Timer keepalive prevents the shell from being classified "idle"
+#   2. WezTerm parent process gets "AboveNormal" priority so OS doesn't
+#      throttle its PTY read loop for background tabs
+if ($Host.Name -eq 'ConsoleHost' -and -not [System.Console]::IsOutputRedirected) {
+    try {
+        # Boost WezTerm's own priority so it doesn't lose CPU to foreground bias
+        $wtProc = Get-Process -Name wezterm-gui -ErrorAction SilentlyContinue |
+            Sort-Object StartTime |
+            Select-Object -First 1
+        if ($wtProc) {
+            $wtProc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::AboveNormal
+        }
+    } catch {}
+
+    try {
+        # Lightweight periodic tick keeps this shell's message pump active
+        $keepAlive = [System.Timers.Timer]::new(30000)   # 30s interval
+        Register-ObjectEvent -InputObject $keepAlive -EventName Elapsed -Action {
+            # Ticking the timer alone prevents idle classification
+        } | Out-Null
+        $keepAlive.AutoReset = $true
+        $keepAlive.Enabled = $true
+    } catch {}
+}
+
 $global:LASTEXITCODE = 0

@@ -23,22 +23,26 @@ function Show-GsdPlans {
     Write-Host '  -- Multi-provider (mixing best models) ---------------------------------' -ForegroundColor DarkGray
     Write-HintRow 'max'                  'Opus plan + kimi K2.5 exec (SWE 76.8%) + groq free workers'
     Write-HintRow 'pro'                  'Sonnet plan/completion + kimi+codex exec + groq free'
-    Write-HintRow 'normal'               'No Claude cost: codex+gemini plan + glm-5-turbo exec + groq'
+    Write-HintRow 'normal'               'No Claude cost: gemini plan + glm-5.1 exec + groq (codex planning only)'
     Write-Host ''
     Write-Host '  -- Single-provider (one ecosystem only) --------------------------------' -ForegroundColor DarkGray
     Write-HintRow 'claude-max'           '100% Claude: Opus plan + Sonnet exec + Haiku workers'
     Write-HintRow 'codex-max'            '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex exec'
     Write-HintRow 'gemini-max'           '100% Google: gemini-3.1-pro plan+exec (2M ctx, free)'
+    Write-HintRow 'glm-max'              '100% ZAI: glm-5.1 plan/exec + glm-4.5(c20) subagent — no OAuth needed'
     Write-Host ''
     Write-Host '  -- The Big Three combo (best of all worlds) ----------------------------' -ForegroundColor DarkGray
     Write-HintRow 'claude-codex-gemini'  'Opus plan + codex exec + gemini research -- best of all three'
+    Write-Host ''
+    Write-Host '  -- Interactive picker --------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host '  8sync gsd setup --pick    Select providers with fzf -> auto-derive plan' -ForegroundColor White
     Write-Host ''
     Write-Host '  -- Required logins per plan --------------------------------------------' -ForegroundColor DarkGray
     Write-Host '  max                : /login anthropic  github-copilot  google-gemini-cli  openai-codex' -ForegroundColor White
     Write-Host '                       + 8sync gsd key kimi-coding  zai  groq' -ForegroundColor DarkGray
     Write-Host '  pro                : /login anthropic  google-gemini-cli  openai-codex' -ForegroundColor White
     Write-Host '                       + 8sync gsd key kimi-coding  zai  groq' -ForegroundColor DarkGray
-    Write-Host '  normal             : /login google-gemini-cli  openai-codex' -ForegroundColor White
+    Write-Host '  normal             : /login google-gemini-cli  openai-codex (planning)' -ForegroundColor White
     Write-Host '                       + 8sync gsd key zai  groq' -ForegroundColor DarkGray
     Write-Host '  claude-max         : /login anthropic  (Opus+Sonnet+Haiku only)' -ForegroundColor White
     Write-Host '  codex-max          : /login openai-codex  (gpt-5.x only)' -ForegroundColor White
@@ -46,8 +50,376 @@ function Show-GsdPlans {
     Write-Host '  claude-codex-gemini: /login anthropic  openai-codex  google-gemini-cli' -ForegroundColor White
     Write-Host ''
     Write-Host '  Apply: 8sync gsd setup --plan <name>' -ForegroundColor DarkGray
+    Write-Host '  Pick:  8sync gsd setup --pick' -ForegroundColor DarkGray
     Write-Host '  Check: /gsd prefs   /model' -ForegroundColor DarkGray
     Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+# Interactive plan picker — fzf provider multi-select -> generate PREFERENCES.md
+# ---------------------------------------------------------------------------
+
+# Provider catalogue: id | label | description | type
+$script:GsdProviderMenu = @(
+    [pscustomobject]@{ Id='anthropic';         Label='Anthropic Claude';        Desc='claude-opus-4-6 (plan/research) + sonnet-4-6 (exec) + haiku-4-5 (simple/subagent)';  Type='oauth' }
+    [pscustomobject]@{ Id='github-copilot';    Label='GitHub Copilot';          Desc='gemini-3.1-pro-preview 80.6% SWE + gpt-5-codex (needs Copilot subscription)';        Type='oauth' }
+    [pscustomobject]@{ Id='google-gemini-cli'; Label='Google Gemini CLI';       Desc='gemini-3.1-pro-preview FREE 80.6% SWE, 2M ctx (Cloud Code Assist)';                  Type='oauth' }
+    [pscustomobject]@{ Id='openai-codex';      Label='OpenAI Codex (OAuth)';    Desc='gpt-5.3-codex FREE via ChatGPT — PLANNING ONLY (hits rate-limit during exec)';       Type='oauth' }
+    [pscustomobject]@{ Id='zai';               Label='ZAI (z.ai) API key';      Desc='glm-5.1(exec,S+) glm-4.6v(vision+video,$0.30/M,c10) glm-4.5(c20) cascade $0.06-$4/M'; Type='key'   }
+    [pscustomobject]@{ Id='groq';              Label='Groq API key';            Desc='kimi-k2-instruct + qwen3-32b FREE daily reset — cheap subagent/simple tier';         Type='key'   }
+    [pscustomobject]@{ Id='kimi-coding';       Label='Kimi Coding API key';     Desc='Kimi K2.5 ~77% SWE ($0.14/$2.5/M) — top exec/subagent for cost-perf';               Type='key'   }
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Generate a PREFERENCES.md models block from selected provider IDs.
+# Logic: highest-capability providers go into planning/research,
+#        best agentic exec models go into execution/subagent,
+#        cheapest/free models fill simple/completion fallbacks.
+#        openai-codex is ONLY used in planning/research (never exec/subagent).
+# ─────────────────────────────────────────────────────────────────────────────
+function Build-GsdModelsYaml {
+    param([string[]]$Selected)
+
+    $has = @{}
+    foreach ($s in $Selected) { $has[$s] = $true }
+
+    $hasAnthropic = $has['anthropic']  -eq $true
+    $hasCopilot   = $has['github-copilot'] -eq $true
+    $hasGemini    = $has['google-gemini-cli'] -eq $true
+    $hasCodex     = $has['openai-codex'] -eq $true
+    $hasZai       = $has['zai'] -eq $true
+    $hasGroq      = $has['groq'] -eq $true
+    $hasKimi      = $has['kimi-coding'] -eq $true
+
+    # ── Resolve per-role model lists ─────────────────────────────────────────
+    # Each list is ordered: [primary, fallback1, fallback2, ...]
+    # Rules:
+    #   planning/research  — frontier first (Opus > gemini > copilot/gemini > codex), then zai
+    #   execution          — best agentic exec: kimi > glm-5.1 > glm-5-turbo > sonnet > haiku
+    #                        codex NOT here (rate-limit pause bug)
+    #   execution_simple   — cheapest reliable: groq > glm-4.x > haiku
+    #   completion         — quality summary: sonnet > glm-5.1 > haiku > groq
+    #   subagent           — parallel workers: kimi > glm-5.x > groq > haiku
+    #                        codex NOT here (same reason)
+    #   validation         — falls back to planning chain (pi default: m.validation ?? m.planning)
+
+    $planModels     = [System.Collections.Generic.List[string]]::new()
+    $researchModels = [System.Collections.Generic.List[string]]::new()
+    $execModels     = [System.Collections.Generic.List[string]]::new()
+    $simpleModels   = [System.Collections.Generic.List[string]]::new()
+    $compModels     = [System.Collections.Generic.List[string]]::new()
+    $subModels      = [System.Collections.Generic.List[string]]::new()
+
+    # planning / research — frontier depth first
+    if ($hasAnthropic)  { $planModels.Add('anthropic/claude-opus-4-6');           $researchModels.Add('anthropic/claude-opus-4-6') }
+    if ($hasCopilot)    { $planModels.Add('github-copilot/gemini-3.1-pro-preview'); $researchModels.Add('github-copilot/gemini-3.1-pro-preview') }
+    if ($hasGemini)     { $planModels.Add('google-gemini-cli/gemini-3.1-pro-preview'); $researchModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+    if ($hasAnthropic)  { $planModels.Add('anthropic/claude-sonnet-4-6');          $researchModels.Add('anthropic/claude-sonnet-4-6') }
+    if ($hasCodex)      { $planModels.Add('openai-codex/gpt-5.3-codex');           $researchModels.Add('openai-codex/gpt-5.3-codex') }  # planning only
+    if ($hasZai)        { $planModels.Add('zai/glm-5.1');                          $researchModels.Add('zai/glm-5.1') }
+    if ($hasZai)        { $planModels.Add('zai/glm-5-turbo') }
+    if ($hasGroq)       { $planModels.Add('groq/kimi-k2-instruct') }
+
+    # execution — best agentic exec (NO codex)
+    if ($hasKimi)       { $execModels.Add('kimi-coding/kimi-k2.5') }
+    if ($hasZai)        { $execModels.Add('zai/glm-5.1'); $execModels.Add('zai/glm-5-turbo'); $execModels.Add('zai/glm-5') }
+    if ($hasKimi -and -not $execModels.Contains('kimi-coding/kimi-k2.5')) { $execModels.Add('kimi-coding/kimi-k2.5') }
+    if ($hasAnthropic)  { $execModels.Add('anthropic/claude-sonnet-4-6') }
+    if ($hasCopilot)    { $execModels.Add('github-copilot/gemini-3.1-pro-preview') }
+    if ($hasGemini -and -not ($hasCopilot)) { $execModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+    if ($hasGroq)       { $execModels.Add('groq/kimi-k2-instruct') }
+    if ($hasAnthropic)  { $execModels.Add('anthropic/claude-haiku-4-5') }
+
+    # execution_simple — cheapest first (NO codex)
+    if ($hasGroq)       { $simpleModels.Add('groq/kimi-k2-instruct'); $simpleModels.Add('groq/qwen/qwen3-32b') }
+    if ($hasZai)        { $simpleModels.Add('zai/glm-4.7'); $simpleModels.Add('zai/glm-4.7-flash'); $simpleModels.Add('zai/glm-4.6') }
+    if ($hasKimi)       { $simpleModels.Add('kimi-coding/kimi-k2.5') }
+    if ($hasAnthropic)  { $simpleModels.Add('anthropic/claude-haiku-4-5') }
+    if ($hasGemini -and $simpleModels.Count -eq 0) { $simpleModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+
+    # completion — quality summary
+    if ($hasAnthropic)  { $compModels.Add('anthropic/claude-sonnet-4-6') }
+    if ($hasZai)        { $compModels.Add('zai/glm-5.1'); $compModels.Add('zai/glm-5-turbo') }
+    if ($hasKimi)       { $compModels.Add('kimi-coding/kimi-k2.5') }
+    if ($hasGemini)     { $compModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+    if ($hasCopilot)    { $compModels.Add('github-copilot/gemini-3.1-pro-preview') }
+    if ($hasGroq)       { $compModels.Add('groq/kimi-k2-instruct') }
+    if ($hasAnthropic)  { $compModels.Add('anthropic/claude-haiku-4-5') }
+
+    # subagent — parallel workers (NO codex)
+    if ($hasKimi)       { $subModels.Add('kimi-coding/kimi-k2.5') }
+    if ($hasZai)        { $subModels.Add('zai/glm-5.1'); $subModels.Add('zai/glm-5-turbo'); $subModels.Add('zai/glm-5') }
+    if ($hasGroq)       { $subModels.Add('groq/kimi-k2-instruct'); $subModels.Add('groq/qwen/qwen3-32b') }
+    if ($hasZai)        { $subModels.Add('zai/glm-4.7'); $subModels.Add('zai/glm-4.7-flash') }
+    if ($hasAnthropic)  { $subModels.Add('anthropic/claude-haiku-4-5') }
+    if ($hasCopilot)    { $subModels.Add('github-copilot/gemini-3.1-pro-preview') }
+    if ($hasGemini -and -not $hasCopilot) { $subModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+
+    # ── Deduplicate while preserving order ────────────────────────────────────
+    function Dedupe-List { param($list)
+        $seen = [System.Collections.Generic.HashSet[string]]::new()
+        $list | Where-Object { $seen.Add($_) }
+    }
+    $planModels     = @(Dedupe-List $planModels)
+    $researchModels = @(Dedupe-List $researchModels)
+    $execModels     = @(Dedupe-List $execModels)
+    $simpleModels   = @(Dedupe-List $simpleModels)
+    $compModels     = @(Dedupe-List $compModels)
+    $subModels      = @(Dedupe-List $subModels)
+
+    # ── Sanity: must have at least one model per role ─────────────────────────
+    if ($planModels.Count -eq 0 -or $execModels.Count -eq 0) {
+        return $null  # caller will abort
+    }
+
+    # ── Render YAML block ─────────────────────────────────────────────────────
+    function Format-ModelBlock {
+        param([string]$Role, [string[]]$Models)
+        if ($Models.Count -eq 0) { return }
+        $lines = @("  ${Role}:")
+        $lines += "    model: $($Models[0])"
+        if ($Models.Count -gt 1) {
+            $lines += '    fallbacks:'
+            for ($i = 1; $i -lt $Models.Count; $i++) {
+                $lines += "      - $($Models[$i])"
+            }
+        }
+        $lines -join "`n"
+    }
+
+    # Build provider summary comment
+    $providerList = $Selected -join ', '
+    $planLabel = if ($planModels.Count -gt 0) { $planModels[0] } else { 'none' }
+    $execLabel = if ($execModels.Count -gt 0) { $execModels[0] } else { 'none' }
+
+    $codexNote = if ($hasCodex) {
+        "`n  # NOTE: openai-codex is in planning/research only — NOT in exec/subagent/completion`n  #   (usage-limit error pauses auto-mode indefinitely instead of continuing fallback chain)"
+    } else { '' }
+
+    $yaml = @"
+  # ══════════════════════════════════════════════════════════════════════════════
+  # PLAN: custom (generated by 8sync gsd setup --pick)
+  # Providers: $providerList
+  # planning  → $planLabel
+  # execution → $execLabel
+  # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')$codexNote
+  # ══════════════════════════════════════════════════════════════════════════════
+
+$(Format-ModelBlock 'planning'         $planModels)
+
+$(Format-ModelBlock 'research'         $researchModels)
+
+$(Format-ModelBlock 'execution'        $execModels)
+
+$(Format-ModelBlock 'execution_simple' $simpleModels)
+
+$(Format-ModelBlock 'completion'       $compModels)
+
+$(Format-ModelBlock 'subagent'         $subModels)
+"@
+
+    return $yaml.TrimEnd()
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Write generated models block into ~/.gsd/PREFERENCES.md
+# Replaces the models: ... section while keeping the YAML front-matter header.
+# ─────────────────────────────────────────────────────────────────────────────
+function Write-GsdPreferencesModels {
+    param(
+        [Parameter(Mandatory)] [string]$ModelsYaml,
+        [string]$DestPath,
+        [switch]$DryRun
+    )
+
+    $gsdHome = Resolve-GsdHome
+    if (-not $DestPath) { $DestPath = Join-Path $gsdHome 'PREFERENCES.md' }
+
+    # Template header (everything before models:)
+    $header = @'
+---
+version: 1
+skill_staleness_days: 0
+uat_dispatch: false
+unique_milestone_ids: false
+notifications:
+cmux:
+  enabled: false
+  notifications: false
+  sidebar: false
+  splits: false
+  browser: false
+remote_questions:
+phases:
+  skip_research: false
+  skip_reassess: false
+  skip_slice_research: false
+  reassess_after_slice: false
+
+token_profile: balanced
+
+models:
+'@
+
+    $footer = @'
+
+
+---
+
+# GSD Skill Preferences
+
+See `~/.gsd/agent/extensions/gsd/docs/preferences-reference.md` for full field documentation and examples.
+'@
+
+    # If existing file has custom header settings, preserve them
+    if (Test-Path $DestPath) {
+        $existing = Get-Content $DestPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        # Extract everything from --- to "models:" line, keep it
+        if ($existing -match '(?s)(^---.*?token_profile:.*?\n\nmodels:\n)') {
+            $header = $matches[1]
+        }
+    }
+
+    $newContent = $header + "`n" + $ModelsYaml + $footer
+
+    if ($DryRun) {
+        Write-Host ''
+        Write-Host '  [dry-run] Would write:' -ForegroundColor Yellow
+        Write-Host ("  {0}" -f $DestPath) -ForegroundColor DarkGray
+        Write-Host ''
+        $newContent -split "`n" | Select-Object -First 60 | ForEach-Object {
+            Write-Host ("  {0}" -f $_) -ForegroundColor DarkGray
+        }
+        Write-Host '  ... (truncated)' -ForegroundColor DarkGray
+        Write-Host ''
+        return $true
+    }
+
+    $dir = Split-Path $DestPath -Parent
+    if (-not (Test-Path $dir)) { $null = New-Item -Path $dir -ItemType Directory -Force }
+
+    try {
+        Set-Content -Path $DestPath -Value $newContent -Encoding UTF8 -Force
+        return $true
+    } catch {
+        Write-Host ("  [error] write failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
+}
+
+function Invoke-GsdPlanPicker {
+    param([switch]$DryRun)
+
+    if (-not (Test-CommandExists 'fzf')) {
+        Write-Host ''
+        Write-Host '  [!] fzf not found -- install with: scoop install fzf' -ForegroundColor Red
+        Write-Host '  Fallback: 8sync gsd setup --plan <name>' -ForegroundColor DarkGray
+        Write-Host ''
+        Show-GsdPlans
+        return
+    }
+
+    # ── Detect current auth/key state ────────────────────────────────────────
+    $agentDir = Resolve-GsdAgentDir
+    $authPath = Join-Path $agentDir 'auth.json'
+    $loggedIn = @{}
+    if (Test-Path $authPath) {
+        try {
+            $auth = Get-Content $authPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+            $now  = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            $auth.PSObject.Properties | ForEach-Object {
+                $exp = $_.Value.expires
+                if (-not $exp -or ([long]$exp - $now) -gt 0) { $loggedIn[$_.Name] = $true }
+            }
+        } catch {}
+    }
+
+    $envFileLines = @()
+    $envFile = Join-Path $agentDir '.env'
+    if (Test-Path $envFile) { $envFileLines = Get-Content $envFile -Encoding UTF8 -ErrorAction SilentlyContinue }
+
+    function Test-ProviderConfigured {
+        param($p)
+        if ($p.Type -eq 'oauth') { return $loggedIn[$p.Id] -eq $true }
+        $varName = $script:GsdProviderKeys[$p.Id]
+        return (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable($varName,'Process'))) -or
+               (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable($varName,'User'))) -or
+               ($null -ne ($envFileLines | Where-Object { $_ -match ('^' + [regex]::Escape($varName) + '\s*=') } | Select-Object -First 1))
+    }
+
+    # ── Build fzf input ──────────────────────────────────────────────────────
+    # Format: "ID\tSTATUS_LABEL  FULL_LABEL\tDESC"
+    # Pre-configured providers sort to top
+    $preConfigured = @($script:GsdProviderMenu | Where-Object { Test-ProviderConfigured $_ } | ForEach-Object { $_.Id })
+
+    $fzfLines = $script:GsdProviderMenu | Sort-Object {
+        if ($preConfigured -contains $_.Id) { 0 } else { 1 }
+    } | ForEach-Object {
+        $p = $_
+        $configured = Test-ProviderConfigured $p
+        if ($p.Type -eq 'oauth') {
+            $status = if ($configured) { '[✓ logged in ]' } else { '[ not logged  ]' }
+        } else {
+            $status = if ($configured) { '[✓ key set   ]' } else { '[ no key      ]' }
+        }
+        "$($p.Id)`t$status  $($p.Label)`t$($p.Desc)"
+    }
+
+    $headerLine = "SPACE=toggle  ENTER=apply  (pre-configured shown first)"
+    $fzfArgs = @(
+        '--multi'
+        '--delimiter', "`t"
+        '--with-nth', '2,3'
+        '--header', $headerLine
+        '--prompt', '  Provider> '
+        '--height', '~85%'
+        '--border', 'rounded'
+        '--bind', 'tab:toggle+down'
+        '--bind', 'shift-tab:toggle+up'
+    )
+
+    $chosen = $fzfLines | fzf @fzfArgs
+    if (-not $chosen) {
+        Write-Host '  [cancelled]' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $selectedIds = @($chosen | ForEach-Object { ($_ -split "`t")[0].Trim() })
+
+    Write-Host ''
+    Write-Host '  Selected providers:' -ForegroundColor DarkGray
+    foreach ($id in $selectedIds) {
+        $mark = if ($preConfigured -contains $id) { '✓' } else { '+' }
+        Write-Host ("    {0} {1}" -f $mark, $id) -ForegroundColor $(if ($preConfigured -contains $id) { 'Green' } else { 'Yellow' })
+    }
+    Write-Host ''
+
+    # ── Generate models YAML ──────────────────────────────────────────────────
+    $yaml = Build-GsdModelsYaml -Selected $selectedIds
+    if (-not $yaml) {
+        Write-Host '  [error] Selection produced no models. Select at least one exec provider (zai, groq, kimi-coding, or anthropic).' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # Preview top of generated block
+    Write-Host '  Generated model routing:' -ForegroundColor Cyan
+    $yaml -split "`n" | Select-Object -First 20 | ForEach-Object { Write-Host ("    {0}" -f $_) -ForegroundColor DarkGray }
+    if (($yaml -split "`n").Count -gt 20) { Write-Host '    ...' -ForegroundColor DarkGray }
+    Write-Host ''
+
+    # ── Write to ~/.gsd/PREFERENCES.md ───────────────────────────────────────
+    $gsdHome = Resolve-GsdHome
+    $destPath = Join-Path $gsdHome 'PREFERENCES.md'
+    $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
+
+    if ($ok -and -not $DryRun) {
+        Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
+        Write-Host ''
+        Write-Host '  Next: /gsd prefs to verify   /model to browse available models' -ForegroundColor DarkGray
+        Write-Host ''
+    }
 }
 
 function Show-GsdHelp {
@@ -56,9 +428,12 @@ function Show-GsdHelp {
     Write-HintRow '8sync gsd setup'                      'Apply default PREFERENCES.md -> ~/.gsd'
     Write-HintRow '8sync gsd setup --plan <name>'        'Apply named plan (see below)'
     Write-HintRow '8sync gsd setup --plan'               'List all plans with descriptions'
+    Write-HintRow '8sync gsd setup --auto'               'Auto-detect valid logins/keys -> generate PREFERENCES.md'
+    Write-HintRow '8sync gsd setup --pick'               'Interactive fzf: pick providers -> generate PREFERENCES.md'
     Write-HintRow '8sync gsd setup --dry-run'            'Preview without writing'
-    Write-HintRow '8sync gsd key <provider> <key>'       'Set API key (session + persist to user env)'
-    Write-HintRow '8sync gsd keys'                       'List all providers, env vars + setup guide'
+    Write-HintRow '8sync gsd key <provider> <key>'       'Set API key — LLM: zai kimi-coding groq google openai xai mistral'
+    Write-HintRow '                                  '    'Search: tavily brave ollama  |  Tools: context7 jina'
+    Write-HintRow '8sync gsd keys'                       'List all providers grouped (LLM / Search / Tools) + status'
     Write-HintRow '8sync gsd status'                     'Show paths, auth providers, key status'
     Write-HintRow '8sync gsd add gguf'                   'Detect running llama-server and register it in models.json'
     Write-HintRow '8sync gsd add gguf --port N'          'Target a specific port (default: probe 8080/8081/8082/1234/11434)'
@@ -71,7 +446,8 @@ function Show-GsdHelp {
     Write-HintSection 'Plans (multi-provider)'
     Write-HintRow 'max'    'Opus plan + kimi K2.5 exec (SWE 76.8%) + groq free workers'
     Write-HintRow 'pro'    'Sonnet plan/completion + kimi+codex exec + groq free'
-    Write-HintRow 'normal' 'No Claude: codex+gemini plan + glm-5-turbo exec + groq'
+    Write-HintRow 'normal' 'No Claude: gemini plan + glm-5.1 exec + groq (codex planning only)'
+    Write-HintRow 'glm-max'    '100% ZAI: glm-5.1 plan/exec + glm-4.5(c20) subagent workers'
     Write-HintSection 'Plans (single-provider)'
     Write-HintRow 'claude-max'  '100% Claude: Opus plan + Sonnet exec + Haiku workers'
     Write-HintRow 'codex-max'   '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex exec'
@@ -79,6 +455,8 @@ function Show-GsdHelp {
     Write-HintSection 'Plans (combo)'
     Write-HintRow 'claude-codex-gemini' 'Big Three: Opus plan + codex exec + gemini research'
     Write-Host ''
+    Write-Host '  Interactive: 8sync gsd setup --auto   (auto-detect, no interaction)' -ForegroundColor DarkGray
+    Write-Host '               8sync gsd setup --pick   (fzf provider picker)' -ForegroundColor DarkGray
     Write-Host '  Run "8sync gsd setup --plan" (no value) for full plan details' -ForegroundColor DarkGray
     Write-Host '  Verify: /gsd prefs   /model' -ForegroundColor DarkGray
     Write-Host ''
@@ -92,13 +470,13 @@ function Invoke-GsdSetup {
 
     $bundleDir  = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\gsd-config'))
     $gsdHome    = Resolve-GsdHome
-    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'codex-max', 'gemini-max', 'claude-codex-gemini')
+    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'codex-max', 'gemini-max', 'claude-codex-gemini', 'glm-max')
     $planLower  = $Plan.ToLowerInvariant().Trim()
 
     if ($planLower -ne '' -and $validPlans -notcontains $planLower) {
         Write-Host ''
         Write-Host ("  [error] Unknown plan '{0}'." -f $Plan) -ForegroundColor Red
-        Write-Host '  Valid: max | pro | normal | claude-max | codex-max | gemini-max | claude-codex-gemini' -ForegroundColor DarkGray
+        Write-Host '  Valid: max | pro | normal | claude-max | codex-max | gemini-max | claude-codex-gemini | glm-max' -ForegroundColor DarkGray
         Write-Host '  Run "8sync gsd setup --plan" (no value) for full descriptions.' -ForegroundColor DarkGray
         Write-Host ''
         return
@@ -180,6 +558,11 @@ function Invoke-GsdSetup {
                 Write-Host '  Models : gemini-3.1-pro-preview all roles (2M ctx)' -ForegroundColor DarkGray
                 Write-Host '  100% Google -- no Anthropic/OpenAI needed' -ForegroundColor DarkGray
             }
+            'glm-max' {
+                Write-Host '  8sync gsd key zai <key>  (only requirement)' -ForegroundColor Yellow
+                Write-Host '  Models : glm-5.1 plan/exec + glm-4.5(c20) subagent -> full cascade' -ForegroundColor DarkGray
+                Write-Host '  100% ZAI -- no OAuth, no other providers' -ForegroundColor DarkGray
+            }
             'claude-codex-gemini' {
                 Write-Host '  /login -> anthropic  openai-codex  google-gemini-cli' -ForegroundColor Yellow
                 Write-Host '  optional: /login github-copilot  (extra model access)' -ForegroundColor DarkGray
@@ -197,6 +580,7 @@ function Invoke-GsdSetup {
 
 # Known providers and their env var names
 $script:GsdProviderKeys = [ordered]@{
+    # LLM providers
     'zai'          = 'ZAI_API_KEY'
     'kimi-coding'  = 'KIMI_API_KEY'
     'groq'         = 'GROQ_API_KEY'
@@ -206,27 +590,31 @@ $script:GsdProviderKeys = [ordered]@{
     'openai'       = 'OPENAI_API_KEY'
     'xai'          = 'XAI_API_KEY'
     'mistral'      = 'MISTRAL_API_KEY'
+    # Search providers (pi reads these via process.env — same mechanism)
+    'tavily'       = 'TAVILY_API_KEY'
+    'brave'        = 'BRAVE_API_KEY'
+    'ollama'       = 'OLLAMA_API_KEY'
+    # Tool keys
     'context7'     = 'CONTEXT7_API_KEY'
     'jina'         = 'JINA_API_KEY'
-    'brave'        = 'BRAVE_API_KEY'
-    'tavily'       = 'TAVILY_API_KEY'
 }
 
 # Human-readable notes shown in 8sync gsd keys
 $script:GsdProviderNotes = @{
-    'zai'          = 'z.ai console - glm-5-turbo $1.2/$4/M  (stable, agentic)'
-    'kimi-coding'  = 'platform.moonshot.cn - Kimi K2.5 SWE-bench 76.8%  (free credits)'
-    'groq'         = 'console.groq.com - kimi-k2+qwen3-32b FREE daily reset'
-    'google'       = 'aistudio.google.com - gemini-2.5-pro 5RPM/25RPD free tier'
-    'openrouter'   = 'openrouter.ai - aggregator, 200+ models incl. free tier'
-    'anthropic'    = 'console.anthropic.com - paid key OR use /login OAuth (free)'
-    'openai'       = 'platform.openai.com - paid key OR use /login openai-codex (free)'
-    'xai'          = 'console.x.ai - grok-4.20 free credits on signup'
-    'mistral'      = 'console.mistral.ai - pixtral-large, free tier available'
-    'context7'     = 'context7.com - documentation lookup (already set)'
-    'jina'         = 'jina.ai - web reader/search'
-    'brave'        = 'brave.com/search/api - web search'
-    'tavily'       = 'tavily.com - web search'
+    'zai'          = 'z.ai — glm-5.1(S+) glm-5-turbo(c1) glm-5(c2) glm-4.7(c2) glm-4.5(c20) glm-4.6v(vision,c10,$0.30) glm-4.5v(vision,c10,$0.60)'
+    'kimi-coding'  = 'platform.moonshot.cn — Kimi K2.5 SWE 76.8% ($0.14/$2.5/M)'
+    'groq'         = 'console.groq.com — kimi-k2+qwen3-32b FREE daily reset'
+    'google'       = 'aistudio.google.com — gemini-2.5-pro API key (5RPM free tier)'
+    'openrouter'   = 'openrouter.ai — DeepSeek V3.2($0.28/$0.42) R1 + 200+ models, free tier có'
+    'anthropic'    = 'console.anthropic.com — paid key OR /login OAuth'
+    'openai'       = 'platform.openai.com — paid key OR /login openai-codex (free)'
+    'xai'          = 'console.x.ai — grok-4 free credits on signup'
+    'mistral'      = 'console.mistral.ai — pixtral-large, free tier'
+    'tavily'       = 'tavily.com/app/api-keys — web search, 1000 free/mo | /search-provider tavily'
+    'brave'        = 'brave.com/search/api — web search, 2000 free/mo | /search-provider brave'
+    'ollama'       = 'local Ollama server token (optional) | /search-provider ollama'
+    'context7'     = 'context7.com/dashboard — doc lookup (already bundled in pi)'
+    'jina'         = 'jina.ai/api — fetch_page/web reader (optional, higher rate limit)'
 }
 
 function Show-GsdKeys {
@@ -242,39 +630,46 @@ function Show-GsdKeys {
         $envFileLines = Get-Content $envFile -Encoding UTF8 -ErrorAction SilentlyContinue
     }
 
-    Write-Host ("  {0,-15} {1,-22} {2,-12} {3}" -f 'PROVIDER', 'ENV VAR', 'STATUS', 'WHERE TO GET') -ForegroundColor DarkGray
-    Write-Host ("  {0}" -f ('-' * 90)) -ForegroundColor DarkGray
-
-    foreach ($provider in $script:GsdProviderKeys.Keys) {
-        $varName  = $script:GsdProviderKeys[$provider]
-        $note     = if ($script:GsdProviderNotes.ContainsKey($provider)) { $script:GsdProviderNotes[$provider] } else { '' }
-        $fromEnv  = [System.Environment]::GetEnvironmentVariable($varName, 'Process')
-        $fromUser = [System.Environment]::GetEnvironmentVariable($varName, 'User')
-        $fromFile = $envFileLines | Where-Object { $_ -match ('^' + [regex]::Escape($varName) + '\s*=') } | Select-Object -First 1
-
-        if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
-            $status = '[set]'
-            $color  = 'Green'
-        } elseif (-not [string]::IsNullOrWhiteSpace($fromUser)) {
-            $status = '[set]'
-            $color  = 'Green'
-        } elseif ($fromFile) {
-            $status = '[.env]'
-            $color  = 'DarkYellow'
-        } else {
-            $status = '[empty]'
-            $color  = 'DarkGray'
-        }
-
-        Write-Host ("  {0,-15} {1,-22} {2,-12} {3}" -f $provider, $varName, $status, $note) -ForegroundColor $color
+    $groups = [ordered]@{
+        'LLM Providers'    = @('zai','kimi-coding','groq','google','openrouter','anthropic','openai','xai','mistral')
+        'Search Providers' = @('tavily','brave','ollama')
+        'Tool Keys'        = @('context7','jina')
     }
 
-    Write-Host ''
+    foreach ($groupName in $groups.Keys) {
+        Write-Host ("  -- {0} {1}" -f $groupName, ('-' * (50 - $groupName.Length))) -ForegroundColor DarkGray
+        Write-Host ("  {0,-15} {1,-24} {2,-10} {3}" -f 'PROVIDER','ENV VAR','STATUS','NOTES / WHERE TO GET') -ForegroundColor DarkGray
+
+        foreach ($provider in $groups[$groupName]) {
+            $varName  = $script:GsdProviderKeys[$provider]
+            $note     = if ($script:GsdProviderNotes.ContainsKey($provider)) { $script:GsdProviderNotes[$provider] } else { '' }
+            $fromEnv  = [System.Environment]::GetEnvironmentVariable($varName, 'Process')
+            $fromUser = [System.Environment]::GetEnvironmentVariable($varName, 'User')
+            $fromFile = $envFileLines | Where-Object { $_ -match ('^' + [regex]::Escape($varName) + '\s*=') } | Select-Object -First 1
+
+            if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
+                $status = '[set]';       $color = 'Green'
+            } elseif (-not [string]::IsNullOrWhiteSpace($fromUser)) {
+                $status = '[set]';       $color = 'Green'
+            } elseif ($fromFile) {
+                $status = '[.env]';      $color = 'DarkYellow'
+            } else {
+                $status = '[empty]';     $color = 'DarkGray'
+            }
+
+            Write-Host ("  {0,-15} {1,-24} {2,-10} {3}" -f $provider, $varName, $status, $note) -ForegroundColor $color
+        }
+        Write-Host ''
+    }
+
     Write-Host '  OAuth providers (no key needed, use /login in pi):' -ForegroundColor DarkGray
-    Write-Host '    anthropic         /login anthropic' -ForegroundColor White
-    Write-Host '    github-copilot    /login github-copilot   (requires Copilot subscription)' -ForegroundColor White
-    Write-Host '    google-gemini-cli /login google-gemini-cli (free via Cloud Code Assist)' -ForegroundColor White
-    Write-Host '    openai-codex      /login openai-codex      (free via ChatGPT OAuth)' -ForegroundColor White
+    Write-Host '    anthropic          /login anthropic' -ForegroundColor White
+    Write-Host '    github-copilot     /login github-copilot   (needs Copilot subscription)' -ForegroundColor White
+    Write-Host '    google-gemini-cli  /login google-gemini-cli (free via Cloud Code Assist)' -ForegroundColor White
+    Write-Host '    openai-codex       /login openai-codex      (free via ChatGPT OAuth — planning only)' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Search provider active in pi: /search-provider [tavily|brave|ollama|auto]' -ForegroundColor DarkGray
+    Write-Host '  Set key first: 8sync gsd key tavily <key>   then /search-provider tavily' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -357,7 +752,7 @@ function Invoke-GsdStatus {
     if (Test-Path $prefPath) {
         $bundleDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\gsd-config'))
         $detectedPlan = 'unknown/custom'
-        foreach ($p in @('max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini')) {
+        foreach ($p in @('max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini','glm-max')) {
             $planFile = Join-Path $bundleDir ("PREFERENCES-{0}.md" -f $p)
             if (Test-Path $planFile) {
                 $a = (Get-FileHash $prefPath -Algorithm MD5).Hash
@@ -713,20 +1108,127 @@ function Invoke-GsdRemoveGguf {
     Write-Host ''
 }
 
+function Invoke-GsdAutoSetup {
+    param([switch]$DryRun)
+
+    $agentDir = Resolve-GsdAgentDir
+    $authPath = Join-Path $agentDir 'auth.json'
+    $envFile  = Join-Path $agentDir '.env'
+
+    Write-Host ''
+    Write-Host '  [gsd] Auto-detecting valid providers...' -ForegroundColor Cyan
+    Write-Host ''
+
+    # ── Read auth.json OAuth state ───────────────────────────────────────────
+    $validOAuth = @{}
+    if (Test-Path $authPath) {
+        try {
+            $auth = Get-Content $authPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+            $now  = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            $auth.PSObject.Properties | ForEach-Object {
+                $exp = $_.Value.expires
+                $type = $_.Value.type
+                if ($type -eq 'oauth') {
+                    $valid = (-not $exp) -or (([long]$exp - $now) -gt 0)
+                    if ($valid) { $validOAuth[$_.Name] = $true }
+                    $status = if ($valid) { 'VALID' } else { 'expired' }
+                    $mins = if ($exp) { "~{0}m" -f [math]::Round(([long]$exp - $now) / 60000) } else { '∞' }
+                    $color = if ($valid) { 'Green' } else { 'DarkGray' }
+                    Write-Host ("    oauth  {0,-26} {1} {2}" -f $_.Name, $status, $mins) -ForegroundColor $color
+                }
+            }
+        } catch {
+            Write-Host '  [warn] auth.json parse failed' -ForegroundColor DarkYellow
+        }
+    }
+
+    # ── Read API keys from .env + user env ───────────────────────────────────
+    $envFileLines = @()
+    if (Test-Path $envFile) { $envFileLines = Get-Content $envFile -Encoding UTF8 -ErrorAction SilentlyContinue }
+
+    $validKeys = @{}
+    foreach ($provider in $script:GsdProviderKeys.Keys) {
+        $varName = $script:GsdProviderKeys[$provider]
+        $val = [System.Environment]::GetEnvironmentVariable($varName, 'Process')
+        if ([string]::IsNullOrWhiteSpace($val)) { $val = [System.Environment]::GetEnvironmentVariable($varName, 'User') }
+        if ([string]::IsNullOrWhiteSpace($val)) {
+            $line = $envFileLines | Where-Object { $_ -match ('^' + [regex]::Escape($varName) + '\s*=\s*(.+)') } | Select-Object -First 1
+            if ($line -match '=\s*(.+)$') { $val = $matches[1].Trim() }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($val)) {
+            $validKeys[$provider] = $true
+            Write-Host ("    key    {0,-26} SET" -f "$provider ($varName)") -ForegroundColor Green
+        }
+    }
+
+    # ── Map to provider IDs used by Build-GsdModelsYaml ─────────────────────
+    # oauth providers:  anthropic, github-copilot, google-gemini-cli, openai-codex
+    # key providers:    zai, kimi-coding, groq, google, ...
+
+    $selected = [System.Collections.Generic.List[string]]::new()
+
+    if ($validOAuth['anthropic'])          { $selected.Add('anthropic') }
+    if ($validOAuth['github-copilot'])     { $selected.Add('github-copilot') }
+    if ($validOAuth['google-gemini-cli'])  { $selected.Add('google-gemini-cli') }
+    if ($validOAuth['openai-codex'])       { $selected.Add('openai-codex') }
+    if ($validKeys['zai'])                 { $selected.Add('zai') }
+    if ($validKeys['groq'])                { $selected.Add('groq') }
+    if ($validKeys['kimi-coding'])         { $selected.Add('kimi-coding') }
+
+    Write-Host ''
+    if ($selected.Count -eq 0) {
+        Write-Host '  [error] No valid providers detected. Login with /login or set keys with 8sync gsd key.' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host '  Active providers:' -ForegroundColor DarkGray
+    foreach ($p in $selected) {
+        Write-Host ("    + {0}" -f $p) -ForegroundColor White
+    }
+    Write-Host ''
+
+    # ── Generate + write ──────────────────────────────────────────────────────
+    $yaml = Build-GsdModelsYaml -Selected $selected.ToArray()
+    if (-not $yaml) {
+        Write-Host '  [error] Could not generate model routing from detected providers.' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # Preview
+    Write-Host '  Generated routing (top lines):' -ForegroundColor Cyan
+    $yaml -split "`n" | Select-Object -First 12 | ForEach-Object { Write-Host ("    {0}" -f $_) -ForegroundColor DarkGray }
+    Write-Host '    ...' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $gsdHome  = Resolve-GsdHome
+    $destPath = Join-Path $gsdHome 'PREFERENCES.md'
+    $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
+
+    if ($ok -and -not $DryRun) {
+        Write-Host ("  [ok] Written to {0}" -f $destPath) -ForegroundColor Green
+        Write-Host ''
+        Write-Host '  Verify: /gsd prefs   /model' -ForegroundColor DarkGray
+        Write-Host ''
+    }
+}
+
 function Invoke-GsdCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
         [string[]]$Rest
     )
 
-    $dryRun  = $Rest -contains '--dry-run'
+    $dryRun   = $Rest -contains '--dry-run'
+    $pickMode = $Rest -contains '--pick'
+    $autoMode = $Rest -contains '--auto'
     $planArg = ''
     $planIdx = [Array]::IndexOf($Rest, '--plan')
     if ($planIdx -ge 0) {
         if ($planIdx + 1 -lt $Rest.Count -and $Rest[$planIdx + 1] -notlike '--*') {
             $planArg = $Rest[$planIdx + 1]
         } else {
-            # --plan with no value -> show plan list
             Show-GsdPlans
             return
         }
@@ -735,7 +1237,11 @@ function Invoke-GsdCommand {
     $sub = if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
 
     switch ($sub) {
-        'setup'  { Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg }
+        'setup'  {
+            if ($autoMode)  { Invoke-GsdAutoSetup -DryRun:$dryRun }
+            elseif ($pickMode) { Invoke-GsdPlanPicker -DryRun:$dryRun }
+            else { Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg }
+        }
         'status' { Invoke-GsdStatus }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
         'keys'   { Show-GsdKeys }
