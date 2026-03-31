@@ -96,7 +96,11 @@ function Build-GsdModelsYaml {
     $planLabel = if ($planModels.Count -gt 0) { $planModels[0] } else { 'none' }
     $execLabel = if ($execModels.Count -gt 0) { $execModels[0] } else { 'none' }
     $codexNote = if ($hasCodex) {
-        "`n  # NOTE: openai-codex is in planning/research only — NOT in exec/subagent/completion`n  #   (usage-limit error pauses auto-mode indefinitely instead of continuing fallback chain)"
+        @(
+            '',
+            '  # NOTE: openai-codex is in planning/research only - NOT in exec/subagent/completion',
+            '  #   (usage-limit error pauses auto-mode indefinitely instead of continuing fallback chain)'
+        ) -join "`n"
     } else { '' }
 
     $yaml = @"
@@ -179,7 +183,8 @@ function Write-GsdPreferencesModels {
     if (-not (Test-Path $dir)) { $null = New-Item -Path $dir -ItemType Directory -Force }
 
     try {
-        Set-Content -Path $DestPath -Value $newContent -Encoding UTF8 -Force
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($DestPath, $newContent, $utf8NoBom)
         return $true
     } catch {
         Write-Host ("  [error] write failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
@@ -199,22 +204,51 @@ function Resolve-GsdModelStack {
         'github-copilot' = 'github-copilot'
     }
 
+    $singleModelDefaults = @{
+        'anthropic' = @('anthropic')
+        'openai-codex' = @('openai-codex', 'zai')
+        'google-gemini-cli' = @('google-gemini-cli')
+        'zai' = @('zai')
+        'kimi-coding' = @('kimi-coding')
+        'groq' = @('groq')
+        'github-copilot' = @('github-copilot')
+    }
+
+    $acceptedText = 'claude, codex, gemini, glm, kimi, groq, copilot'
+
+    function Resolve-ProviderToken {
+        param([string]$Token)
+
+        if ([string]::IsNullOrWhiteSpace($Token)) { return $null }
+        if ($aliases.ContainsKey($Token)) { return $aliases[$Token] }
+
+        Write-Host ''
+        Write-Host ("  [error] Unknown model brand '{0}' in --model '{1}'." -f $Token, $ModelArg) -ForegroundColor Red
+        Write-Host ("  Accepted: {0}" -f $acceptedText) -ForegroundColor DarkGray
+        Write-Host '  Example : 8sync gsd setup --model codex+glm' -ForegroundColor DarkGray
+        Write-Host ''
+        return $false
+    }
+
+    if ($ModelArg -notmatch '\+') {
+        $token = $ModelArg.Trim().ToLowerInvariant()
+        $providerId = Resolve-ProviderToken -Token $token
+        if ($providerId -eq $false) { return $null }
+        if ($null -eq $providerId) { return @() }
+        if ($singleModelDefaults.ContainsKey($providerId)) { return $singleModelDefaults[$providerId] }
+        return @($providerId)
+    }
+
     $result = [System.Collections.Generic.List[string]]::new()
     $seen = [System.Collections.Generic.HashSet[string]]::new()
 
     foreach ($raw in ($ModelArg -split '\+')) {
         $token = $raw.Trim().ToLowerInvariant()
         if ([string]::IsNullOrWhiteSpace($token)) { continue }
-        if (-not $aliases.ContainsKey($token)) {
-            Write-Host ''
-            Write-Host ("  [error] Unknown model brand '{0}' in --model '{1}'." -f $token, $ModelArg) -ForegroundColor Red
-            Write-Host '  Accepted: claude, codex, gemini, glm, kimi, groq, copilot' -ForegroundColor DarkGray
-            Write-Host '  Example : 8sync gsd setup --model codex+glm' -ForegroundColor DarkGray
-            Write-Host ''
-            return $null
-        }
 
-        $providerId = $aliases[$token]
+        $providerId = Resolve-ProviderToken -Token $token
+        if ($providerId -eq $false) { return $null }
+        if ($null -eq $providerId) { continue }
         if ($seen.Add($providerId)) { $result.Add($providerId) }
     }
 
