@@ -41,23 +41,28 @@ function Invoke-GsdSetupWizard {
     Write-Host ''
 
     # ── Step 2: cost/balance mode ─────────────────────────────────────────────
-    Write-Host '  Step 2/3  Cost preference' -ForegroundColor Yellow
+    Write-Host '  Step 2/3  Cost tier' -ForegroundColor Yellow
     Write-Host ''
-    Write-Host '  [1] balanced  Sonnet/Codex 5.3 first, Opus as last fallback only (recommended, cheaper)' -ForegroundColor Cyan
-    Write-Host '  [2] quality   Opus first on every call (highest quality, more expensive)' -ForegroundColor White
+    Write-Host '  [1] balanced  Coding models lead exec; sonnet leads planning; haiku as cheap fallback  (recommended)' -ForegroundColor Cyan
+    Write-Host '  [2] heavy     Sonnet leads planning + exec; strongest anthropic coverage' -ForegroundColor White
+    Write-Host '  [3] light     Coding models lead everything; anthropic only as last resort' -ForegroundColor White
     Write-Host ''
     $costRaw = Read-Host '  Choice [1]'
-    $balance = $costRaw.Trim() -ne '2'   # default = balanced
+    $tierArg = switch ($costRaw.Trim()) {
+        '2' { 'heavy' }
+        '3' { 'light' }
+        default { 'balanced' }
+    }
 
     Write-Host ''
-    Write-Host ('  -> Mode: {0}' -f $(if ($balance) { 'balanced (sonnet primary)' } else { 'quality (opus primary)' })) -ForegroundColor Cyan
+    Write-Host ("  -> Tier: {0}" -f $tierArg) -ForegroundColor Cyan
     Write-Host ''
 
     # ── Step 3: confirm ───────────────────────────────────────────────────────
     Write-Host '  Step 3/3  Confirm' -ForegroundColor Yellow
     Write-Host ''
     Write-Host ("  Stack   : {0}" -f $modelArg) -ForegroundColor White
-    Write-Host ("  Mode    : {0}" -f $(if ($balance) { 'balanced' } else { 'quality' })) -ForegroundColor White
+    Write-Host ("  Tier    : {0}" -f $tierArg) -ForegroundColor White
     Write-Host ("  Write to: {0}" -f (Join-Path (Resolve-GsdHome) 'PREFERENCES.md')) -ForegroundColor DarkGray
     Write-Host ''
     $confirm = Read-Host '  Apply? [Y/n]'
@@ -67,7 +72,7 @@ function Invoke-GsdSetupWizard {
         return
     }
 
-    Invoke-GsdSetupFromModel -Model $modelArg -DryRun:$DryRun -Balance:$balance
+    Invoke-GsdSetupFromModel -Model $modelArg -DryRun:$DryRun -Tier $tierArg
 }
 
 function Invoke-GsdPlanPicker {
@@ -227,8 +232,19 @@ function Show-GsdHelp {
     Write-Host '        Apply existing curated preset directly.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Rule of thumb' -ForegroundColor Cyan
-    Write-Host '    no +  => single brand only' -ForegroundColor DarkGray
-    Write-Host '    +     => mixed stack; 8sync auto-builds role routing from strengths/cost' -ForegroundColor DarkGray
+    Write-Host '    no +        => single brand only' -ForegroundColor DarkGray
+    Write-Host '    +           => mixed stack; 8sync auto-builds role routing from strengths/cost' -ForegroundColor DarkGray
+    Write-Host '    --balance             => alias for --tier=balanced (backward compat)' -ForegroundColor DarkGray
+    Write-Host '    --tier=light          => coding models lead all roles; anthropic as last resort' -ForegroundColor DarkGray
+    Write-Host '    --tier=balanced       => sonnet leads planning; coding models lead exec (default)' -ForegroundColor DarkGray
+    Write-Host '    --tier=heavy          => opus leads planning; sonnet leads exec (best quality)' -ForegroundColor DarkGray
+    Write-Host '    --planning=opus       => pin opus as primary for planning/research' -ForegroundColor DarkGray
+    Write-Host '    --planning=<model>    => pin any model as primary for planning/research' -ForegroundColor DarkGray
+    Write-Host '    --exec=kimi           => pin kimi as primary for execution' -ForegroundColor DarkGray
+    Write-Host '    --exec=<model>        => pin any model as primary for execution' -ForegroundColor DarkGray
+    Write-Host '    +only=<brand>  => pin brand as primary in every role; others remain as fallbacks' -ForegroundColor DarkGray
+    Write-Host '                      example: --model claude+codex --only=claude' -ForegroundColor DarkGray
+    Write-Host '                   => claude-opus/sonnet primary, codex falls back when claude unavailable' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Detailed guide: 8sync gsd setup --model    or    8sync gsd setup --plan' -ForegroundColor DarkGray
     Write-Host '  Verify: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray

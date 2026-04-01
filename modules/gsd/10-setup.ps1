@@ -6,8 +6,11 @@
 function Build-GsdModelsYaml {
     param(
         [string[]]$Selected,
-        [switch]$Balance,       # sonnet first, opus last fallback (save cost)
-        [string]$GgufRef = ''   # "provider/model" for running gguf server
+        [string]$Tier = 'balanced',   # light | balanced | heavy  (--balance = alias for balanced)
+        [string]$GgufRef = '',        # "provider/model" for running gguf server
+        [string]$OnlyProvider = '',   # pin this provider as primary in every role list
+        [string]$PlanningPin = '',    # --planning=<model>  override primary for planning/research
+        [string]$ExecPin = ''         # --exec=<model>      override primary for execution
     )
 
     $has = @{}
@@ -29,60 +32,85 @@ function Build-GsdModelsYaml {
     $comp  = [System.Collections.Generic.List[string]]::new()
     $sub   = [System.Collections.Generic.List[string]]::new()
 
-    # ── planning / research ───────────────────────────────────────────────────
-    # --balance: sonnet first, opus pushed to last (10-20x cheaper per call)
-    # default  : opus first (most capable)
-    if ($hasAnthropic) {
-        $primary = if ($Balance) { 'anthropic/claude-sonnet-4-6' } else { 'anthropic/claude-opus-4-6' }
-        $plan.Add($primary); $rsrch.Add($primary)
+    # ── Model strength + cost matrix ──────────────────────────────────────────
+    # Cost tier cheap -> expensive:
+    #   gguf(free) < groq(free) < zai < kimi < codex/gemini/copilot < haiku < sonnet < opus
+    #
+    # Provider strengths by role:
+    #   planning/research  : anthropic > gemini/copilot > codex > kimi > zai > groq
+    #   execution          : kimi > codex > zai > gemini/copilot > groq > anthropic(fallback)
+    #   exec_simple/completion/subagent : gguf > groq > zai-flash > kimi > codex > haiku
+    #
+    # Tier controls anthropic model selection within each role:
+    #   heavy    : sonnet leads planning + sonnet as exec fallback
+    #   balanced : sonnet leads planning, haiku as exec fallback, coding models lead exec
+    #   light    : anthropic skipped as primary; haiku only as last-resort fallback
+    #
+    # --planning=<model>  overrides the primary for planning/research (any tier)
+    # --exec=<model>      overrides the primary for execution (any tier)
+    # gguf always leads exec_simple / subagent / completion when present
+    # opus NEVER appears unless explicitly pinned via --planning=opus or --exec=opus
+
+    # Tier-based anthropic model selection
+    # Opus NEVER appears by default — only via --planning=opus or --exec=opus
+    $anthropicPlanPrimary = switch ($Tier) {
+        'light'  { $null }                          # anthropic skipped as primary
+        default  { 'anthropic/claude-sonnet-4-6' }  # balanced & heavy both use sonnet
     }
+    $anthropicExecFallback = switch ($Tier) {
+        'heavy'  { 'anthropic/claude-sonnet-4-6' }  # sonnet as exec fallback for heavy
+        'light'  { $null }                          # no anthropic in exec for light
+        default  { 'anthropic/claude-haiku-4-5' }   # balanced: haiku as cheap fallback
+    }
+
+    # ── planning / research ───────────────────────────────────────────────────
+    # Sonnet leads planning when anthropic present. Other selected providers fill fallback slots.
+    if ($hasAnthropic -and $anthropicPlanPrimary) { $plan.Add($anthropicPlanPrimary); $rsrch.Add($anthropicPlanPrimary) }
     if ($hasCopilot) { $plan.Add('github-copilot/gemini-3.1-pro-preview');   $rsrch.Add('github-copilot/gemini-3.1-pro-preview') }
     if ($hasGemini)  { $plan.Add('google-gemini-cli/gemini-3.1-pro-preview'); $rsrch.Add('google-gemini-cli/gemini-3.1-pro-preview') }
     if ($hasCodex)   { $plan.Add('openai-codex/gpt-5.3-codex');               $rsrch.Add('openai-codex/gpt-5.3-codex') }
-    if ($hasZai)     { $plan.Add('zai/glm-5.1'); $rsrch.Add('zai/glm-5.1');   $plan.Add('zai/glm-5-turbo') }
+    if ($hasKimi)    { $plan.Add('kimi-coding/kimi-k2.5') }
+    if ($hasZai)     { $plan.Add('zai/glm-5.1'); $rsrch.Add('zai/glm-5.1') }
     if ($hasGroq)    { $plan.Add('groq/kimi-k2-instruct') }
-    # when balanced: expensive models as last fallback only
-    if ($hasAnthropic -and $Balance) {
-        $plan.Add('anthropic/claude-opus-4-6');    $rsrch.Add('anthropic/claude-opus-4-6')
-        $plan.Add('anthropic/claude-sonnet-4-6') | Out-Null  # dedup will remove
-    }
-    if ($hasAnthropic -and -not $Balance) {
-        $plan.Add('anthropic/claude-sonnet-4-6'); $rsrch.Add('anthropic/claude-sonnet-4-6')
-    }
 
     # ── execution ─────────────────────────────────────────────────────────────
+    # coding-specialist models lead; gguf before anthropic (free > paid); anthropic fills last
     if ($hasKimi)    { $exec.Add('kimi-coding/kimi-k2.5') }
     if ($hasZai)     { $exec.Add('zai/glm-5.1'); $exec.Add('zai/glm-5-turbo'); $exec.Add('zai/glm-5') }
-    if ($hasAnthropic){ $exec.Add('anthropic/claude-sonnet-4-6'); $exec.Add('anthropic/claude-haiku-4-5') }
+    if ($hasCodex)   { $exec.Add('openai-codex/gpt-5.3-codex') }
     if ($hasCopilot) { $exec.Add('github-copilot/gemini-3.1-pro-preview') }
     if ($hasGemini -and -not $hasCopilot) { $exec.Add('google-gemini-cli/gemini-3.1-pro-preview') }
     if ($hasGroq)    { $exec.Add('groq/kimi-k2-instruct') }
-    if ($hasGguf)    { $exec.Add($GgufRef) }   # local server as cheap final fallback
+    if ($hasGguf)    { $exec.Add($GgufRef) }   # local free — before paid anthropic
+    if ($hasAnthropic -and $anthropicExecFallback) { $exec.Add($anthropicExecFallback) }
 
-    # ── execution_simple (cheap fan-out workers — gguf + free tiers first) ───
-    if ($hasGguf)    { $simp.Add($GgufRef) }
-    if ($hasGroq)    { $simp.Add('groq/kimi-k2-instruct'); $simp.Add('groq/qwen/qwen3-32b') }
-    if ($hasZai)     { $simp.Add('zai/glm-4.7'); $simp.Add('zai/glm-4.7-flash'); $simp.Add('zai/glm-4.6') }
-    if ($hasKimi)    { $simp.Add('kimi-coding/kimi-k2.5') }
-    if ($hasAnthropic){ $simp.Add('anthropic/claude-haiku-4-5') }
+    # ── execution_simple: gguf/groq/flash always lead ─────────────────────────
+    if ($hasGguf)      { $simp.Add($GgufRef) }
+    if ($hasGroq)      { $simp.Add('groq/kimi-k2-instruct'); $simp.Add('groq/qwen/qwen3-32b') }
+    if ($hasZai)       { $simp.Add('zai/glm-4.7'); $simp.Add('zai/glm-4.7-flash'); $simp.Add('zai/glm-4.6') }
+    if ($hasKimi)      { $simp.Add('kimi-coding/kimi-k2.5') }
+    if ($hasCodex)     { $simp.Add('openai-codex/gpt-5.3-codex') }
+    if ($hasAnthropic) { $simp.Add('anthropic/claude-haiku-4-5') }
     if ($hasGemini -and $simp.Count -eq 0) { $simp.Add('google-gemini-cli/gemini-3.1-pro-preview') }
 
-    # ── completion ────────────────────────────────────────────────────────────
-    if ($hasAnthropic){ $comp.Add('anthropic/claude-sonnet-4-6'); $comp.Add('anthropic/claude-haiku-4-5') }
-    if ($hasZai)     { $comp.Add('zai/glm-5.1'); $comp.Add('zai/glm-5-turbo') }
-    if ($hasKimi)    { $comp.Add('kimi-coding/kimi-k2.5') }
-    if ($hasGemini)  { $comp.Add('google-gemini-cli/gemini-3.1-pro-preview') }
-    if ($hasCopilot) { $comp.Add('github-copilot/gemini-3.1-pro-preview') }
-    if ($hasGroq)    { $comp.Add('groq/kimi-k2-instruct') }
-    if ($hasGguf)    { $comp.Add($GgufRef) }
+    # ── completion: speed > quality, gguf/groq/flash first, NO sonnet (too expensive) ──
+    if ($hasGguf)      { $comp.Add($GgufRef) }
+    if ($hasGroq)      { $comp.Add('groq/kimi-k2-instruct') }
+    if ($hasZai)       { $comp.Add('zai/glm-5-turbo'); $comp.Add('zai/glm-5.1') }
+    if ($hasKimi)      { $comp.Add('kimi-coding/kimi-k2.5') }
+    if ($hasCodex)     { $comp.Add('openai-codex/gpt-5.3-codex') }
+    if ($hasAnthropic) { $comp.Add('anthropic/claude-haiku-4-5') }
+    if ($hasGemini)    { $comp.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+    if ($hasCopilot)   { $comp.Add('github-copilot/gemini-3.1-pro-preview') }
 
-    # ── subagent (parallel tasks — cost matters most, gguf + cheap first) ────
-    if ($hasGguf)    { $sub.Add($GgufRef) }
-    if ($hasKimi)    { $sub.Add('kimi-coding/kimi-k2.5') }
-    if ($hasZai)     { $sub.Add('zai/glm-5.1'); $sub.Add('zai/glm-5-turbo'); $sub.Add('zai/glm-5'); $sub.Add('zai/glm-4.7'); $sub.Add('zai/glm-4.7-flash') }
-    if ($hasGroq)    { $sub.Add('groq/kimi-k2-instruct'); $sub.Add('groq/qwen/qwen3-32b') }
-    if ($hasAnthropic){ $sub.Add('anthropic/claude-haiku-4-5') }
-    if ($hasCopilot) { $sub.Add('github-copilot/gemini-3.1-pro-preview') }
+    # ── subagent: parallel cheap tasks, gguf first, NO sonnet (too expensive for parallel) ──
+    if ($hasGguf)      { $sub.Add($GgufRef) }
+    if ($hasKimi)      { $sub.Add('kimi-coding/kimi-k2.5') }
+    if ($hasZai)       { $sub.Add('zai/glm-5.1'); $sub.Add('zai/glm-5-turbo'); $sub.Add('zai/glm-5'); $sub.Add('zai/glm-4.7'); $sub.Add('zai/glm-4.7-flash') }
+    if ($hasGroq)      { $sub.Add('groq/kimi-k2-instruct'); $sub.Add('groq/qwen/qwen3-32b') }
+    if ($hasCodex)     { $sub.Add('openai-codex/gpt-5.3-codex') }
+    if ($hasAnthropic) { $sub.Add('anthropic/claude-haiku-4-5') }
+    if ($hasCopilot)   { $sub.Add('github-copilot/gemini-3.1-pro-preview') }
     if ($hasGemini -and -not $hasCopilot) { $sub.Add('google-gemini-cli/gemini-3.1-pro-preview') }
 
     function Dedupe { param($L); $seen=[System.Collections.Generic.HashSet[string]]::new(); $L|Where-Object{$seen.Add($_)} }
@@ -90,6 +118,30 @@ function Build-GsdModelsYaml {
     $plan  = @(Dedupe $plan);  $rsrch = @(Dedupe $rsrch)
     $exec  = @(Dedupe $exec);  $simp  = @(Dedupe $simp)
     $comp  = @(Dedupe $comp);  $sub   = @(Dedupe $sub)
+
+    # --planning=<model>: pin specific model as primary for planning/research
+    if (-not [string]::IsNullOrWhiteSpace($PlanningPin)) {
+        $plan  = @($PlanningPin) + @($plan  | Where-Object { $_ -ne $PlanningPin })
+        $rsrch = @($PlanningPin) + @($rsrch | Where-Object { $_ -ne $PlanningPin })
+    }
+
+    # --exec=<model>: pin specific model as primary for execution
+    if (-not [string]::IsNullOrWhiteSpace($ExecPin)) {
+        $exec = @($ExecPin) + @($exec | Where-Object { $_ -ne $ExecPin })
+    }
+
+    # --only=<provider>: move provider to front of every list
+    if ($OnlyProvider -ne '') {
+        function PinProvider { param([string[]]$List, [string]$Pin)
+            @($List | Where-Object { $_ -like "$Pin/*" }) + @($List | Where-Object { $_ -notlike "$Pin/*" })
+        }
+        $plan  = PinProvider $plan  $OnlyProvider
+        $rsrch = PinProvider $rsrch $OnlyProvider
+        $exec  = PinProvider $exec  $OnlyProvider
+        $simp  = PinProvider $simp  $OnlyProvider
+        $comp  = PinProvider $comp  $OnlyProvider
+        $sub   = PinProvider $sub   $OnlyProvider
+    }
 
     if ($plan.Count -eq 0 -or $exec.Count -eq 0) { return $null }
 
@@ -101,12 +153,15 @@ function Build-GsdModelsYaml {
     }
 
     $providers = $Selected + $(if ($hasGguf) { @('gguf') } else { @() })
-    $modeNote  = if ($Balance) { ' [balance: sonnet primary, opus=last fallback]' } else { '' }
-    $ggufNote  = if ($hasGguf) { "`n  # gguf: $GgufRef -> exec_simple + subagent + completion (free local)" } else { '' }
-    $codexNote = if ($hasCodex){ "`n  # codex: planning/research only (exec omitted to avoid rate-limit stalls)" } else { '' }
+    $tierNote  = if ($Tier -ne 'balanced') { " [tier=$Tier]" } else { '' }
+    $onlyNote  = if ($OnlyProvider -ne '') { " [only=$OnlyProvider]" } else { '' }
+    $planNote  = if ($PlanningPin -ne '')  { " [planning=$PlanningPin]" } else { '' }
+    $execNote  = if ($ExecPin -ne '')      { " [exec=$ExecPin]" } else { '' }
+    $ggufNote  = if ($hasGguf) { "`n  # gguf: $GgufRef -> exec + exec_simple + subagent + completion (free local)" } else { '' }
+    $codexNote = if ($hasCodex){ "`n  # codex: planning/research/execution" } else { '' }
 
     return @"
-  # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')  providers: $($providers -join '+')$modeNote$ggufNote$codexNote
+  # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')  providers: $($providers -join '+')$tierNote$onlyNote$planNote$execNote$ggufNote$codexNote
 
 $(Fmt 'planning'         $plan)
 
@@ -122,45 +177,6 @@ $(Fmt 'subagent'         $sub)
 "@.TrimEnd()
 }
 
-
-    $planModels     = [System.Collections.Generic.List[string]]::new()
-    $researchModels = [System.Collections.Generic.List[string]]::new()
-    $execModels     = [System.Collections.Generic.List[string]]::new()
-    $simpleModels   = [System.Collections.Generic.List[string]]::new()
-    $compModels     = [System.Collections.Generic.List[string]]::new()
-    $subModels      = [System.Collections.Generic.List[string]]::new()
-
-    if ($hasAnthropic) { $planModels.Add('anthropic/claude-opus-4-6'); $researchModels.Add('anthropic/claude-opus-4-6') }
-    if ($hasCopilot)   { $planModels.Add('github-copilot/gemini-3.1-pro-preview'); $researchModels.Add('github-copilot/gemini-3.1-pro-preview') }
-    if ($hasGemini)    { $planModels.Add('google-gemini-cli/gemini-3.1-pro-preview'); $researchModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
-    if ($hasAnthropic) { $planModels.Add('anthropic/claude-sonnet-4-6'); $researchModels.Add('anthropic/claude-sonnet-4-6') }
-    if ($hasCodex)     { $planModels.Add('openai-codex/gpt-5.3-codex'); $researchModels.Add('openai-codex/gpt-5.3-codex') }
-    if ($hasZai)       { $planModels.Add('zai/glm-5.1'); $researchModels.Add('zai/glm-5.1'); $planModels.Add('zai/glm-5-turbo') }
-    if ($hasGroq)      { $planModels.Add('groq/kimi-k2-instruct') }
-
-    if ($hasKimi)      { $execModels.Add('kimi-coding/kimi-k2.5') }
-    if ($hasZai)       { $execModels.Add('zai/glm-5.1'); $execModels.Add('zai/glm-5-turbo'); $execModels.Add('zai/glm-5') }
-    if ($hasAnthropic) { $execModels.Add('anthropic/claude-sonnet-4-6'); $execModels.Add('anthropic/claude-haiku-4-5') }
-    if ($hasCopilot)   { $execModels.Add('github-copilot/gemini-3.1-pro-preview') }
-    if ($hasGemini -and -not $hasCopilot) { $execModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
-    if ($hasGroq)      { $execModels.Add('groq/kimi-k2-instruct') }
-
-    if ($hasGroq)      { $simpleModels.Add('groq/kimi-k2-instruct'); $simpleModels.Add('groq/qwen/qwen3-32b') }
-    if ($hasZai)       { $simpleModels.Add('zai/glm-4.7'); $simpleModels.Add('zai/glm-4.7-flash'); $simpleModels.Add('zai/glm-4.6') }
-    if ($hasKimi)      { $simpleModels.Add('kimi-coding/kimi-k2.5') }
-    if ($hasAnthropic) { $simpleModels.Add('anthropic/claude-haiku-4-5') }
-    if ($hasGemini -and $simpleModels.Count -eq 0) { $simpleModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
-
-    if ($hasAnthropic) { $compModels.Add('anthropic/claude-sonnet-4-6'); $compModels.Add('anthropic/claude-haiku-4-5') }
-    if ($hasZai)       { $compModels.Add('zai/glm-5.1'); $compModels.Add('zai/glm-5-turbo') }
-    if ($hasKimi)      { $compModels.Add('kimi-coding/kimi-k2.5') }
-    if ($hasGemini)    { $compModels.Add('google-gemini-cli/gemini-3.1-pro-preview') }
-    if ($hasCopilot)   { $compModels.Add('github-copilot/gemini-3.1-pro-preview') }
-    if ($hasGroq)      { $compModels.Add('groq/kimi-k2-instruct') }
-
-    if ($hasKimi)      { $subModels.Add('kimi-coding/kimi-k2.5') }
-    if ($hasZai)       { $subModels.Add('zai/glm-5.1'); $subModels.Add('zai/glm-5-turbo'); $subModels.Add('zai/glm-5'); $subModels.Add('zai/glm-4.7'); $subModels.Add('zai/glm-4.7-flash') }
-    if ($hasGroq)      { $subModels.Add('groq/kimi-k2-instruct'); $subModels.Add('groq/qwen/qwen3-32b') }
 
 function Write-GsdPreferencesModels {
     param(
@@ -229,7 +245,7 @@ function Write-GsdPreferencesModels {
 function Resolve-GsdModelStack {
     param([string]$ModelArg)
 
-    if ([string]::IsNullOrWhiteSpace($ModelArg)) { return @() }
+    if ([string]::IsNullOrWhiteSpace($ModelArg)) { return $null }
 
     $aliases = @{
         'claude'='anthropic'; 'anthropic'='anthropic'
@@ -248,31 +264,60 @@ function Resolve-GsdModelStack {
         'gguf'='gguf'
     }
 
-    $result = [System.Collections.Generic.List[string]]::new()
-    $seen   = [System.Collections.Generic.HashSet[string]]::new()
+    $result      = [System.Collections.Generic.List[string]]::new()
+    $seen        = [System.Collections.Generic.HashSet[string]]::new()
+    $onlyId      = ''
+
+    # Split on '+'; handle "only=<brand>" tokens separately
     $tokens = $ModelArg -split '\+' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ -ne '' }
+    $brandTokens = [System.Collections.Generic.List[string]]::new()
 
     foreach ($token in $tokens) {
+        if ($token -like 'only=*') {
+            $onlyAlias = $token -replace '^only=', ''
+            if (-not $aliases.ContainsKey($onlyAlias)) {
+                Write-Host ("  [error] Unknown brand in only='{0}'. Accepted: claude codex gemini glm kimi groq copilot" -f $onlyAlias) -ForegroundColor Red
+                return $null
+            }
+            $onlyId = $aliases[$onlyAlias]
+        } else {
+            $brandTokens.Add($token)
+        }
+    }
+
+    foreach ($token in $brandTokens) {
         if (-not $aliases.ContainsKey($token)) {
             Write-Host ("  [error] Unknown brand '{0}'. Accepted: claude codex gemini glm kimi groq copilot gguf" -f $token) -ForegroundColor Red
             return $null
         }
         $id = $aliases[$token]
-        # single-token with defaults only when it's the only token and has defaults
-        if ($tokens.Count -eq 1 -and $singleDefaults.ContainsKey($id)) {
+        # single-token with defaults only when it's the only brand token and has defaults
+        if ($brandTokens.Count -eq 1 -and $singleDefaults.ContainsKey($id)) {
             $singleDefaults[$id] -split ',' | ForEach-Object { if ($seen.Add($_)) { $result.Add($_) } }
         } else {
             if ($seen.Add($id)) { $result.Add($id) }
         }
     }
-    return $result.ToArray()
+
+    if ($result.Count -eq 0) { return $null }
+
+    # Validate only= brand is actually in the provider list
+    if ($onlyId -ne '' -and -not $seen.Contains($onlyId)) {
+        Write-Host ("  [warn] only={0} not in provider list -- ignored. Add it explicitly: --model=claude+codex --only=claude" -f $onlyId) -ForegroundColor DarkYellow
+        $onlyId = ''
+    }
+
+    return @{ Providers = $result.ToArray(); OnlyProvider = $onlyId }
 }
 
 function Invoke-GsdSetupFromModel {
     param(
         [Parameter(Mandatory)] [string]$Model,
-        [switch]$DryRun,
-        [switch]$Balance
+        [string]$Only = '',
+        [string]$Tier = 'balanced',   # light | balanced | heavy
+        [string]$PlanningPin = '',    # --planning=<provider/model>
+        [string]$ExecPin = '',        # --exec=<provider/model>
+        [switch]$DryRun
     )
 
     # Detect +gguf token and resolve to running server
@@ -280,6 +325,11 @@ function Invoke-GsdSetupFromModel {
     $hasGgufToken = $modelTokens -contains 'gguf'
     $modelWithoutGguf = ($modelTokens | Where-Object { $_ -ne 'gguf' }) -join '+'
     if (-not $modelWithoutGguf) { $modelWithoutGguf = $Model }
+
+    # Inject --only as a +only=<brand> token if not already present in the model string
+    if (-not [string]::IsNullOrWhiteSpace($Only) -and $modelWithoutGguf -notlike '*only=*') {
+        $modelWithoutGguf = "$modelWithoutGguf+only=$($Only.ToLowerInvariant())"
+    }
 
     $ggufRef = ''
     if ($hasGgufToken) {
@@ -292,26 +342,32 @@ function Invoke-GsdSetupFromModel {
             Write-Host ("  [gguf] Found: {0}  ->  {1}" -f $server.BaseUrl, $ggufRef) -ForegroundColor Green
         } else {
             Write-Host '  [gguf] No server found on ports 8080/8081/8082/1234/11434 -- gguf omitted.' -ForegroundColor DarkYellow
-            Write-Host '         Start one first: 8sync gguf serve ... --balance' -ForegroundColor DarkGray
+            Write-Host '         Start one first: 8sync gguf serve ...' -ForegroundColor DarkGray
         }
     }
 
     $selectedProviders = Resolve-GsdModelStack -ModelArg $modelWithoutGguf
-    if ($null -eq $selectedProviders -or $selectedProviders.Count -eq 0) { return }
+    if ($null -eq $selectedProviders) { return }
+    $providerList  = $selectedProviders.Providers
+    $onlyProvider  = $selectedProviders.OnlyProvider
+    if ($null -eq $providerList -or $providerList.Count -eq 0) { return }
 
-    $yaml = Build-GsdModelsYaml -Selected $selectedProviders -Balance:$Balance -GgufRef $ggufRef
+    $yaml = Build-GsdModelsYaml -Selected $providerList -Tier $Tier -GgufRef $ggufRef -OnlyProvider $onlyProvider -PlanningPin $PlanningPin -ExecPin $ExecPin
     if (-not $yaml) {
         Write-Host '  [error] Could not generate routing. Include at least one exec-capable brand: glm kimi claude gemini groq.' -ForegroundColor Red
         return
     }
 
-    $destPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
-    $modeStr  = if ($Balance) { ' --balance' } else { '' }
-    $ggufStr  = if ($ggufRef) { "  gguf     : $ggufRef`n" } else { '' }
+    $destPath   = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
+    $tierStr    = if ($Tier -ne 'balanced') { " --tier=$Tier" } else { '' }
+    $onlyStr    = if ($onlyProvider) { " --only=$onlyProvider" } else { '' }
+    $planStr    = if ($PlanningPin)  { " --planning=$PlanningPin" } else { '' }
+    $execStr    = if ($ExecPin)      { " --exec=$ExecPin" } else { '' }
+    $ggufStr    = if ($ggufRef) { "  gguf     : $ggufRef`n" } else { '' }
 
     Write-Host ''
-    Write-Host ("  [gsd] Setup  model={0}{1}" -f $Model, $modeStr) -ForegroundColor Cyan
-    Write-Host ("  providers: {0}" -f ($selectedProviders -join ', ')) -ForegroundColor DarkGray
+    Write-Host ("  [gsd] Setup  model={0}{1}{2}{3}{4}" -f $Model, $tierStr, $onlyStr, $planStr, $execStr) -ForegroundColor Cyan
+    Write-Host ("  providers: {0}" -f ($providerList -join ', ')) -ForegroundColor DarkGray
     if ($ggufStr) { Write-Host ($ggufStr.TrimEnd()) -ForegroundColor DarkGray }
     Write-Host ("  dest     : {0}" -f $destPath) -ForegroundColor DarkGray
     Write-Host ''

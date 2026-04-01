@@ -116,7 +116,7 @@ function Get-GgufAutoPreset {
             Preset     = 'max'
             n_gpu_layers = 99
             cpu_threads  = [math]::Max(2, $threads - 6)
-            ctx_size     = if ($Hw.RamGB -ge 32) { 65536 } else { 32768 }
+            ctx_size     = if ($Hw.RamGB -ge 32) { 65536 } elseif ($Hw.RamGB -ge 16) { 32768 } else { 16384 }
             parallel     = if ($vram -ge 20) { 8 } elseif ($vram -ge 16) { 4 } else { 2 }
             batch_size   = 512
             flash_attn   = $true
@@ -149,7 +149,7 @@ function Get-GgufAutoPreset {
             Preset     = 'low'
             n_gpu_layers = 0
             cpu_threads  = $Hw.CpuThreads   # CPU-only: use all logical threads
-            ctx_size     = 4096
+            ctx_size     = 8192              # code tasks need 8K minimum even on CPU
             parallel     = 1
             batch_size   = 64
             flash_attn   = $false
@@ -601,6 +601,17 @@ function Get-GgufBalancedConfig {
     # Detect layer count from GGUF metadata if gguf-dump / llama-gguf available
     # Fallback: estimate from file size class (rough but useful)
     $modelGB = $modelBytes / 1GB
+
+    # Parse quantization from filename for better bytes-per-layer estimation
+    $fileName = [System.IO.Path]::GetFileName($ModelPath).ToUpperInvariant()
+    $quantMult = 1.0   # Q4_K_M baseline
+    if     ($fileName -match 'Q8_0|Q8_1|F16')          { $quantMult = 2.0 }
+    elseif ($fileName -match 'Q6_K|Q6_K_L')            { $quantMult = 1.5 }
+    elseif ($fileName -match 'Q5_K|Q5_K_M|Q5_K_L')     { $quantMult = 1.25 }
+    elseif ($fileName -match 'Q3_K|Q3_K_M|Q3_K_S|IQ3') { $quantMult = 0.75 }
+    elseif ($fileName -match 'Q2_K|IQ2|IQ1')           { $quantMult = 0.5 }
+    # else Q4_K_M / Q4_K_S / default -> 1.0
+
     if     ($modelGB -ge 60) { $modelLayers = 80 }   # 70B
     elseif ($modelGB -ge 30) { $modelLayers = 60 }   # 34-40B
     elseif ($modelGB -ge 12) { $modelLayers = 40 }   # 13-20B
@@ -623,8 +634,12 @@ function Get-GgufBalancedConfig {
     $vramFreeBytes = [long]$vramFreeMiB * 1MB
 
     # ── Decide GPU layers ────────────────────────────────────────────────────
-    # Leave 300 MiB headroom for CUDA overhead + KV cache
-    $headroomBytes   = [long]300MB
+    # Headroom scales with model size and context:
+    #   base 300MB + ~50MB per 4K ctx + ~100MB per 10B params
+    # This covers CUDA overhead + KV cache growth
+    $estimatedParams = $modelGB / $quantMult   # rough param-GB estimate
+    $headroomMB      = 300 + [math]::Min(500, [int]($estimatedParams * 10))
+    $headroomBytes   = [long]$headroomMB * 1MB
     $usableVram      = [math]::Max([long]0, $vramFreeBytes - $headroomBytes)
     $maxLayersByVram = if ($bytesPerLayer -gt 0) { [math]::Floor($usableVram / $bytesPerLayer) } else { 0 }
     $gpuLayers       = [math]::Min($maxLayersByVram, $modelLayers)
@@ -640,21 +655,27 @@ function Get-GgufBalancedConfig {
     # Enable only when enough VRAM for full GPU offload (reduces CPU pressure)
     $flashAttn = ($gpuLayers -ge $modelLayers)
 
-    # ── Context size: balance memory vs. quality ─────────────────────────────
-    # Each ctx token ~= (n_embd * 2 * 2 bytes) KV cache.
-    # Use 4096 as baseline, scale up when VRAM free > 1.5 GB.
-    $ctxSize = 4096
-    if ($vramFreeMiB -ge 2500) { $ctxSize = 8192  }
-    if ($vramFreeMiB -ge 4000) { $ctxSize = 16384 }
+    # ── Context size: optimized for code tasks (need 8K+ minimum) ────────────
+    # Code files, diffs, and multi-file context need larger windows.
+    # Scale with VRAM free after model loading.
+    $vramAfterModel = $vramFreeMiB - [int]($gpuLayers * $bytesPerLayer / 1MB)
+    $ctxSize = 8192   # minimum for code tasks (up from 4096)
+    if ($vramAfterModel -ge 2000) { $ctxSize = 16384 }
+    if ($vramAfterModel -ge 4000) { $ctxSize = 32768 }
+    if ($vramAfterModel -ge 8000) { $ctxSize = 65536 }
 
-    # ── CPU threads: leave 2 threads for OS / other processes ────────────────
-    $cpuThreads = [math]::Max(2, [math]::Min($Hw.CpuCores, 8))
+    # ── CPU threads: code gen is mostly single-sequence, benefit from more threads
+    $cpuThreads = [math]::Max(2, [math]::Min($Hw.CpuCores, 10))
+    # If full GPU offload, CPU only does prompt processing — fewer threads needed
+    if ($gpuLayers -ge $modelLayers) {
+        $cpuThreads = [math]::Max(2, [math]::Min($Hw.CpuCores - 2, 6))
+    }
 
     # ── Batch size: bigger = more throughput, more VRAM ──────────────────────
-    $batchSize = if ($gpuLayers -ge $modelLayers) { 256 } elseif ($gpuLayers -gt 8) { 128 } else { 64 }
+    $batchSize = if ($gpuLayers -ge $modelLayers) { 512 } elseif ($gpuLayers -gt 8) { 256 } else { 128 }
 
     # ── Parallel slots: 1 unless lots of VRAM left ───────────────────────────
-    $parallel = if ($vramFreeMiB -ge 4000) { 2 } else { 1 }
+    $parallel = if ($vramAfterModel -ge 4000) { 2 } else { 1 }
 
     return [pscustomobject]@{
         n_gpu_layers      = [int]$gpuLayers
@@ -668,11 +689,13 @@ function Get-GgufBalancedConfig {
         vram_free_mib     = [int]$vramFreeMiB
         gpu_temp_c        = [int]$gpuTempC
         thermal_throttled = $thermalThrottled
+        headroom_mb       = [int]$headroomMB
+        quant_mult        = $quantMult
         notes             = $(
             $pct = if ($modelLayers -gt 0) { [math]::Round($gpuLayers * 100 / $modelLayers) } else { 0 }
             $throttleNote = if ($thermalThrottled) { ' [thermal-throttle: GPU >75C]' } else { '' }
-            "model {0}GB  {1}/{2} layers on GPU ({3}%)  {4}MB free VRAM  temp {5}C{6}" -f `
-                [math]::Round($modelGB,1), $gpuLayers, $modelLayers, $pct, $vramFreeMiB, $gpuTempC, $throttleNote
+            "model {0}GB  {1}/{2} layers on GPU ({3}%)  {4}MB free VRAM  temp {5}C  headroom {6}MB{7}" -f `
+                [math]::Round($modelGB,1), $gpuLayers, $modelLayers, $pct, $vramFreeMiB, $gpuTempC, $headroomMB, $throttleNote
         )
     }
 }

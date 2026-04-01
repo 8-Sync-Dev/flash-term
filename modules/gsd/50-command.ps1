@@ -105,7 +105,7 @@ function Invoke-GsdCommand {
     $dryRun   = $Rest -contains '--dry-run'
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
-    $balance  = $Rest -contains '--balance'
+    $balance  = $Rest -contains '--balance'   # alias for --tier=balanced (backward compat)
 
     $planArg = ''
     $planIdx = [Array]::IndexOf($Rest, '--plan')
@@ -133,6 +133,46 @@ function Invoke-GsdCommand {
         }
     }
 
+    # --only accepts both "--only=claude" and "--only claude"
+    $onlyArg = ''
+    $onlyEq  = $Rest | Where-Object { $_ -like '--only=*' } | Select-Object -First 1
+    if ($onlyEq) {
+        $onlyArg = $onlyEq -replace '^--only=', ''
+    } else {
+        $onlyIdx = [Array]::IndexOf($Rest, '--only')
+        if ($onlyIdx -ge 0 -and $onlyIdx + 1 -lt $Rest.Count -and $Rest[$onlyIdx + 1] -notlike '--*') {
+            $onlyArg = $Rest[$onlyIdx + 1]
+        }
+    }
+
+    # --tier=light|balanced|heavy  (--balance is alias for balanced)
+    $tierArg = 'balanced'
+    $tierEq  = $Rest | Where-Object { $_ -like '--tier=*' } | Select-Object -First 1
+    if ($tierEq) {
+        $tierArg = ($tierEq -replace '^--tier=', '').ToLowerInvariant()
+        if ($tierArg -notin @('light','balanced','heavy')) {
+            Write-Host ("  [error] Unknown tier '{0}'. Accepted: light balanced heavy" -f $tierArg) -ForegroundColor Red
+            return
+        }
+    } elseif ($balance) {
+        $tierArg = 'balanced'
+    } else {
+        $tierIdx = [Array]::IndexOf($Rest, '--tier')
+        if ($tierIdx -ge 0 -and $tierIdx + 1 -lt $Rest.Count -and $Rest[$tierIdx + 1] -notlike '--*') {
+            $tierArg = $Rest[$tierIdx + 1].ToLowerInvariant()
+        }
+    }
+
+    # --planning=<provider/model>  pin primary for planning/research
+    $planningPin = ''
+    $planningEq  = $Rest | Where-Object { $_ -like '--planning=*' } | Select-Object -First 1
+    if ($planningEq) { $planningPin = $planningEq -replace '^--planning=', '' }
+
+    # --exec=<provider/model>  pin primary for execution
+    $execPin = ''
+    $execEq  = $Rest | Where-Object { $_ -like '--exec=*' } | Select-Object -First 1
+    if ($execEq) { $execPin = $execEq -replace '^--exec=', '' }
+
     $sub = if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
     switch ($sub) {
         'setup' {
@@ -141,7 +181,7 @@ function Invoke-GsdCommand {
             } elseif ($pickMode) {
                 Invoke-GsdPlanPicker -DryRun:$dryRun
             } elseif (-not [string]::IsNullOrWhiteSpace($modelArg)) {
-                Invoke-GsdSetupFromModel -DryRun:$dryRun -Model $modelArg -Balance:$balance
+                Invoke-GsdSetupFromModel -DryRun:$dryRun -Model $modelArg -Tier $tierArg -Only $onlyArg -PlanningPin $planningPin -ExecPin $execPin
             } elseif (-not [string]::IsNullOrWhiteSpace($planArg)) {
                 Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg
             } else {
