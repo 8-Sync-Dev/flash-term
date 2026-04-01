@@ -67,7 +67,12 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode --dry-run'          'Preview files that would be exported/applied'
     Write-HintRow '8sync opencode apply --force'      'Force overwrite target folder before copy + npm i'
     Write-HintRow '8sync opencode status'             'Show source/bundle/npm readiness'
-    Write-HintRow '8sync opencode help'               'Show this help'
+    Write-Host ''
+    Write-Host '  -- GGUF / local model -----------------------------------------------' -ForegroundColor DarkGray
+    Write-HintRow '8sync opencode connect gguf'       'Add running llama-server as provider in opencode.json'
+    Write-HintRow '8sync opencode connect gguf --port N'  'Probe specific port (default: 8080,8081,8082,1234,11434)'
+    Write-HintRow '8sync opencode connect gguf --name id' 'Override provider id (default: gguf-local-<model>)'
+    Write-HintRow '8sync opencode connect gguf --dry-run' 'Preview change without writing'
     Write-Host ''
     Write-Host '  Target machine setup:' -ForegroundColor DarkGray
     Write-Host '    1) Copy/extract bundle folder (default: oc-bundle) into machine' -ForegroundColor DarkGray
@@ -339,6 +344,119 @@ function Invoke-OpencodeStatus {
     Write-Host ''
 }
 
+function Invoke-OpencodeConnectGguf {
+    param([string[]]$Rest)
+
+    $dryRun  = $Rest -contains '--dry-run'
+    $portArg = ''
+    $nameArg = ''
+    for ($i = 0; $i -lt $Rest.Count; $i++) {
+        switch ($Rest[$i]) {
+            '--port' { $portArg = $Rest[++$i] }
+            '--name' { $nameArg = $Rest[++$i] }
+        }
+    }
+
+    Write-Host ''
+    Write-HintSection 'OpenCode -- Connect GGUF server as provider'
+    Write-Host ''
+
+    # ── Find opencode.json ────────────────────────────────────────────────────
+    $ocConfigPath = Join-Path $HOME '.config\opencode\opencode.json'
+    if (-not (Test-Path $ocConfigPath)) {
+        Write-Host ("  [!!] opencode.json not found: {0}" -f $ocConfigPath) -ForegroundColor Red
+        Write-Host '       Run: 8sync opencode apply   to install first.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # ── Probe llama-server ────────────────────────────────────────────────────
+    Write-Host '  Probing llama-server on localhost...' -ForegroundColor DarkGray
+    $ports = if ($portArg) { @([int]$portArg) } else { @(8080, 8081, 8082, 1234, 11434) }
+    $found = $null
+    foreach ($p in $ports) {
+        try {
+            $r = Invoke-RestMethod "http://localhost:$p/v1/models" -TimeoutSec 5 -ErrorAction Stop
+            $found = [pscustomobject]@{ Port = $p; BaseUrl = "http://localhost:$p/v1"; Models = @($r.data) }
+            break
+        } catch {}
+    }
+
+    if (-not $found) {
+        $tried = if ($portArg) { "port $portArg" } else { 'ports 8080, 8081, 8082, 1234, 11434' }
+        Write-Host ("  [!!] No llama-server found on {0}." -f $tried) -ForegroundColor Red
+        Write-Host '       Start one first: 8sync gguf serve ... --balance' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ("  [OK] Server found on port {0}  ->  {1}" -f $found.Port, $found.BaseUrl) -ForegroundColor Green
+
+    $firstModelId = if ($found.Models -and $found.Models[0].id) { $found.Models[0].id } else { 'gguf-local' }
+    $stem       = [System.IO.Path]::GetFileNameWithoutExtension($firstModelId) -replace '[^a-zA-Z0-9\-]', '-'
+    $providerId = if ($nameArg) { $nameArg } else { "gguf-local-$stem" }
+    $modelId    = $firstModelId
+
+    Write-Host ("  Provider  : {0}" -f $providerId) -ForegroundColor DarkGray
+    Write-Host ("  Model id  : {0}" -f $modelId) -ForegroundColor DarkGray
+    Write-Host ("  Base URL  : {0}" -f $found.BaseUrl) -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($dryRun) {
+        Write-Host '  [dry-run] opencode.json not modified. Remove --dry-run to apply.' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    # ── Patch opencode.json ───────────────────────────────────────────────────
+    try {
+        $raw  = Get-Content $ocConfigPath -Raw -Encoding UTF8
+        $data = $raw | ConvertFrom-Json
+
+        if (-not $data.PSObject.Properties['provider']) {
+            $data | Add-Member -NotePropertyName 'provider' -NotePropertyValue ([pscustomobject]@{})
+        }
+
+        # OpenCode provider schema (from opencode.ai/config.json):
+        # - options.apiKey + options.baseURL for auth/endpoint
+        # - models is an OBJECT (key = model id), not an array
+        # - no top-level apiKey field
+        $providerEntry = [pscustomobject]@{
+            options = [pscustomobject]@{
+                apiKey  = 'local'
+                baseURL = $found.BaseUrl
+            }
+            models  = [pscustomobject]@{
+                $modelId = [pscustomobject]@{
+                    name          = [System.IO.Path]::GetFileNameWithoutExtension($modelId) + ' (local GGUF)'
+                    attachment    = $false
+                    reasoning     = $false
+                }
+            }
+        }
+
+        $data.provider | Add-Member -NotePropertyName $providerId -NotePropertyValue $providerEntry -Force
+
+        if ($dryRun) {
+            Write-Host '  [dry-run] Would write:' -ForegroundColor DarkYellow
+            Write-Host ($data | ConvertTo-Json -Depth 10 | Select-Object -First 30) -ForegroundColor DarkGray
+        } else {
+            $data | ConvertTo-Json -Depth 10 | Set-Content $ocConfigPath -Encoding UTF8
+            Write-Host ("  [OK] Written to {0}" -f $ocConfigPath) -ForegroundColor Green
+        }
+    } catch {
+        Write-Host ("  [error] Failed to patch opencode.json: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  Next steps:' -ForegroundColor DarkGray
+    Write-Host ("    /model  -> select '{0}/{1}'" -f $providerId, $modelId) -ForegroundColor DarkGray
+    Write-Host '    Or set in opencode.json: "model": "<providerId>/<modelId>"' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Invoke-OpencodeCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -364,14 +482,24 @@ function Invoke-OpencodeCommand {
     }
 
     switch ($sub) {
-        'export' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
-        'apply' { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
+        'export'    { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
+        'apply'     { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
         'reinstall' { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force }
-        'install' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun } # backward-compatible alias
-        'setup' { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }   # backward-compatible alias
+        'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
+        'setup'     { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
-        'status' { Invoke-OpencodeStatus }
-        'help' { Show-OpencodeHelp }
-        default { Show-OpencodeHelp }
+        'status'    { Invoke-OpencodeStatus }
+        'connect' {
+            $conSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
+            switch ($conSub) {
+                'gguf'  { Invoke-OpencodeConnectGguf -Rest ($Rest | Select-Object -Skip 2) }
+                default {
+                    Write-Host '  Usage: 8sync opencode connect gguf [--port N] [--name <id>] [--dry-run]' -ForegroundColor DarkGray
+                    Write-Host '  Adds running llama-server as a provider in ~/.config/opencode/opencode.json' -ForegroundColor DarkGray
+                }
+            }
+        }
+        'help'    { Show-OpencodeHelp }
+        default   { Show-OpencodeHelp }
     }
 }

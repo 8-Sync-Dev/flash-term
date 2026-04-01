@@ -62,11 +62,11 @@ function Register-8SyncCompleter {
             hx    = @('lang','wrap','opacity','theme','bg','health','help')
             theme = @('status','list','help','style','scene','focus','cinematic','showcase','neon_glass','ice_glass','mint_glass')
             sync  = @('--check','--help')
-            clean = @('help','--days','--dry-run','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
+            clean = @('help','--days','--dry-run','--envs','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
-            opencode = @('export','apply','reinstall','install','setup','status','--dry-run','--force','help')
-            gsd      = @('setup','key','keys','status','add','remove','help','--dry-run','--auto','--plan','--model','--pick','max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini','glm-max','claude','codex','gemini','glm','kimi','groq','copilot','--port','--name','zai','kimi-coding','groq','google','anthropic','openai','tavily','brave','ollama','context7','jina')
-            gguf     = @('serve','chat','presets','profiles','detect','hint','save','status','stop','help','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--dry-run')
+            opencode = @('export','apply','reinstall','install','setup','status','connect','help','--dry-run','--force','gguf','--port','--name')
+            gsd      = @('setup','key','keys','status','add','connect','remove','help','--dry-run','--auto','--plan','--model','--pick','max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini','glm-max','claude','codex','gemini','glm','kimi','groq','copilot','--port','--name','zai','kimi-coding','groq','google','anthropic','openai','tavily','brave','ollama','context7','jina')
+            gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
         }
 
         if ($count -le 1) {

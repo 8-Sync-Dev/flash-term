@@ -87,6 +87,14 @@ function Invoke-CleanPath {
         return [long]0
     }
 
+    # Hard safety guard: never clean a path that looks like a project/workspace root.
+    # This protects against accidental TEMP/TMP overrides or misconfigured cache paths.
+    if (Test-IsProjectPath -Path $Path) {
+        Clear-SpinnerLine
+        Write-Host ('  skipped (project path): {0}' -f $Path) -ForegroundColor DarkGray
+        return [long]0
+    }
+
     $cutoff   = if ($StaleDays -gt 0) { (Get-Date).AddDays(-$StaleDays) } else { $null }
     $freed    = [long]0
     $count    = 0
@@ -304,13 +312,14 @@ function Test-IsPythonVenv {
 }
 
 function Test-IsInsideGitRepo {
-    # Returns $true if $Path itself, or any ancestor up to $HOME, contains a .git directory.
+    # Returns $true if $Path itself, or any ancestor up to $HOME, contains a .git marker.
     # This prevents accidental deletion of build artifacts inside active git repos.
+    # Supports both normal repos (.git directory) and git worktrees (.git file).
     param([Parameter(Mandatory)][string]$Path)
     $current = $Path
-    $home    = $HOME.TrimEnd('\','/')
-    while ($current -and $current.Length -ge $home.Length) {
-        if ([System.IO.Directory]::Exists((Join-Path $current '.git'))) { return $true }
+    $homePath = $HOME.TrimEnd('\','/')
+    while ($current -and $current.Length -ge $homePath.Length) {
+        if (Test-Path (Join-Path $current '.git')) { return $true }
         $parent = [System.IO.Path]::GetDirectoryName($current)
         if (-not $parent -or $parent -eq $current) { break }
         $current = $parent
@@ -336,9 +345,9 @@ function Test-IsProjectPath {
     )
 
     $current = $Path
-    $home    = $HOME.TrimEnd('\','/')
-    while ($current -and $current.Length -ge $home.Length) {
-        if ([System.IO.Directory]::Exists((Join-Path $current '.git'))) { return $true }
+    $homePath = $HOME.TrimEnd('\','/')
+    while ($current -and $current.Length -ge $homePath.Length) {
+        if (Test-Path (Join-Path $current '.git')) { return $true }
 
         foreach ($marker in $markerFiles) {
             try {
@@ -487,6 +496,10 @@ function Remove-VenvDir {
                 Write-Host ('  skipped (project path): {0}' -f $Path) -ForegroundColor DarkGray
                 return 0
             }
+            if (Test-IsInsideGitRepo -Path $Path) {
+                Write-Host ('  skipped (git repo): {0}' -f $Path) -ForegroundColor DarkGray
+                return 0
+            }
             Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
         }
         $script:CleanTotalFreed += $size
@@ -495,6 +508,135 @@ function Remove-VenvDir {
         Clear-SpinnerLine
         return [long]0
     }
+}
+
+function Get-ManagedEnvCandidates {
+    param([int]$StaleDays = 7)
+
+    $roots = @(
+        (Join-Path $HOME '.conda\envs'),
+        (Join-Path $HOME 'miniconda3\envs'),
+        (Join-Path $HOME 'miniforge3\envs'),
+        (Join-Path $HOME 'mambaforge\envs'),
+        (Join-Path $HOME 'anaconda3\envs'),
+        (Join-Path $HOME 'anaconda\envs'),
+        (Join-Path $env:LOCALAPPDATA 'conda\conda\envs'),
+        (Join-Path $env:USERPROFILE 'AppData\Local\miniconda3\envs'),
+        (Join-Path $env:APPDATA 'uv\tools')
+    ) | Where-Object { Test-Path $_ } | Select-Object -Unique
+
+    if ($roots.Count -eq 0) { return @() }
+
+    $venvDirs = Find-VenvDirs -SearchRoots $roots -StaleDays $StaleDays
+    $activeVenv = $env:VIRTUAL_ENV
+    $activeConda = $env:CONDA_PREFIX
+
+    $rows = foreach ($path in $venvDirs) {
+        $size = Get-DirSizeBytes -Path $path
+        $last = [System.IO.Directory]::GetLastWriteTime($path)
+        $days = [int]([datetime]::Now - $last).TotalDays
+        $isActive = $false
+        if ($activeVenv -and $path -eq $activeVenv) { $isActive = $true }
+        if ($activeConda -and $path -eq $activeConda) { $isActive = $true }
+
+        [pscustomobject]@{
+            Path       = $path
+            Name       = [System.IO.Path]::GetFileName($path)
+            Parent     = [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($path))
+            LastWrite  = $last
+            DaysOld    = $days
+            SizeBytes  = $size
+            Size       = Format-Bytes $size
+            IsActive   = $isActive
+        }
+    }
+
+    return @($rows | Sort-Object IsActive, DaysOld, SizeBytes -Descending)
+}
+
+function Invoke-EnvCleanCommand {
+    param([string[]]$Rest, [switch]$DryRun, [int]$StaleDays = 7)
+
+    $doDelete = $Rest -contains '--delete'
+    $doAll = $Rest -contains '--all'
+
+    Write-Host ''
+    Write-Host ('  8sync clean --envs  stale > {0}d' -f $StaleDays) -ForegroundColor Cyan
+    Write-Host '  List-first mode: no env is deleted unless explicitly selected.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $items = Get-ManagedEnvCandidates -StaleDays $StaleDays
+    if ($items.Count -eq 0) {
+        Write-Host '  No stale managed envs found.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        $n = $i + 1
+        $it = $items[$i]
+        $activeTag = if ($it.IsActive) { 'ACTIVE' } else { '' }
+        $activeColor = if ($it.IsActive) { 'Yellow' } else { 'DarkGray' }
+        Write-Host ('  [{0,2}] {1}/{2,-25} {3,8}  {4,4}d  {5:u} {6}' -f $n, $it.Parent, $it.Name, $it.Size, $it.DaysOld, $it.LastWrite, $activeTag) -ForegroundColor White
+        if ($activeTag) {
+            Write-Host '       ^ currently active in this shell (will be skipped)' -ForegroundColor $activeColor
+        }
+    }
+
+    $total = ($items | Measure-Object SizeBytes -Sum).Sum
+    Write-Host ''
+    Write-Host ('  Total: {0} env(s), {1}' -f $items.Count, (Format-Bytes ([long]$total))) -ForegroundColor DarkGray
+
+    if (-not $doDelete) {
+        Write-Host '  Tip: run `8sync clean --envs --delete` to select envs for deletion.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $targets = @()
+    if ($doAll) {
+        $targets = @($items)
+    } else {
+        Write-Host ''
+        $raw = Read-Host '  Select indices to delete (comma-separated, Enter=cancel)'
+        if (-not $raw) {
+            Write-Host '  Cancelled.' -ForegroundColor DarkGray
+            Write-Host ''
+            return
+        }
+
+        $indexes = $raw.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ } | Select-Object -Unique
+        foreach ($idx in $indexes) {
+            if ($idx -ge 1 -and $idx -le $items.Count) {
+                $targets += $items[$idx - 1]
+            }
+        }
+    }
+
+    if ($targets.Count -eq 0) {
+        Write-Host '  No valid selection.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $freed = [long]0
+    Write-Host ''
+    foreach ($t in $targets) {
+        if ($t.IsActive) {
+            Write-Host ('  skipped (active env): {0}' -f $t.Path) -ForegroundColor Yellow
+            continue
+        }
+        if (Test-IsProjectPath -Path $t.Path -or (Test-IsInsideGitRepo -Path $t.Path)) {
+            Write-Host ('  skipped (project/git): {0}' -f $t.Path) -ForegroundColor DarkGray
+            continue
+        }
+        $freed += [long](Remove-VenvDir -Path $t.Path -DryRun:$DryRun)
+    }
+
+    Write-Host ''
+    $verb = if ($DryRun) { 'would free' } else { 'freed' }
+    Write-Host ('  >> env cleanup {0} {1}' -f $verb, (Format-Bytes $freed)) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
+    Write-Host ''
 }
 
 # ---------------------------------------------------------------------------
@@ -834,9 +976,13 @@ function Invoke-DeleteDevArtifacts {
         }
 
         foreach ($item in $items) {
-            # Safety: never touch anything inside a git repo
+            # Safety: never touch anything inside a git repo or project/workspace path
             if (Test-IsInsideGitRepo -Path $item.Path) {
                 Write-Host ('  skipped (git repo): {0}' -f $item.Path) -ForegroundColor DarkGray
+                continue
+            }
+            if (Test-IsProjectPath -Path $item.Path) {
+                Write-Host ('  skipped (project path): {0}' -f $item.Path) -ForegroundColor DarkGray
                 continue
             }
 
@@ -1689,29 +1835,7 @@ function Invoke-SystemClean {
     # -- Stale envs ------------------------------------------------------
     Write-Host ''
     Write-Host ('  STALE ENVS  (>{0}d)' -f $StaleDays) -ForegroundColor Yellow
-    $searchRoots = @(
-        (Join-Path $HOME '.conda\envs'),
-        (Join-Path $HOME 'miniconda3\envs'),
-        (Join-Path $HOME 'miniforge3\envs'),
-        (Join-Path $HOME 'mambaforge\envs'),
-        (Join-Path $HOME 'anaconda3\envs'),
-        (Join-Path $HOME 'anaconda\envs'),
-        (Join-Path $env:LOCALAPPDATA 'conda\conda\envs'),
-        (Join-Path $env:USERPROFILE 'AppData\Local\miniconda3\envs'),
-        (Join-Path $env:APPDATA 'uv\tools')
-    ) | Where-Object { Test-Path $_ } | Select-Object -Unique
-
-    if ($searchRoots.Count -gt 0) {
-        $venvDirs = Find-VenvDirs -SearchRoots $searchRoots -StaleDays $StaleDays
-        Clear-SpinnerLine
-        if ($venvDirs.Count -gt 0) {
-            foreach ($venv in $venvDirs) {
-                Remove-VenvDir -Path $venv -DryRun:$DryRun | Out-Null
-            }
-        } else {
-            Write-Host '  no stale envs' -ForegroundColor DarkGray
-        }
-    }
+    Write-Host '  skipped by default for safety. Use: 8sync clean --envs (list) or --envs --delete (manual select).' -ForegroundColor DarkGray
 
     # -- RAM + network flush --------------------------------------------
     Write-Host ''
@@ -1750,6 +1874,7 @@ function Invoke-CleanCommand {
     $doScan      = $false
     $doAudit     = $false
     $doLoop      = $false
+    $doEnvs      = $false
     $loopArgs    = @()
     $scanPaths   = @()
 
@@ -1763,12 +1888,16 @@ function Invoke-CleanCommand {
             '--scan'     { $doScan = $true }
             '--audit'    { $doAudit = $true }
             '--loop'     { $doLoop = $true }
+            '--envs'     { $doEnvs = $true }
             { $_ -in '--help', 'help', '-h' } {
                 Write-Host ''
                 Write-HintSection 'CLEAN -- deep system / cache / global env / RAM / disk'
                 Write-HintRow '8sync clean'                          'Full clean: temp/cache/global env/RAM/disk (stale > 7d)'
                 Write-HintRow '8sync clean --days N'                 'Custom stale threshold  e.g. --days 14'
                 Write-HintRow '8sync clean --dry-run'                'Preview only -- nothing deleted'
+                Write-HintRow '8sync clean --envs'                   'List stale managed envs (no deletion)'
+                Write-HintRow '8sync clean --envs --delete'          'Delete selected env(s) by index (manual confirm)'
+                Write-HintRow '8sync clean --envs --delete --all'    'Delete all listed stale envs (still skips active/project)'
                 Write-HintRow '8sync clean --projects'               'Report stale git repos only (deletion disabled for safety)'
                 Write-HintRow '8sync clean --projects --all'         'Alias accepted but ignored (deletion disabled)'
                 Write-HintRow '8sync clean --projects --days N'      'Stale threshold for projects (default: 90d)'
@@ -1810,6 +1939,11 @@ function Invoke-CleanCommand {
                 $loopArgs += $Rest[$j]
             }
         }
+    }
+
+    if ($doEnvs) {
+        Invoke-EnvCleanCommand -Rest $Rest -DryRun:$dryRun -StaleDays $staleDays
+        return
     }
 
     if ($doProjects) {

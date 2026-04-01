@@ -88,6 +88,7 @@ function Invoke-GsdAddGguf {
     $providerEntry = [pscustomobject]@{
         baseUrl = $server.BaseUrl
         api     = 'openai-completions'
+        apiKey  = 'local'       # required field by GSD schema; llama-server ignores it
         models  = @($modelEntries)
     }
 

@@ -1,12 +1,20 @@
 {
   "_comment": "Saved server profiles — written by '8sync gguf save' or edited manually.",
   "_hint": "Each key is a profile name usable with '8sync gguf serve --profile <name>'.",
-
   "profiles": {
     "qwen3-local": {
       "description": "Qwen3.5-4B Q8 on local RTX — fast chat, code tasks",
       "engine_path": "C:\\Users\\Admin\\Documents\\llama-cpp-cu13\\src-run",
       "model_path": "C:\\Users\\Admin\\Downloads\\Qwen3.5-4B.Q8_0.gguf",
+      "preset": "high",
+      "host": "0.0.0.0",
+      "port": 8080,
+      "extra_args": []
+    },
+    "local": {
+      "description": "local profile",
+      "engine_path": "C:\\Users\\Admin\\Documents\\llamacpp\\run",
+      "model_path": "C:\\Users\\Admin\\Documents\\llamacpp\\model.gguf",
       "preset": "high",
       "host": "0.0.0.0",
       "port": 8080,

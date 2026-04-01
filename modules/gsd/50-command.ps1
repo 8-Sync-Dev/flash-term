@@ -151,6 +151,13 @@ function Invoke-GsdCommand {
                 default { Write-Host '  Usage: 8sync gsd add gguf [--port N] [--name <id>] [--dry-run]' -ForegroundColor DarkGray }
             }
         }
+        'connect' {
+            $conSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
+            switch ($conSub) {
+                'gguf'  { Invoke-GsdAddGguf -Rest ($Rest | Select-Object -Skip 2) }
+                default { Write-Host '  Usage: 8sync gsd connect gguf [--port N] [--name <id>] [--dry-run]' -ForegroundColor DarkGray }
+            }
+        }
         'remove' {
             $remSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
             switch ($remSub) {
