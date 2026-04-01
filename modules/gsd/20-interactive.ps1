@@ -2,6 +2,74 @@
 # 8sync gsd -- help, picker, and key management
 # =============================================================================
 
+function Invoke-GsdSetupWizard {
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-HintSection 'GSD Setup Wizard'
+    Write-Host ''
+
+    # ── Step 1: which brands/providers? ──────────────────────────────────────
+    Write-Host '  Step 1/3  Which AI providers do you have access to?' -ForegroundColor Yellow
+    Write-Host '  (brands available, pick what you have logged in or keyed)' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  [1] claude    Anthropic -- best planning/review (OAuth, free)' -ForegroundColor White
+    Write-Host '  [2] codex     OpenAI Codex -- planning-heavy stack (OAuth, free) [planning only]' -ForegroundColor White
+    Write-Host '  [3] gemini    Google Gemini CLI -- large ctx, research (OAuth, free)' -ForegroundColor White
+    Write-Host '  [4] glm       ZAI/GLM -- strong exec+cost balance (API key)' -ForegroundColor White
+    Write-Host '  [5] kimi      Kimi Coding -- fast cheap subagent (API key)' -ForegroundColor White
+    Write-Host '  [6] groq      Groq -- free fast workers (API key)' -ForegroundColor White
+    Write-Host '  [7] gguf      Local llama-server (auto-detect running server)' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Type numbers separated by space or + (e.g. "1 2" or "claude+codex+gguf")' -ForegroundColor DarkGray
+    Write-Host '  Press Enter for recommended: claude+codex' -ForegroundColor DarkGray
+    Write-Host ''
+    $raw = Read-Host '  Providers'
+    if ([string]::IsNullOrWhiteSpace($raw)) { $raw = 'claude+codex' }
+
+    # normalise: "1 2 3" -> brand names, "claude+codex" -> passthrough
+    $numMap = @{ '1'='claude'; '2'='codex'; '3'='gemini'; '4'='glm'; '5'='kimi'; '6'='groq'; '7'='gguf' }
+    $tokens = $raw -replace '\+', ' ' -split '\s+' | Where-Object { $_ -ne '' }
+    $brands = $tokens | ForEach-Object {
+        $t = $_.ToLowerInvariant()
+        if ($numMap.ContainsKey($t)) { $numMap[$t] } else { $t }
+    }
+    $modelArg = ($brands | Select-Object -Unique) -join '+'
+
+    Write-Host ''
+    Write-Host ("  -> Stack: {0}" -f $modelArg) -ForegroundColor Cyan
+    Write-Host ''
+
+    # ── Step 2: cost/balance mode ─────────────────────────────────────────────
+    Write-Host '  Step 2/3  Cost preference' -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host '  [1] balanced  Sonnet/Codex 5.3 first, Opus as last fallback only (recommended, cheaper)' -ForegroundColor Cyan
+    Write-Host '  [2] quality   Opus first on every call (highest quality, more expensive)' -ForegroundColor White
+    Write-Host ''
+    $costRaw = Read-Host '  Choice [1]'
+    $balance = $costRaw.Trim() -ne '2'   # default = balanced
+
+    Write-Host ''
+    Write-Host ('  -> Mode: {0}' -f $(if ($balance) { 'balanced (sonnet primary)' } else { 'quality (opus primary)' })) -ForegroundColor Cyan
+    Write-Host ''
+
+    # ── Step 3: confirm ───────────────────────────────────────────────────────
+    Write-Host '  Step 3/3  Confirm' -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host ("  Stack   : {0}" -f $modelArg) -ForegroundColor White
+    Write-Host ("  Mode    : {0}" -f $(if ($balance) { 'balanced' } else { 'quality' })) -ForegroundColor White
+    Write-Host ("  Write to: {0}" -f (Join-Path (Resolve-GsdHome) 'PREFERENCES.md')) -ForegroundColor DarkGray
+    Write-Host ''
+    $confirm = Read-Host '  Apply? [Y/n]'
+    if ($confirm -match '^[Nn]') {
+        Write-Host '  Cancelled.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Invoke-GsdSetupFromModel -Model $modelArg -DryRun:$DryRun -Balance:$balance
+}
+
 function Invoke-GsdPlanPicker {
     param([switch]$DryRun)
 

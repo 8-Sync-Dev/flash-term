@@ -102,9 +102,10 @@ function Invoke-GsdCommand {
         [string[]]$Rest
     )
 
-    $dryRun = $Rest -contains '--dry-run'
+    $dryRun   = $Rest -contains '--dry-run'
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
+    $balance  = $Rest -contains '--balance'
 
     $planArg = ''
     $planIdx = [Array]::IndexOf($Rest, '--plan')
@@ -112,19 +113,23 @@ function Invoke-GsdCommand {
         if ($planIdx + 1 -lt $Rest.Count -and $Rest[$planIdx + 1] -notlike '--*') {
             $planArg = $Rest[$planIdx + 1]
         } else {
-            Show-GsdPlans
-            return
+            Show-GsdPlans; return
         }
     }
 
+    # --model accepts both "--model=claude+codex" and "--model claude+codex"
     $modelArg = ''
-    $modelIdx = [Array]::IndexOf($Rest, '--model')
-    if ($modelIdx -ge 0) {
-        if ($modelIdx + 1 -lt $Rest.Count -and $Rest[$modelIdx + 1] -notlike '--*') {
-            $modelArg = $Rest[$modelIdx + 1]
-        } else {
-            Show-GsdPlans
-            return
+    $modelEq  = $Rest | Where-Object { $_ -like '--model=*' } | Select-Object -First 1
+    if ($modelEq) {
+        $modelArg = $modelEq -replace '^--model=', ''
+    } else {
+        $modelIdx = [Array]::IndexOf($Rest, '--model')
+        if ($modelIdx -ge 0) {
+            if ($modelIdx + 1 -lt $Rest.Count -and $Rest[$modelIdx + 1] -notlike '--*') {
+                $modelArg = $Rest[$modelIdx + 1]
+            } else {
+                Show-GsdPlans; return
+            }
         }
     }
 
@@ -136,9 +141,12 @@ function Invoke-GsdCommand {
             } elseif ($pickMode) {
                 Invoke-GsdPlanPicker -DryRun:$dryRun
             } elseif (-not [string]::IsNullOrWhiteSpace($modelArg)) {
-                Invoke-GsdSetupFromModel -DryRun:$dryRun -Model $modelArg
-            } else {
+                Invoke-GsdSetupFromModel -DryRun:$dryRun -Model $modelArg -Balance:$balance
+            } elseif (-not [string]::IsNullOrWhiteSpace($planArg)) {
                 Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg
+            } else {
+                # No flags — launch interactive wizard
+                Invoke-GsdSetupWizard -DryRun:$dryRun
             }
         }
         'status' { Invoke-GsdStatus }
