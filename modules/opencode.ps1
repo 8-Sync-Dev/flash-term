@@ -151,6 +151,64 @@ function Write-OpencodeConfig {
     }
 }
 
+function Resolve-OpencodeProjectConfigPath {
+    return Join-Path $PWD.Path '.planning\config.json'
+}
+
+function Read-OpencodeProjectConfig {
+    $path = Resolve-OpencodeProjectConfigPath
+    if (-not (Test-Path $path)) {
+        return [pscustomobject]@{
+            Path = $path
+            Data = [pscustomobject]@{}
+        }
+    }
+
+    try {
+        $raw = Get-Content $path -Raw -Encoding UTF8
+        $json = $raw | ConvertFrom-Json
+        return [pscustomobject]@{
+            Path = $path
+            Data = $json
+        }
+    } catch {
+        Write-Host ("  [error] Failed to read project config: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $null
+    }
+}
+
+function Write-OpencodeProjectConfig {
+    param(
+        [Parameter(Mandatory)] [object]$Config,
+        [Parameter(Mandatory)] [string]$Path,
+        [switch]$DryRun
+    )
+
+    $json = $Config | ConvertTo-Json -Depth 20
+    if ($DryRun) {
+        Write-Host ''
+        Write-Host '  [dry-run] Would write:' -ForegroundColor Yellow
+        Write-Host ("  {0}" -f $Path) -ForegroundColor DarkGray
+        $json -split "`n" | ForEach-Object { Write-Host ("  {0}" -f $_) -ForegroundColor DarkGray }
+        Write-Host ''
+        return $true
+    }
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) {
+        $null = New-Item -Path $dir -ItemType Directory -Force
+    }
+
+    try {
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
+        return $true
+    } catch {
+        Write-Host ("  [error] Failed to write project config: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
+}
+
 function Resolve-OpencodeVariantForModel {
     param([string]$Model)
 
@@ -416,6 +474,53 @@ function Build-OpencodeSetupSpecFromBrands {
     }
 }
 
+function Build-OpencodeProjectOverrides {
+    param([Parameter(Mandatory)] [object]$Spec)
+
+    return [ordered]@{
+        'gsd-planner' = $Spec.Plan
+        'gsd-executor' = $Spec.Build
+        'gsd-phase-researcher' = $Spec.Small
+        'gsd-verifier' = $Spec.Plan
+    }
+}
+
+function Apply-OpencodeProjectSetupSpec {
+    param(
+        [Parameter(Mandatory)] [object]$Spec,
+        [switch]$DryRun
+    )
+
+    $project = Read-OpencodeProjectConfig
+    if (-not $project) {
+        return
+    }
+
+    $config = $project.Data
+    $targetPath = $project.Path
+    $overrides = Build-OpencodeProjectOverrides -Spec $Spec
+
+    $modelOverrides = Ensure-OpencodeObjectProperty -Parent $config -Name 'model_overrides'
+    foreach ($entry in $overrides.GetEnumerator()) {
+        Set-OpencodeProperty -Parent $modelOverrides -Name $entry.Key -Value $entry.Value
+    }
+
+    Write-Host ''
+    Write-Host ("  [opencode] Project setup  {0}={1}" -f $Spec.Source, $Spec.Name) -ForegroundColor Cyan
+    Write-Host ("  dest      : {0}" -f $targetPath) -ForegroundColor DarkGray
+    foreach ($entry in $overrides.GetEnumerator()) {
+        Write-Host ("  {0,-18} {1}" -f ($entry.Key + ':'), $entry.Value) -ForegroundColor DarkGray
+    }
+    Write-Host ''
+
+    $ok = Write-OpencodeProjectConfig -Config $config -Path $targetPath -DryRun:$DryRun
+    if ($ok -and -not $DryRun) {
+        Write-Host ("  [ok] {0}" -f $targetPath) -ForegroundColor Green
+        Write-Host '  Verify: inspect .planning/config.json and restart the project session if needed.' -ForegroundColor DarkGray
+        Write-Host ''
+    }
+}
+
 function Apply-OpencodeSetupSpec {
     param(
         [Parameter(Mandatory)] [object]$Spec,
@@ -621,8 +726,69 @@ function Invoke-OpencodeSetupCli {
     }
 }
 
+function Invoke-OpencodeSetupProject {
+    param([string[]]$Rest)
+
+    $dryRun = $Rest -contains '--dry-run'
+    $modelArg = ''
+    $planArg = ''
+
+    for ($i = 0; $i -lt $Rest.Count; $i++) {
+        $token = $Rest[$i]
+        switch -Regex ($token) {
+            '^--model=(.+)$' { $modelArg = $matches[1]; continue }
+            '^--plan=(.+)$'  { $planArg = $matches[1]; continue }
+            '^--dry-run$'    { continue }
+            '^--model$' {
+                if ($i + 1 -lt $Rest.Count) { $modelArg = $Rest[++$i] }
+                continue
+            }
+            '^--plan$' {
+                if ($i + 1 -lt $Rest.Count) { $planArg = $Rest[++$i] }
+                continue
+            }
+        }
+    }
+
+    if ($modelArg -and $planArg) {
+        Write-Host ''
+        Write-Host '  [error] Use either --model or --plan for project setup, not both.' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    if (-not $modelArg -and -not $planArg) {
+        Write-Host ''
+        Write-HintSection 'OpenCode project setup -- generate .planning/config.json'
+        Write-HintRow '8sync opencode setup project --model=claude+codex' 'Write model_overrides for planner/executor/researcher/verifier'
+        Write-HintRow '8sync opencode setup project --plan=claude-max'    'Use a named stack preset for project-level overrides'
+        Write-HintRow '8sync opencode setup project --dry-run --plan=claude-codex-gemini' 'Preview .planning/config.json changes'
+        Write-Host ''
+        return
+    }
+
+    $spec = $null
+    if ($planArg) {
+        $spec = Resolve-OpencodePlanPreset -Plan $planArg
+    } else {
+        $brands = Resolve-OpencodeModelStack -ModelArg $modelArg
+        if ($brands) {
+            $spec = Build-OpencodeSetupSpecFromBrands -Brands $brands
+        }
+    }
+
+    if ($spec) {
+        Apply-OpencodeProjectSetupSpec -Spec $spec -DryRun:$dryRun
+    }
+}
+
 function Invoke-OpencodeSetup {
     param([string[]]$Rest)
+
+    if ($Rest.Count -gt 0 -and $Rest[0].ToLowerInvariant() -eq 'project') {
+        Invoke-OpencodeSetupProject -Rest ($Rest | Select-Object -Skip 1)
+        return
+    }
 
     $dryRun = $Rest -contains '--dry-run'
     $modelArg = ''
@@ -663,6 +829,7 @@ function Invoke-OpencodeSetup {
     if (-not $modelArg -and -not $planArg) {
         Write-Host ''
         Write-HintSection 'OpenCode setup -- generate ~/.config/opencode/opencode.json'
+        Write-HintRow '8sync opencode setup project --plan=claude-max'    'Write .planning/config.json model_overrides for this repo'
         Write-HintRow '8sync opencode setup cli'                  'Interactive wizard: choose preset or provider mix step by step'
         Write-HintRow '8sync opencode setup --model=claude+codex' 'Use Claude for plan, Codex for build, set small_model automatically'
         Write-HintRow '8sync opencode setup --plan=claude-max'    'Claude-only preset: Opus plan, Sonnet build, Haiku small_model'
@@ -696,6 +863,7 @@ function Invoke-OpencodeSetup {
 function Show-OpencodeHelp {
     Write-Host ''
     Write-HintSection 'OPENCODE -- OpenCode config setup + portable bundle flows'
+    Write-HintRow '8sync opencode setup project --plan=claude-max'    'Write .planning/config.json model_overrides for this repo'
     Write-HintRow '8sync opencode setup cli'                   'Interactive wizard: choose preset or provider mix step by step'
     Write-HintRow '8sync opencode setup --model=claude+codex' 'Generate ~/.config/opencode/opencode.json using OpenCode model/provider schema'
     Write-HintRow '8sync opencode setup --plan=claude-max'    'Apply a named OpenCode preset (claude-max, codex-max, gemini-max, glm-max)'
