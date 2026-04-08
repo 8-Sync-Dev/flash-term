@@ -377,10 +377,25 @@ function Resolve-OpencodePlanPreset {
                 Notes = @('/connect -> Anthropic', '/connect -> OpenAI', 'OPENROUTER_API_KEY for Gemini via OpenRouter')
             }
         }
+        'claude-codex-glm' {
+            return [pscustomobject]@{
+                PlanName = 'claude-codex-glm'
+                Source = 'plan'
+                Name = 'claude-codex-glm'
+                Plan  = 'anthropic/claude-sonnet-4-6'
+                Build = 'openai/gpt-5.3-codex'
+                Small = 'zai-coding-plan/glm-4.7-flashx'
+                PlanVariant = (Resolve-OpencodeVariantForModel -Model 'anthropic/claude-sonnet-4-6')
+                BuildVariant = (Resolve-OpencodeVariantForModel -Model 'openai/gpt-5.3-codex')
+                SmallVariant = (Resolve-OpencodeVariantForModel -Model 'zai-coding-plan/glm-4.7-flashx')
+                EnabledProviders = @('anthropic', 'openai', 'zai-coding-plan')
+                Notes = @('/connect -> Anthropic', '/connect -> OpenAI', '/connect -> Z.AI Coding Plan', 'Recommended stack for Claude planning + Codex execution + GLM research/docs')
+            }
+        }
         default {
             Write-Host ''
             Write-Host ("  [error] Unknown OpenCode plan '{0}'." -f $Plan) -ForegroundColor Red
-            Write-Host '  Valid: claude-max | codex-max | gemini-max | glm-max | claude-codex-gemini' -ForegroundColor DarkGray
+            Write-Host '  Valid: claude-max | codex-max | gemini-max | glm-max | claude-codex-gemini | claude-codex-glm' -ForegroundColor DarkGray
             Write-Host ''
             return $null
         }
@@ -479,9 +494,13 @@ function Build-OpencodeProjectOverrides {
 
     return [ordered]@{
         'gsd-planner' = $Spec.Plan
+        'gsd-plan-checker' = $Spec.Plan
         'gsd-executor' = $Spec.Build
         'gsd-phase-researcher' = $Spec.Small
         'gsd-verifier' = $Spec.Plan
+        'gsd-debugger' = $Spec.Plan
+        'gsd-doc-writer' = $Spec.Small
+        'gsd-integration-checker' = $Spec.Small
     }
 }
 
@@ -499,6 +518,12 @@ function Apply-OpencodeProjectSetupSpec {
     $config = $project.Data
     $targetPath = $project.Path
     $overrides = Build-OpencodeProjectOverrides -Spec $Spec
+
+    Set-OpencodeProperty -Parent $config -Name 'resolve_model_ids' -Value 'omit'
+    Set-OpencodeProperty -Parent $config -Name 'model_profile' -Value 'balanced'
+    Set-OpencodeProperty -Parent $config -Name 'research' -Value $true
+    Set-OpencodeProperty -Parent $config -Name 'plan_check' -Value $true
+    Set-OpencodeProperty -Parent $config -Name 'verifier' -Value $true
 
     $modelOverrides = Ensure-OpencodeObjectProperty -Parent $config -Name 'model_overrides'
     foreach ($entry in $overrides.GetEnumerator()) {
@@ -760,8 +785,9 @@ function Invoke-OpencodeSetupProject {
     if (-not $modelArg -and -not $planArg) {
         Write-Host ''
         Write-HintSection 'OpenCode project setup -- generate .planning/config.json'
-        Write-HintRow '8sync opencode setup project --model=claude+codex' 'Write model_overrides for planner/executor/researcher/verifier'
+        Write-HintRow '8sync opencode setup project --model=claude+codex' 'Write full GSD model_overrides for planner/checker/executor/research/verify/docs'
         Write-HintRow '8sync opencode setup project --plan=claude-max'    'Use a named stack preset for project-level overrides'
+        Write-HintRow '8sync opencode setup project --plan=claude-codex-glm' 'Recommended stack: Claude plan/verify, Codex execute, GLM research/docs'
         Write-HintRow '8sync opencode setup project --dry-run --plan=claude-codex-gemini' 'Preview .planning/config.json changes'
         Write-Host ''
         return
@@ -830,6 +856,7 @@ function Invoke-OpencodeSetup {
         Write-Host ''
         Write-HintSection 'OpenCode setup -- generate ~/.config/opencode/opencode.json'
         Write-HintRow '8sync opencode setup project --plan=claude-max'    'Write .planning/config.json model_overrides for this repo'
+        Write-HintRow '8sync opencode setup project --plan=claude-codex-glm' 'Recommended repo preset: Claude + Codex + GLM'
         Write-HintRow '8sync opencode setup cli'                  'Interactive wizard: choose preset or provider mix step by step'
         Write-HintRow '8sync opencode setup --model=claude+codex' 'Use Claude for plan, Codex for build, set small_model automatically'
         Write-HintRow '8sync opencode setup --plan=claude-max'    'Claude-only preset: Opus plan, Sonnet build, Haiku small_model'
@@ -864,9 +891,10 @@ function Show-OpencodeHelp {
     Write-Host ''
     Write-HintSection 'OPENCODE -- OpenCode config setup + portable bundle flows'
     Write-HintRow '8sync opencode setup project --plan=claude-max'    'Write .planning/config.json model_overrides for this repo'
+    Write-HintRow '8sync opencode setup project --plan=claude-codex-glm' 'Recommended repo preset: Claude + Codex + GLM'
     Write-HintRow '8sync opencode setup cli'                   'Interactive wizard: choose preset or provider mix step by step'
     Write-HintRow '8sync opencode setup --model=claude+codex' 'Generate ~/.config/opencode/opencode.json using OpenCode model/provider schema'
-    Write-HintRow '8sync opencode setup --plan=claude-max'    'Apply a named OpenCode preset (claude-max, codex-max, gemini-max, glm-max)'
+    Write-HintRow '8sync opencode setup --plan=claude-max'    'Apply a named OpenCode preset (claude-max, codex-max, gemini-max, glm-max, claude-codex-glm)'
     Write-HintRow '8sync opencode setup --dry-run --model=glm' 'Preview generated config without writing'
     Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
