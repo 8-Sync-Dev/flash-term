@@ -54,13 +54,13 @@ function Build-GsdModelsYaml {
     # Tier-based anthropic model selection
     # Opus NEVER appears by default — only via --planning=opus or --exec=opus
     $anthropicPlanPrimary = switch ($Tier) {
-        'light'  { $null }                          # anthropic skipped as primary
-        default  { 'anthropic/claude-sonnet-4-6' }  # balanced & heavy both use sonnet
+        'light'  { $null }                              # anthropic skipped as primary
+        default  { 'claude-code/claude-sonnet-4-6' }    # balanced & heavy both use sonnet
     }
     $anthropicExecFallback = switch ($Tier) {
-        'heavy'  { 'anthropic/claude-sonnet-4-6' }  # sonnet as exec fallback for heavy
-        'light'  { $null }                          # no anthropic in exec for light
-        default  { 'anthropic/claude-haiku-4-5' }   # balanced: haiku as cheap fallback
+        'heavy'  { 'claude-code/claude-sonnet-4-6' }    # sonnet as exec fallback for heavy
+        'light'  { $null }                              # no anthropic in exec for light
+        default  { 'anthropic/claude-haiku-4-5' }       # balanced: haiku as cheap fallback
     }
 
     # ── planning / research ───────────────────────────────────────────────────

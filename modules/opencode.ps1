@@ -1,5 +1,5 @@
 ﻿# ─────────────────────────────────────────────────────────────────────────────
-# 8sync opencode — Export OpenCode bundle for cross-machine setup
+# 8sync opencode — OpenCode config setup + portable bundle flows
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Resolve-OpencodeBundlePath {
@@ -13,11 +13,10 @@ function Resolve-OpencodeBundlePath {
         return $BundleDir
     }
 
-    # Smart auto-detection: search known locations in priority order
     $candidates = @(
-        Join-Path $PWD.Path $BundleDir                                              # 1. Current dir
-        Join-Path $HOME '.config\wezterm\oc-bundle'                                # 2. Wezterm config (canonical)
-        Join-Path $HOME $BundleDir                                                  # 3. HOME root
+        Join-Path $PWD.Path $BundleDir,
+        Join-Path $HOME '.config\wezterm\oc-bundle',
+        Join-Path $HOME $BundleDir
     )
 
     foreach ($candidate in $candidates) {
@@ -26,7 +25,6 @@ function Resolve-OpencodeBundlePath {
         }
     }
 
-    # Default to $PWD (will produce a helpful "not found" error downstream)
     return Join-Path $PWD.Path $BundleDir
 }
 
@@ -57,27 +55,666 @@ function Test-OpencodeExportExcluded {
     return ($ext -ieq '.ps1' -or $ext -ieq '.py')
 }
 
+function Ensure-OpencodeObjectProperty {
+    param(
+        [Parameter(Mandatory)] [object]$Parent,
+        [Parameter(Mandatory)] [string]$Name
+    )
+
+    if (-not $Parent.PSObject.Properties[$Name]) {
+        $Parent | Add-Member -NotePropertyName $Name -NotePropertyValue ([pscustomobject]@{})
+    }
+
+    return $Parent.$Name
+}
+
+function Set-OpencodeProperty {
+    param(
+        [Parameter(Mandatory)] [object]$Parent,
+        [Parameter(Mandatory)] [string]$Name,
+        [AllowNull()] $Value
+    )
+
+    if ($Parent.PSObject.Properties[$Name]) {
+        $Parent.PSObject.Properties.Remove($Name)
+    }
+    $Parent | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+}
+
+function Resolve-OpencodeConfigPath {
+    return Join-Path $HOME '.config\opencode\opencode.json'
+}
+
+function Resolve-OpencodeBaseConfigPath {
+    $targetPath = Resolve-OpencodeConfigPath
+    if (Test-Path $targetPath) {
+        return $targetPath
+    }
+
+    $bundlePath = Join-Path (Resolve-OpencodeBundlePath -BundleDir 'oc-bundle') 'opencode.json'
+    if (Test-Path $bundlePath) {
+        return $bundlePath
+    }
+
+    return $null
+}
+
+function Read-OpencodeBaseConfig {
+    $basePath = Resolve-OpencodeBaseConfigPath
+    if (-not $basePath) {
+        Write-Host '  [error] Could not find a base OpenCode config. Expected ~/.config/opencode/opencode.json or oc-bundle/opencode.json' -ForegroundColor Red
+        return $null
+    }
+
+    try {
+        $raw = Get-Content $basePath -Raw -Encoding UTF8
+        $json = $raw | ConvertFrom-Json
+        return [pscustomobject]@{
+            Path = $basePath
+            Data = $json
+        }
+    } catch {
+        Write-Host ("  [error] Failed to read base config: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $null
+    }
+}
+
+function Write-OpencodeConfig {
+    param(
+        [Parameter(Mandatory)] [object]$Config,
+        [Parameter(Mandatory)] [string]$Path,
+        [switch]$DryRun
+    )
+
+    $json = $Config | ConvertTo-Json -Depth 30
+    if ($DryRun) {
+        Write-Host ''
+        Write-Host '  [dry-run] Would write:' -ForegroundColor Yellow
+        Write-Host ("  {0}" -f $Path) -ForegroundColor DarkGray
+        Write-Host '  [dry-run] Preview suppressed to avoid echoing provider credentials and MCP headers.' -ForegroundColor DarkYellow
+        Write-Host ''
+        return $true
+    }
+
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir)) {
+        $null = New-Item -Path $dir -ItemType Directory -Force
+    }
+
+    try {
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
+        return $true
+    } catch {
+        Write-Host ("  [error] Failed to write config: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
+}
+
+function Resolve-OpencodeVariantForModel {
+    param([string]$Model)
+
+    if ([string]::IsNullOrWhiteSpace($Model)) {
+        return ''
+    }
+
+    if ($Model -like 'openai/*') {
+        return 'low'
+    }
+
+    if ($Model -like 'openrouter/google/*') {
+        return 'low'
+    }
+
+    return ''
+}
+
+function Get-OpencodePresetMap {
+    return @{
+        'claude' = [pscustomobject]@{
+            Plan  = 'anthropic/claude-opus-4-6'
+            Build = 'anthropic/claude-sonnet-4-6'
+            Small = 'anthropic/claude-haiku-4-5'
+        }
+        'codex' = [pscustomobject]@{
+            Plan  = 'openai/gpt-5.4'
+            Build = 'openai/gpt-5.3-codex'
+            Small = 'openai/gpt-5.1-codex-mini'
+        }
+        'gemini' = [pscustomobject]@{
+            Plan  = 'openrouter/google/gemini-3.1-pro-preview'
+            Build = 'openrouter/google/gemini-3.1-pro-preview'
+            Small = 'openrouter/google/gemini-2.5-flash'
+        }
+        'glm' = [pscustomobject]@{
+            Plan  = 'zai-coding-plan/glm-5.1'
+            Build = 'zai-coding-plan/glm-5.1'
+            Small = 'zai-coding-plan/glm-4.7-flashx'
+        }
+        'groq' = [pscustomobject]@{
+            Plan  = 'groq/moonshotai/kimi-k2-instruct-0905'
+            Build = 'groq/moonshotai/kimi-k2-instruct-0905'
+            Small = 'groq/qwen/qwen3-32b'
+        }
+        'gguf' = [pscustomobject]@{
+            Plan  = ''
+            Build = ''
+            Small = ''
+        }
+    }
+}
+
+function Resolve-OpencodeModelStack {
+    param([string]$ModelArg)
+
+    if ([string]::IsNullOrWhiteSpace($ModelArg)) {
+        return $null
+    }
+
+    $aliases = @{
+        'claude' = 'claude'; 'anthropic' = 'claude'
+        'codex' = 'codex'; 'openai' = 'codex'
+        'gemini' = 'gemini'; 'google' = 'gemini'
+        'glm' = 'glm'; 'zai' = 'glm'
+        'groq' = 'groq'
+        'gguf' = 'gguf'
+    }
+
+    $result = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($token in ($ModelArg -split '\+' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ -ne '' })) {
+        if (-not $aliases.ContainsKey($token)) {
+            Write-Host ("  [error] Unknown OpenCode model brand '{0}'. Accepted: claude codex gemini glm groq gguf" -f $token) -ForegroundColor Red
+            return $null
+        }
+        $id = $aliases[$token]
+        if ($seen.Add($id)) {
+            $result.Add($id)
+        }
+    }
+
+    return $result.ToArray()
+}
+
+function Resolve-OpencodePlanPreset {
+    param([string]$Plan)
+
+    if ([string]::IsNullOrWhiteSpace($Plan)) {
+        return $null
+    }
+
+    switch ($Plan.Trim().ToLowerInvariant()) {
+        'claude-max' {
+            return [pscustomobject]@{
+                PlanName = 'claude-max'
+                Source = 'plan'
+                Name = 'claude-max'
+                Plan  = 'anthropic/claude-opus-4-6'
+                Build = 'anthropic/claude-sonnet-4-6'
+                Small = 'anthropic/claude-haiku-4-5'
+                PlanVariant = (Resolve-OpencodeVariantForModel -Model 'anthropic/claude-opus-4-6')
+                BuildVariant = (Resolve-OpencodeVariantForModel -Model 'anthropic/claude-sonnet-4-6')
+                SmallVariant = (Resolve-OpencodeVariantForModel -Model 'anthropic/claude-haiku-4-5')
+                EnabledProviders = @('anthropic')
+                Notes = @('/connect -> Anthropic')
+            }
+        }
+        'codex-max' {
+            return [pscustomobject]@{
+                PlanName = 'codex-max'
+                Source = 'plan'
+                Name = 'codex-max'
+                Plan  = 'openai/gpt-5.4'
+                Build = 'openai/gpt-5.3-codex'
+                Small = 'openai/gpt-5.1-codex-mini'
+                PlanVariant = (Resolve-OpencodeVariantForModel -Model 'openai/gpt-5.4')
+                BuildVariant = (Resolve-OpencodeVariantForModel -Model 'openai/gpt-5.3-codex')
+                SmallVariant = (Resolve-OpencodeVariantForModel -Model 'openai/gpt-5.1-codex-mini')
+                EnabledProviders = @('openai')
+                Notes = @('/connect -> OpenAI')
+            }
+        }
+        'gemini-max' {
+            return [pscustomobject]@{
+                PlanName = 'gemini-max'
+                Source = 'plan'
+                Name = 'gemini-max'
+                Plan  = 'openrouter/google/gemini-3.1-pro-preview'
+                Build = 'openrouter/google/gemini-3.1-pro-preview'
+                Small = 'openrouter/google/gemini-2.5-flash'
+                PlanVariant = (Resolve-OpencodeVariantForModel -Model 'openrouter/google/gemini-3.1-pro-preview')
+                BuildVariant = (Resolve-OpencodeVariantForModel -Model 'openrouter/google/gemini-3.1-pro-preview')
+                SmallVariant = (Resolve-OpencodeVariantForModel -Model 'openrouter/google/gemini-2.5-flash')
+                EnabledProviders = @('openrouter')
+                Notes = @('Requires OPENROUTER_API_KEY for OpenRouter Gemini models')
+            }
+        }
+        'glm-max' {
+            return [pscustomobject]@{
+                PlanName = 'glm-max'
+                Source = 'plan'
+                Name = 'glm-max'
+                Plan  = 'zai-coding-plan/glm-5.1'
+                Build = 'zai-coding-plan/glm-5.1'
+                Small = 'zai-coding-plan/glm-4.7-flashx'
+                PlanVariant = (Resolve-OpencodeVariantForModel -Model 'zai-coding-plan/glm-5.1')
+                BuildVariant = (Resolve-OpencodeVariantForModel -Model 'zai-coding-plan/glm-5.1')
+                SmallVariant = (Resolve-OpencodeVariantForModel -Model 'zai-coding-plan/glm-4.7-flashx')
+                EnabledProviders = @('zai-coding-plan')
+                Notes = @('/connect -> Z.AI Coding Plan')
+            }
+        }
+        'claude-codex-gemini' {
+            return [pscustomobject]@{
+                PlanName = 'claude-codex-gemini'
+                Source = 'plan'
+                Name = 'claude-codex-gemini'
+                Plan  = 'anthropic/claude-opus-4-6'
+                Build = 'openai/gpt-5.3-codex'
+                Small = 'openrouter/google/gemini-2.5-flash'
+                PlanVariant = (Resolve-OpencodeVariantForModel -Model 'anthropic/claude-opus-4-6')
+                BuildVariant = (Resolve-OpencodeVariantForModel -Model 'openai/gpt-5.3-codex')
+                SmallVariant = (Resolve-OpencodeVariantForModel -Model 'openrouter/google/gemini-2.5-flash')
+                EnabledProviders = @('anthropic', 'openai', 'openrouter')
+                Notes = @('/connect -> Anthropic', '/connect -> OpenAI', 'OPENROUTER_API_KEY for Gemini via OpenRouter')
+            }
+        }
+        default {
+            Write-Host ''
+            Write-Host ("  [error] Unknown OpenCode plan '{0}'." -f $Plan) -ForegroundColor Red
+            Write-Host '  Valid: claude-max | codex-max | gemini-max | glm-max | claude-codex-gemini' -ForegroundColor DarkGray
+            Write-Host ''
+            return $null
+        }
+    }
+}
+
+function Resolve-OpencodeGgufModel {
+    try {
+        $server = Probe-GgufServer
+        if (-not $server -or -not $server.Models -or $server.Models.Count -eq 0) {
+            return $null
+        }
+
+        $modelId = if ($server.Models[0].id) { $server.Models[0].id } else { [string]$server.Models[0] }
+        $stem = [System.IO.Path]::GetFileNameWithoutExtension($modelId) -replace '[^a-zA-Z0-9\-]', '-'
+        return [pscustomobject]@{
+            ProviderId = "gguf-local-$stem"
+            ModelId = $modelId
+            FullModel = "gguf-local-$stem/$modelId"
+            BaseUrl = $server.BaseUrl
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Build-OpencodeSetupSpecFromBrands {
+    param([string[]]$Brands)
+
+    if (-not $Brands -or $Brands.Count -eq 0) {
+        return $null
+    }
+
+    $presetMap = Get-OpencodePresetMap
+    $brandList = @($Brands)
+    $ggufInfo = $null
+    if ($brandList -contains 'gguf') {
+        $ggufInfo = Resolve-OpencodeGgufModel
+        if (-not $ggufInfo) {
+            Write-Host '  [warn] GGUF requested but no running llama-server was detected. Omitting gguf.' -ForegroundColor DarkYellow
+            $brandList = @($brandList | Where-Object { $_ -ne 'gguf' })
+        }
+    }
+
+    if (-not $brandList -or $brandList.Count -eq 0) {
+        Write-Host '  [error] No usable OpenCode providers remained after validation.' -ForegroundColor Red
+        return $null
+    }
+
+    $planPriority = @('claude', 'gemini', 'codex', 'glm', 'groq', 'gguf')
+    $buildPriority = @('codex', 'glm', 'claude', 'gemini', 'groq', 'gguf')
+    $smallPriority = @('gguf', 'glm', 'groq', 'codex', 'claude', 'gemini')
+
+    function Pick-Brand {
+        param([string[]]$Priority, [string[]]$Available)
+        foreach ($candidate in $Priority) {
+            if ($Available -contains $candidate) {
+                return $candidate
+            }
+        }
+        return $Available[0]
+    }
+
+    $planBrand = Pick-Brand -Priority $planPriority -Available $brandList
+    $buildBrand = Pick-Brand -Priority $buildPriority -Available $brandList
+    $smallBrand = Pick-Brand -Priority $smallPriority -Available $brandList
+
+    $planModel = if ($planBrand -eq 'gguf') { $ggufInfo.FullModel } else { $presetMap[$planBrand].Plan }
+    $buildModel = if ($buildBrand -eq 'gguf') { $ggufInfo.FullModel } else { $presetMap[$buildBrand].Build }
+    $smallModel = if ($smallBrand -eq 'gguf') { $ggufInfo.FullModel } else { $presetMap[$smallBrand].Small }
+
+    $providers = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($model in @($planModel, $buildModel, $smallModel)) {
+        if ($model -and ($model -match '^([^/]+)/')) {
+            $null = $providers.Add($matches[1])
+        }
+    }
+
+    return [pscustomobject]@{
+        Source = 'model'
+        Name = ($Brands -join '+')
+        Plan = $planModel
+        Build = $buildModel
+        Small = $smallModel
+        PlanVariant = (Resolve-OpencodeVariantForModel -Model $planModel)
+        BuildVariant = (Resolve-OpencodeVariantForModel -Model $buildModel)
+        SmallVariant = (Resolve-OpencodeVariantForModel -Model $smallModel)
+        EnabledProviders = @($providers)
+        Gguf = $ggufInfo
+        Notes = @('Default agent variant bias: low where the selected provider supports it.')
+    }
+}
+
+function Apply-OpencodeSetupSpec {
+    param(
+        [Parameter(Mandatory)] [object]$Spec,
+        [switch]$DryRun
+    )
+
+    $base = Read-OpencodeBaseConfig
+    if (-not $base) {
+        return
+    }
+
+    $config = $base.Data
+    $targetPath = Resolve-OpencodeConfigPath
+
+    Set-OpencodeProperty -Parent $config -Name '$schema' -Value 'https://opencode.ai/config.json'
+    Set-OpencodeProperty -Parent $config -Name 'model' -Value $Spec.Build
+    Set-OpencodeProperty -Parent $config -Name 'small_model' -Value $Spec.Small
+    Set-OpencodeProperty -Parent $config -Name 'default_agent' -Value 'build'
+    Set-OpencodeProperty -Parent $config -Name 'enabled_providers' -Value $Spec.EnabledProviders
+
+    $agent = Ensure-OpencodeObjectProperty -Parent $config -Name 'agent'
+
+    $buildAgent = Ensure-OpencodeObjectProperty -Parent $agent -Name 'build'
+    Set-OpencodeProperty -Parent $buildAgent -Name 'model' -Value $Spec.Build
+    if ($Spec.PSObject.Properties['BuildVariant'] -and -not [string]::IsNullOrWhiteSpace($Spec.BuildVariant)) {
+        Set-OpencodeProperty -Parent $buildAgent -Name 'variant' -Value $Spec.BuildVariant
+    } elseif ($buildAgent.PSObject.Properties['variant']) {
+        $buildAgent.PSObject.Properties.Remove('variant')
+    }
+
+    $planAgent = Ensure-OpencodeObjectProperty -Parent $agent -Name 'plan'
+    Set-OpencodeProperty -Parent $planAgent -Name 'model' -Value $Spec.Plan
+    if ($Spec.PSObject.Properties['PlanVariant'] -and -not [string]::IsNullOrWhiteSpace($Spec.PlanVariant)) {
+        Set-OpencodeProperty -Parent $planAgent -Name 'variant' -Value $Spec.PlanVariant
+    } elseif ($planAgent.PSObject.Properties['variant']) {
+        $planAgent.PSObject.Properties.Remove('variant')
+    }
+
+    $generalAgent = Ensure-OpencodeObjectProperty -Parent $agent -Name 'general'
+    Set-OpencodeProperty -Parent $generalAgent -Name 'model' -Value $Spec.Build
+    if ($Spec.PSObject.Properties['BuildVariant'] -and -not [string]::IsNullOrWhiteSpace($Spec.BuildVariant)) {
+        Set-OpencodeProperty -Parent $generalAgent -Name 'variant' -Value $Spec.BuildVariant
+    } elseif ($generalAgent.PSObject.Properties['variant']) {
+        $generalAgent.PSObject.Properties.Remove('variant')
+    }
+
+    $exploreAgent = Ensure-OpencodeObjectProperty -Parent $agent -Name 'explore'
+    Set-OpencodeProperty -Parent $exploreAgent -Name 'model' -Value $Spec.Small
+    if ($Spec.PSObject.Properties['SmallVariant'] -and -not [string]::IsNullOrWhiteSpace($Spec.SmallVariant)) {
+        Set-OpencodeProperty -Parent $exploreAgent -Name 'variant' -Value $Spec.SmallVariant
+    } elseif ($exploreAgent.PSObject.Properties['variant']) {
+        $exploreAgent.PSObject.Properties.Remove('variant')
+    }
+
+    if ($Spec.Gguf) {
+        $provider = Ensure-OpencodeObjectProperty -Parent $config -Name 'provider'
+        $ggufProvider = [pscustomobject]@{
+            options = [pscustomobject]@{
+                apiKey = 'local'
+                baseURL = $Spec.Gguf.BaseUrl
+            }
+            models = [pscustomobject]@{
+                $($Spec.Gguf.ModelId) = [pscustomobject]@{
+                    name = ([System.IO.Path]::GetFileNameWithoutExtension($Spec.Gguf.ModelId) + ' (local GGUF)')
+                    attachment = $false
+                    reasoning = $false
+                }
+            }
+        }
+        Set-OpencodeProperty -Parent $provider -Name $Spec.Gguf.ProviderId -Value $ggufProvider
+    }
+
+    Write-Host ''
+    Write-Host ("  [opencode] Setup  {0}={1}" -f $Spec.Source, $Spec.Name) -ForegroundColor Cyan
+    Write-Host ("  base    : {0}" -f $base.Path) -ForegroundColor DarkGray
+    Write-Host ("  dest    : {0}" -f $targetPath) -ForegroundColor DarkGray
+    Write-Host ("  plan    : {0}" -f $Spec.Plan) -ForegroundColor DarkGray
+    if ($Spec.PSObject.Properties['PlanVariant'] -and $Spec.PlanVariant) { Write-Host ("  plan-v  : {0}" -f $Spec.PlanVariant) -ForegroundColor DarkGray }
+    Write-Host ("  build   : {0}" -f $Spec.Build) -ForegroundColor DarkGray
+    if ($Spec.PSObject.Properties['BuildVariant'] -and $Spec.BuildVariant) { Write-Host ("  build-v : {0}" -f $Spec.BuildVariant) -ForegroundColor DarkGray }
+    Write-Host ("  small   : {0}" -f $Spec.Small) -ForegroundColor DarkGray
+    if ($Spec.PSObject.Properties['SmallVariant'] -and $Spec.SmallVariant) { Write-Host ("  small-v : {0}" -f $Spec.SmallVariant) -ForegroundColor DarkGray }
+    Write-Host ("  enabled : {0}" -f ($Spec.EnabledProviders -join ', ')) -ForegroundColor DarkGray
+    if ($Spec.Notes -and $Spec.Notes.Count -gt 0) {
+        foreach ($note in $Spec.Notes) {
+            Write-Host ("  note    : {0}" -f $note) -ForegroundColor DarkYellow
+        }
+    }
+    Write-Host ''
+
+    $ok = Write-OpencodeConfig -Config $config -Path $targetPath -DryRun:$DryRun
+    if ($ok -and -not $DryRun) {
+        Write-Host ("  [ok] {0}" -f $targetPath) -ForegroundColor Green
+        Write-Host '  Verify: opencode debug config   opencode models' -ForegroundColor DarkGray
+        Write-Host ''
+    }
+}
+
+function Read-OpencodeWizardChoice {
+    param(
+        [Parameter(Mandatory)] [string]$Title,
+        [Parameter(Mandatory)] [string[]]$Options,
+        [int]$Default = 0
+    )
+
+    Write-Host ''
+    Write-Host ("  {0}" -f $Title) -ForegroundColor Cyan
+    for ($i = 0; $i -lt $Options.Count; $i++) {
+        $marker = if ($i -eq $Default) { '*' } else { ' ' }
+        Write-Host ("   [{0}] {1} {2}" -f ($i + 1), $marker, $Options[$i]) -ForegroundColor DarkGray
+    }
+
+    while ($true) {
+        $raw = Read-Host ("  Pick 1-{0} (Enter={1})" -f $Options.Count, ($Default + 1))
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return $Default
+        }
+        $value = 0
+        if ([int]::TryParse($raw, [ref]$value) -and $value -ge 1 -and $value -le $Options.Count) {
+            return ($value - 1)
+        }
+        Write-Host '  Invalid choice. Try again.' -ForegroundColor DarkYellow
+    }
+}
+
+function Read-OpencodeWizardMultiSelect {
+    param(
+        [Parameter(Mandatory)] [string]$Title,
+        [Parameter(Mandatory)] [string[]]$Options,
+        [int[]]$DefaultIndices = @()
+    )
+
+    Write-Host ''
+    Write-Host ("  {0}" -f $Title) -ForegroundColor Cyan
+    for ($i = 0; $i -lt $Options.Count; $i++) {
+        $selected = if ($DefaultIndices -contains $i) { 'x' } else { ' ' }
+        Write-Host ("   [{0}] [{1}] {2}" -f ($i + 1), $selected, $Options[$i]) -ForegroundColor DarkGray
+    }
+    Write-Host '  Enter comma-separated numbers. Empty input keeps defaults.' -ForegroundColor DarkGray
+
+    while ($true) {
+        $raw = Read-Host '  Select'
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return @($DefaultIndices | Sort-Object -Unique)
+        }
+
+        $picked = [System.Collections.Generic.List[int]]::new()
+        $ok = $true
+        foreach ($part in ($raw -split '[, ]+' | Where-Object { $_ -ne '' })) {
+            $value = 0
+            if (-not [int]::TryParse($part, [ref]$value) -or $value -lt 1 -or $value -gt $Options.Count) {
+                $ok = $false
+                break
+            }
+            $picked.Add($value - 1)
+        }
+
+        if ($ok -and $picked.Count -gt 0) {
+            return @($picked | Sort-Object -Unique)
+        }
+
+        Write-Host '  Invalid selection. Try again.' -ForegroundColor DarkYellow
+    }
+}
+
+function Invoke-OpencodeSetupCli {
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-HintSection 'OpenCode setup wizard'
+    Write-Host '  Goal: build ~/.config/opencode/opencode.json with low-bias defaults where supported.' -ForegroundColor DarkGray
+
+    $modeIndex = Read-OpencodeWizardChoice -Title 'Setup mode' -Options @(
+        'Preset plan (fast path)',
+        'Custom provider mix'
+    ) -Default 0
+
+    if ($modeIndex -eq 0) {
+        $plans = @('claude-max', 'codex-max', 'gemini-max', 'glm-max', 'claude-codex-gemini')
+        $planIndex = Read-OpencodeWizardChoice -Title 'Preset' -Options $plans -Default 0
+        $spec = Resolve-OpencodePlanPreset -Plan $plans[$planIndex]
+        if ($spec) {
+            Apply-OpencodeSetupSpec -Spec $spec -DryRun:$DryRun
+        }
+        return
+    }
+
+    $brands = @('claude', 'codex', 'gemini', 'glm', 'groq', 'gguf')
+    $defaultIndices = @(0, 1)
+    $selectedIndices = Read-OpencodeWizardMultiSelect -Title 'Providers to include' -Options @(
+        'claude  -> Anthropic planning / writing',
+        'codex   -> OpenAI coding models',
+        'gemini  -> Gemini via OpenRouter',
+        'glm     -> Z.AI Coding Plan',
+        'groq    -> Groq fast fallback',
+        'gguf    -> local llama.cpp server'
+    ) -DefaultIndices $defaultIndices
+
+    $selectedBrands = foreach ($idx in $selectedIndices) { $brands[$idx] }
+    $spec = Build-OpencodeSetupSpecFromBrands -Brands $selectedBrands
+    if ($spec) {
+        Apply-OpencodeSetupSpec -Spec $spec -DryRun:$DryRun
+    }
+}
+
+function Invoke-OpencodeSetup {
+    param([string[]]$Rest)
+
+    $dryRun = $Rest -contains '--dry-run'
+    $modelArg = ''
+    $planArg = ''
+    $cliMode = $false
+
+    for ($i = 0; $i -lt $Rest.Count; $i++) {
+        $token = $Rest[$i]
+        switch -Regex ($token) {
+            '^cli$'          { $cliMode = $true; continue }
+            '^--cli$'        { $cliMode = $true; continue }
+            '^--model=(.+)$' { $modelArg = $matches[1]; continue }
+            '^--plan=(.+)$'  { $planArg = $matches[1]; continue }
+            '^--dry-run$'    { continue }
+            '^--model$' {
+                if ($i + 1 -lt $Rest.Count) { $modelArg = $Rest[++$i] }
+                continue
+            }
+            '^--plan$' {
+                if ($i + 1 -lt $Rest.Count) { $planArg = $Rest[++$i] }
+                continue
+            }
+        }
+    }
+
+    if ($cliMode) {
+        Invoke-OpencodeSetupCli -DryRun:$dryRun
+        return
+    }
+
+    if ($modelArg -and $planArg) {
+        Write-Host ''
+        Write-Host '  [error] Use either --model or --plan, not both.' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    if (-not $modelArg -and -not $planArg) {
+        Write-Host ''
+        Write-HintSection 'OpenCode setup -- generate ~/.config/opencode/opencode.json'
+        Write-HintRow '8sync opencode setup cli'                  'Interactive wizard: choose preset or provider mix step by step'
+        Write-HintRow '8sync opencode setup --model=claude+codex' 'Use Claude for plan, Codex for build, set small_model automatically'
+        Write-HintRow '8sync opencode setup --plan=claude-max'    'Claude-only preset: Opus plan, Sonnet build, Haiku small_model'
+        Write-HintRow '8sync opencode setup --plan=codex-max'     'OpenAI-only preset: GPT-5.4 plan, GPT-5.3 Codex build'
+        Write-HintRow '8sync opencode setup --plan=gemini-max'    'Gemini via OpenRouter: Gemini 3.1 Pro + 2.5 Flash small_model'
+        Write-HintRow '8sync opencode setup --plan=glm-max'       'Z.AI Coding Plan preset'
+        Write-HintRow '8sync opencode setup --dry-run --model=glm' 'Preview generated config without writing'
+        Write-Host ''
+        return
+    }
+
+    if ($planArg) {
+        $spec = Resolve-OpencodePlanPreset -Plan $planArg
+        if ($spec) {
+            Apply-OpencodeSetupSpec -Spec $spec -DryRun:$dryRun
+        }
+        return
+    }
+
+    $brands = Resolve-OpencodeModelStack -ModelArg $modelArg
+    if (-not $brands) {
+        return
+    }
+
+    $spec = Build-OpencodeSetupSpecFromBrands -Brands $brands
+    if ($spec) {
+        Apply-OpencodeSetupSpec -Spec $spec -DryRun:$dryRun
+    }
+}
+
 function Show-OpencodeHelp {
     Write-Host ''
-    Write-HintSection 'OPENCODE -- Export portable setup bundle'
-    Write-HintRow '8sync opencode'                    'Export ~/.config/opencode to ./oc-bundle (exclude lib, node_modules, *.ps1, *.py)'
-    Write-HintRow '8sync opencode export [folder]'    'Export to custom folder (default: oc-bundle)'
-    Write-HintRow '8sync opencode apply [folder]'     'Copy bundle -> ~/.config/opencode and run npm i'
-    Write-HintRow '8sync opencode reinstall [folder]' 'Force reinstall (wipe ~/.config/opencode, then apply + npm i)'
-    Write-HintRow '8sync opencode --dry-run'          'Preview files that would be exported/applied'
-    Write-HintRow '8sync opencode apply --force'      'Force overwrite target folder before copy + npm i'
-    Write-HintRow '8sync opencode status'             'Show source/bundle/npm readiness'
+    Write-HintSection 'OPENCODE -- OpenCode config setup + portable bundle flows'
+    Write-HintRow '8sync opencode setup cli'                   'Interactive wizard: choose preset or provider mix step by step'
+    Write-HintRow '8sync opencode setup --model=claude+codex' 'Generate ~/.config/opencode/opencode.json using OpenCode model/provider schema'
+    Write-HintRow '8sync opencode setup --plan=claude-max'    'Apply a named OpenCode preset (claude-max, codex-max, gemini-max, glm-max)'
+    Write-HintRow '8sync opencode setup --dry-run --model=glm' 'Preview generated config without writing'
+    Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
+    Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
+    Write-HintRow '8sync opencode reinstall [folder]'         'Force reinstall (wipe ~/.config/opencode, then apply + npm i)'
+    Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
     Write-Host ''
     Write-Host '  -- GGUF / local model -----------------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync opencode connect gguf'       'Add running llama-server as provider in opencode.json'
-    Write-HintRow '8sync opencode connect gguf --port N'  'Probe specific port (default: 8080,8081,8082,1234,11434)'
-    Write-HintRow '8sync opencode connect gguf --name id' 'Override provider id (default: gguf-local-<model>)'
-    Write-HintRow '8sync opencode connect gguf --dry-run' 'Preview change without writing'
+    Write-HintRow '8sync opencode connect gguf'               'Add running llama-server as provider in opencode.json'
+    Write-HintRow '8sync opencode connect gguf --port N'      'Probe specific port (default: 8080,8081,8082,1234,11434)'
+    Write-HintRow '8sync opencode connect gguf --name id'     'Override provider id (default: gguf-local-<model>)'
+    Write-HintRow '8sync opencode connect gguf --dry-run'     'Preview change without writing'
     Write-Host ''
     Write-Host '  Target machine setup:' -ForegroundColor DarkGray
     Write-Host '    1) Copy/extract bundle folder (default: oc-bundle) into machine' -ForegroundColor DarkGray
-    Write-Host '    2) Run: 8sync opencode reinstall [folder]   # force overwrite + npm i' -ForegroundColor DarkGray
-    Write-Host '    3) If npm missing: scoop install nvm; nvm install <version>; nvm use <version>; npm i' -ForegroundColor DarkGray
+    Write-Host '    2) Run: 8sync opencode reinstall [folder]' -ForegroundColor DarkGray
+    Write-Host '    3) Or generate local config directly: 8sync opencode setup --plan=claude-max' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Note: Do NOT push bundle to public repo with secrets in opencode.json.' -ForegroundColor DarkYellow
     Write-Host ''
@@ -141,7 +778,6 @@ function Invoke-OpencodeApply {
     }
 
     if ($Force -and (Test-Path $targetPath)) {
-        # Delete contents but keep the directory itself — avoids "in use" error when cwd is inside target
         try {
             Get-ChildItem -Path $targetPath -Force -ErrorAction SilentlyContinue |
                 Remove-Item -Recurse -Force -ErrorAction Stop
@@ -197,14 +833,12 @@ function Invoke-OpencodeApply {
         Pop-Location
     }
 
-
-
     Write-Host ''
     Write-Host '  [opencode] Setup complete!' -ForegroundColor Cyan
     Write-Host '  Next steps:' -ForegroundColor DarkGray
-    Write-Host '    1) Restart OpenCode -- plugins (oh-my-opencode, supermemory, dcp) auto-install on startup' -ForegroundColor DarkGray
-    Write-Host '    2) Add your API keys to ~/.config/opencode/opencode.json (provider.anthropic.options.apiKey)' -ForegroundColor DarkGray
-    Write-Host '    3) MCPs that need local tools: serena (uvx), git-mcp (uvx), playwright-mcp (npx) -- ensure these are available' -ForegroundColor DarkGray
+    Write-Host '    1) Restart OpenCode -- plugins auto-install on startup' -ForegroundColor DarkGray
+    Write-Host '    2) Verify model routing: opencode debug config' -ForegroundColor DarkGray
+    Write-Host '    3) If needed, generate a fresh runtime config: 8sync opencode setup --model=claude+codex' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -361,16 +995,14 @@ function Invoke-OpencodeConnectGguf {
     Write-HintSection 'OpenCode -- Connect GGUF server as provider'
     Write-Host ''
 
-    # ── Find opencode.json ────────────────────────────────────────────────────
-    $ocConfigPath = Join-Path $HOME '.config\opencode\opencode.json'
+    $ocConfigPath = Resolve-OpencodeConfigPath
     if (-not (Test-Path $ocConfigPath)) {
         Write-Host ("  [!!] opencode.json not found: {0}" -f $ocConfigPath) -ForegroundColor Red
-        Write-Host '       Run: 8sync opencode apply   to install first.' -ForegroundColor DarkGray
+        Write-Host '       Run: 8sync opencode apply   or  8sync opencode setup --plan=claude-max  first.' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
 
-    # ── Probe llama-server ────────────────────────────────────────────────────
     Write-Host '  Probing llama-server on localhost...' -ForegroundColor DarkGray
     $ports = if ($portArg) { @([int]$portArg) } else { @(8080, 8081, 8082, 1234, 11434) }
     $found = $null
@@ -408,19 +1040,11 @@ function Invoke-OpencodeConnectGguf {
         return
     }
 
-    # ── Patch opencode.json ───────────────────────────────────────────────────
     try {
         $raw  = Get-Content $ocConfigPath -Raw -Encoding UTF8
         $data = $raw | ConvertFrom-Json
 
-        if (-not $data.PSObject.Properties['provider']) {
-            $data | Add-Member -NotePropertyName 'provider' -NotePropertyValue ([pscustomobject]@{})
-        }
-
-        # OpenCode provider schema (from opencode.ai/config.json):
-        # - options.apiKey + options.baseURL for auth/endpoint
-        # - models is an OBJECT (key = model id), not an array
-        # - no top-level apiKey field
+        $provider = Ensure-OpencodeObjectProperty -Parent $data -Name 'provider'
         $providerEntry = [pscustomobject]@{
             options = [pscustomobject]@{
                 apiKey  = 'local'
@@ -428,22 +1052,16 @@ function Invoke-OpencodeConnectGguf {
             }
             models  = [pscustomobject]@{
                 $modelId = [pscustomobject]@{
-                    name          = [System.IO.Path]::GetFileNameWithoutExtension($modelId) + ' (local GGUF)'
-                    attachment    = $false
-                    reasoning     = $false
+                    name       = [System.IO.Path]::GetFileNameWithoutExtension($modelId) + ' (local GGUF)'
+                    attachment = $false
+                    reasoning  = $false
                 }
             }
         }
 
-        $data.provider | Add-Member -NotePropertyName $providerId -NotePropertyValue $providerEntry -Force
-
-        if ($dryRun) {
-            Write-Host '  [dry-run] Would write:' -ForegroundColor DarkYellow
-            Write-Host ($data | ConvertTo-Json -Depth 10 | Select-Object -First 30) -ForegroundColor DarkGray
-        } else {
-            $data | ConvertTo-Json -Depth 10 | Set-Content $ocConfigPath -Encoding UTF8
-            Write-Host ("  [OK] Written to {0}" -f $ocConfigPath) -ForegroundColor Green
-        }
+        Set-OpencodeProperty -Parent $provider -Name $providerId -Value $providerEntry
+        $data | ConvertTo-Json -Depth 30 | Set-Content $ocConfigPath -Encoding UTF8
+        Write-Host ("  [OK] Written to {0}" -f $ocConfigPath) -ForegroundColor Green
     } catch {
         Write-Host ("  [error] Failed to patch opencode.json: {0}" -f $_.Exception.Message) -ForegroundColor Red
         Write-Host ''
@@ -486,7 +1104,7 @@ function Invoke-OpencodeCommand {
         'apply'     { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
         'reinstall' { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force }
         'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
-        'setup'     { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
+        'setup'     { Invoke-OpencodeSetup -Rest ($Rest | Select-Object -Skip 1) }
         '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
         'status'    { Invoke-OpencodeStatus }
         'connect' {
