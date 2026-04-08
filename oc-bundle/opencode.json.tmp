@@ -10,7 +10,7 @@
     "~/.config/opencode/instructions/search-maximization.md"
   ],
   "plugin": [
-    "oh-my-opencode@latest",
+    "oh-my-openagent@latest",
     "opencode-supermemory@latest",
     "@tarquinen/opencode-dcp@latest",
     "./plugins/anthropic-auth.mjs",
@@ -210,6 +210,14 @@
       "type": "local"
     }
   },
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openai/gpt-5.3-codex",
+  "small_model": "openai/gpt-5.1-codex-mini",
+  "default_agent": "build",
+  "enabled_providers": [
+    "anthropic",
+    "openai"
+  ],
   "agent": {
     "build": {
       "model": "openai/gpt-5.3-codex"
@@ -223,13 +231,5 @@
     "explore": {
       "model": "openai/gpt-5.1-codex-mini"
     }
-  },
-  "$schema": "https://opencode.ai/config.json",
-  "model": "openai/gpt-5.3-codex",
-  "small_model": "openai/gpt-5.1-codex-mini",
-  "default_agent": "build",
-  "enabled_providers": [
-    "anthropic",
-    "openai"
-  ]
+  }
 }
