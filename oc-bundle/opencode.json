@@ -12,7 +12,6 @@
     "~/.config/opencode/instructions/search-maximization.md"
   ],
   "plugin": [
-    "oh-my-opencode@latest",
     "opencode-supermemory@latest",
     "@tarquinen/opencode-dcp@latest",
     "./plugins/anthropic-auth.mjs",
