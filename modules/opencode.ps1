@@ -780,14 +780,14 @@ function Invoke-ClaudeCodeUninstall {
 }
 
 # ---------------------------------------------------------------------------
-#  Deep clean: OpenCode cache, sessions/db, desktop app data
+#  Deep clean: OpenCode cache + db only (keeps sessions)
 #  (Runs AFTER reinstall -- keeps ~/.config/opencode which was just rebuilt)
 # ---------------------------------------------------------------------------
 function Invoke-OpencodeDeepClean {
     param([switch]$DryRun)
 
     Write-Host ''
-    Write-Host '  OPENCODE -- deep clean (cache + sessions + db)' -ForegroundColor Yellow
+    Write-Host '  OPENCODE -- deep clean (cache + db)' -ForegroundColor Yellow
 
     $script:CleanTotalFreed = [long]0
     $script:CleanTotalFiles = 0
@@ -801,12 +801,23 @@ function Invoke-OpencodeDeepClean {
         }
     }
 
-    # --- 2. Data / sessions / DB (~/.local/share/opencode) ---
+    # --- 2. DB files only (~/.local/share/opencode) -- keep sessions ---
     $dataPath = Join-Path $HOME '.local\share\opencode'
     if (Test-Path $dataPath) {
-        Invoke-CleanPath -Path $dataPath -Label '~/.local/share/opencode (sessions+db)' -DryRun:$DryRun -Recursive
-        if (-not $DryRun -and (Test-Path $dataPath)) {
-            Remove-Item $dataPath -Recurse -Force -ErrorAction SilentlyContinue
+        $dbFreed = [long]0; $dbCount = 0
+        $dbPatterns = @('*.db', '*.db-wal', '*.db-shm', '*.sqlite', '*.sqlite-wal', '*.sqlite-shm')
+        foreach ($pat in $dbPatterns) {
+            $dbFiles = Get-ChildItem -Path $dataPath -Filter $pat -Recurse -File -ErrorAction SilentlyContinue
+            foreach ($f in $dbFiles) {
+                $dbFreed += $f.Length; $dbCount++
+                if (-not $DryRun) { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        if ($dbCount -gt 0) {
+            $script:CleanTotalFreed += $dbFreed; $script:CleanTotalFiles += $dbCount
+            $tag = if ($DryRun) { ' ~' } else { '' }
+            $color = if ($DryRun) { 'DarkYellow' } elseif ($dbFreed -gt 0) { 'Green' } else { 'DarkGray' }
+            Write-Host ('  ~/.local/share/opencode (db){0}  {1} files  {2}' -f $tag, $dbCount, (Format-Bytes $dbFreed)) -ForegroundColor $color
         }
     }
 
@@ -828,7 +839,7 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
     Write-HintRow '8sync opencode reinstall [folder]'         'Force reinstall + deep clean (Claude Code uninstall + OC cache/db wipe)'
     Write-HintRow '8sync opencode uninstall-claude'           'Deep uninstall Claude Code CLI (native+npm+bun+all data/cache)'
-    Write-HintRow '8sync opencode deep-clean'                 'Deep clean OpenCode cache, sessions, db (keeps ~/.config/opencode)'
+    Write-HintRow '8sync opencode deep-clean'                 'Deep clean OpenCode cache + db (keeps sessions + ~/.config/opencode)'
     Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
     Write-Host ''
     Write-Host '  -- GGUF / local model -----------------------------------------------' -ForegroundColor DarkGray
