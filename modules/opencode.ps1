@@ -984,8 +984,11 @@ function Invoke-OpencodeApply {
         return
     }
 
+    # cache-package.json is handled separately (goes to ~/.cache/opencode, not config)
+    $skipFiles = @('cache-package.json')
     $actions = [System.Collections.Generic.List[pscustomobject]]::new()
     foreach ($file in $bundleFiles) {
+        if ($skipFiles -contains $file.Name) { continue }
         $rel = Convert-ToRelativePath -BasePath $bundlePath -FullPath $file.FullName
         $dest = Join-Path $targetPath $rel
         $destDir = Split-Path $dest -Parent
@@ -1014,7 +1017,9 @@ function Invoke-OpencodeApply {
         }
         Write-Host ("  Total files: {0}" -f $actions.Count) -ForegroundColor DarkGray
         Write-Host '  [dry-run] would remove package-lock.json then run: npm i (inside ~/.config/opencode)' -ForegroundColor DarkYellow
-        Write-Host '  [dry-run] then: restart OpenCode to auto-install plugins' -ForegroundColor DarkYellow
+        if (Test-Path (Join-Path $bundlePath 'cache-package.json')) {
+            Write-Host '  [dry-run] would copy cache-package.json -> ~/.cache/opencode/package.json + npm i' -ForegroundColor DarkYellow
+        }
         Write-Host ''
         return
     }
@@ -1086,12 +1091,47 @@ function Invoke-OpencodeApply {
         Pop-Location
     }
 
+    # --- Install cache deps (plugins live in ~/.cache/opencode/node_modules/) ---
+    $cachePath = Join-Path $HOME '.cache\opencode'
+    $cachePkgSrc = Join-Path $bundlePath 'cache-package.json'
+    if (Test-Path $cachePkgSrc) {
+        Write-Host ''
+        Write-Host '  [opencode] Installing cache plugin deps (~/.cache/opencode) ...' -ForegroundColor Cyan
+
+        if (-not (Test-Path $cachePath)) {
+            $null = New-Item -Path $cachePath -ItemType Directory -Force
+        }
+
+        $cachePkgDest = Join-Path $cachePath 'package.json'
+        try {
+            Copy-Item -Path $cachePkgSrc -Destination $cachePkgDest -Force -ErrorAction Stop
+            Write-Host '  [ok]      cache-package.json -> ~/.cache/opencode/package.json' -ForegroundColor Green
+        } catch {
+            Write-Host ("  [error]   Failed to copy cache-package.json: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        }
+
+        # Remove cache lock to force fresh resolution
+        $cacheLock = Join-Path $cachePath 'package-lock.json'
+        if (Test-Path $cacheLock) {
+            Remove-Item -Path $cacheLock -Force -ErrorAction SilentlyContinue
+        }
+
+        try {
+            Push-Location $cachePath
+            Write-Host '  Running npm i in ~/.cache/opencode ...' -ForegroundColor Yellow
+            npm i
+            Write-Host '  npm i (cache) completed.' -ForegroundColor Green
+        } catch {
+            Write-Host ("  [error] npm i (cache) failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        } finally {
+            Pop-Location
+        }
+    }
+
     Write-Host ''
-    Write-Host '  [opencode] Bundle applied + npm i done.' -ForegroundColor Cyan
-    Write-Host '  Next steps:' -ForegroundColor DarkGray
-    Write-Host '    1) Run oh-my-openagent installer: bunx oh-my-opencode install --no-tui --claude=yes --openai=yes' -ForegroundColor DarkGray
-    Write-Host '       Or use: 8sync opencode fresh-install (does everything in 1 shot)' -ForegroundColor DarkGray
-    Write-Host '    2) Verify: bunx oh-my-opencode doctor' -ForegroundColor DarkGray
+    Write-Host '  [opencode] Bundle applied + deps installed.' -ForegroundColor Cyan
+    Write-Host '  Config:  ~/.config/opencode/  (opencode.json + plugins)' -ForegroundColor DarkGray
+    Write-Host '  Cache:   ~/.cache/opencode/   (plugin packages + node_modules)' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -1181,13 +1221,24 @@ function Invoke-OpencodeExport {
         }
     }
 
+    # --- Also export cache package.json (plugins live in ~/.cache/opencode) ---
+    $cachePkgSrc = Join-Path $HOME '.cache\opencode\package.json'
+    $cachePkgDest = Join-Path $bundlePath 'cache-package.json'
+    if (Test-Path $cachePkgSrc) {
+        try {
+            Copy-Item -Path $cachePkgSrc -Destination $cachePkgDest -Force -ErrorAction Stop
+            Write-Host '  [ok]      cache-package.json (from ~/.cache/opencode/package.json)' -ForegroundColor Green
+            $copied++
+        } catch {
+            Write-Host ("  [error]   cache-package.json -- {0}" -f $_.Exception.Message) -ForegroundColor Red
+            $errors++
+        }
+    } else {
+        Write-Host '  [skip]    ~/.cache/opencode/package.json not found (cache deps not exported)' -ForegroundColor DarkYellow
+    }
+
     Write-Host ''
     Write-Host ("  Export done. copied={0} errors={1}" -f $copied, $errors) -ForegroundColor $(if ($errors -gt 0) { 'DarkYellow' } else { 'Cyan' })
-    Write-Host ''
-    Write-Host '  Target machine:' -ForegroundColor Yellow
-    Write-Host '    1. Copy all files from bundle folder -> ~/.config/opencode' -ForegroundColor White
-    Write-Host '    2. cd ~/.config/opencode && npm i' -ForegroundColor White
-    Write-Host '    3. If npm missing: scoop install nvm; nvm install <version>; nvm use <version>; npm i' -ForegroundColor White
     Write-Host ''
 }
 
