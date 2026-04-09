@@ -771,7 +771,7 @@ function Invoke-OpencodeApply {
             Write-Host ("  [dry-run] {0}" -f $a.Rel) -ForegroundColor DarkYellow
         }
         Write-Host ("  Total files: {0}" -f $actions.Count) -ForegroundColor DarkGray
-        Write-Host '  [dry-run] would run: npm i (inside ~/.config/opencode)' -ForegroundColor DarkYellow
+        Write-Host '  [dry-run] would remove package-lock.json then run: npm i (inside ~/.config/opencode)' -ForegroundColor DarkYellow
         Write-Host '  [dry-run] then: restart OpenCode to auto-install plugins' -ForegroundColor DarkYellow
         Write-Host ''
         return
@@ -824,6 +824,17 @@ function Invoke-OpencodeApply {
 
     try {
         Push-Location $targetPath
+
+        $lockPath = Join-Path $targetPath 'package-lock.json'
+        if (Test-Path $lockPath) {
+            try {
+                Remove-Item -Path $lockPath -Force -ErrorAction Stop
+                Write-Host '  Removed package-lock.json to refresh latest npm package versions.' -ForegroundColor DarkGray
+            } catch {
+                Write-Host ("  [warn] Failed to remove package-lock.json: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+        }
+
         Write-Host '  Running npm i ...' -ForegroundColor Yellow
         npm i
         Write-Host '  npm i completed.' -ForegroundColor Green
