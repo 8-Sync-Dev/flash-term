@@ -1,6 +1,13 @@
 {
   "type": "commonjs",
   "dependencies": {
-    "@opencode-ai/plugin": "latest"
+    "@opencode-ai/plugin": "latest",
+    "@tarquinen/opencode-dcp": "3.1.9",
+    "oh-my-openagent": "3.16.0",
+    "opencode-anthropic-oauth": "0.4.3",
+    "opencode-antigravity-auth": "1.6.0",
+    "opencode-ralph-wiggum": "1.0.0",
+    "opencode-supermemory": "2.0.6",
+    "pyright": "^1.1.408"
   }
 }

@@ -792,10 +792,10 @@ function Invoke-OpencodeDeepClean {
     $script:CleanTotalFreed = [long]0
     $script:CleanTotalFiles = 0
 
-    # --- 1. Cache dir (~/.cache/opencode) -- keep node_modules (installed from bundle via npm i) ---
+    # --- 1. Cache dir (~/.cache/opencode) -- wipe all (bundle package.json has pinned deps) ---
     $cachePath = Join-Path $HOME '.cache\opencode'
     if (Test-Path $cachePath) {
-        $cacheItems = Get-ChildItem -Path $cachePath -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'node_modules' }
+        $cacheItems = Get-ChildItem -Path $cachePath -Force -ErrorAction SilentlyContinue
         $cacheFreed = [long]0; $cacheCount = 0
         foreach ($item in $cacheItems) {
             if ($item.PSIsContainer) {
@@ -811,7 +811,7 @@ function Invoke-OpencodeDeepClean {
             $script:CleanTotalFreed += $cacheFreed; $script:CleanTotalFiles += $cacheCount
             $tag = if ($DryRun) { ' ~' } else { '' }
             $color = if ($DryRun) { 'DarkYellow' } elseif ($cacheFreed -gt 0) { 'Green' } else { 'DarkGray' }
-            Write-Host ('  ~/.cache/opencode (keeps node_modules){0}  {1} files  {2}' -f $tag, $cacheCount, (Format-Bytes $cacheFreed)) -ForegroundColor $color
+            Write-Host ('  ~/.cache/opencode{0}  {1} files  {2}' -f $tag, $cacheCount, (Format-Bytes $cacheFreed)) -ForegroundColor $color
         }
     }
 

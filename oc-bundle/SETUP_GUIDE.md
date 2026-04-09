@@ -226,8 +226,8 @@ npx ambiance-mcp --version
 ### Issue: context-mode tools không có
 ```bash
 # context-mode plugin should already be installed
-# If missing, available via: oh-my-opencode plugin
-# Check: opencode.json "plugin" array has "oh-my-opencode@latest"
+# If missing, available via: oh-my-openagent plugin
+# Check: opencode.json "plugin" array has "oh-my-openagent@latest"
 ```
 
 ### Issue: Context window vẫn full

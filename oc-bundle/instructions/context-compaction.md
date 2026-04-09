@@ -65,7 +65,7 @@ File `~/.config/opencode/plugins/smart-compact.mjs` đã được tạo để:
 
 | Plugin | npm/GitHub | Tác dụng |
 |--------|-----------|----------|
-| `oh-my-opencode@latest` | npm: oh-my-opencode (120k dl/week) | Multi-agent orchestration |
+| `oh-my-openagent@latest` | npm: oh-my-openagent | Multi-agent orchestration |
 | `opencode-supermemory@latest` | npm: opencode-supermemory v2.0.4 | Persistent memory qua mọi session |
 | `@tarquinen/opencode-dcp@latest` | npm: @tarquinen/opencode-dcp | Dynamic context pruning tự động |
 | `./plugins/smart-compact.mjs` | local | Compaction hook thông minh (custom) |
