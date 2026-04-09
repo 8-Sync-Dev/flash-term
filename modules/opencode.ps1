@@ -772,57 +772,6 @@ function Invoke-ClaudeCodeUninstall {
         }
     }
 
-    # --- 4. Data / config / cache directories ---
-    $dirTargets = @(
-        @{ Path = (Join-Path $HOME '.claude');                       Label = '~/.claude (data)' },
-        @{ Path = (Join-Path $HOME '.local\share\claude');           Label = '~/.local/share/claude' },
-        @{ Path = (Join-Path $HOME '.local\state\claude');           Label = '~/.local/state/claude' },
-        @{ Path = (Join-Path $HOME '.cache\claude');                 Label = '~/.cache/claude' },
-        @{ Path = (Join-Path $env:APPDATA 'claude-code');            Label = '%APPDATA%/claude-code' },
-        @{ Path = (Join-Path $env:LOCALAPPDATA 'claude-code');       Label = '%LOCALAPPDATA%/claude-code' },
-        @{ Path = (Join-Path $env:LOCALAPPDATA '.claude-code-cache'); Label = '%LOCALAPPDATA%/.claude-code-cache' },
-        @{ Path = (Join-Path $env:APPDATA 'Claude');                 Label = 'Claude Desktop config' }
-    )
-    foreach ($t in $dirTargets) {
-        if (Test-Path $t.Path) {
-            Invoke-CleanPath -Path $t.Path -Label $t.Label -DryRun:$DryRun -Recursive
-            # Remove the dir itself after files are cleaned
-            if (-not $DryRun -and (Test-Path $t.Path)) {
-                Remove-Item $t.Path -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    # --- 5. Standalone config files ---
-    $fileTargets = @(
-        (Join-Path $HOME '.claude.json'),
-        (Join-Path $HOME 'claude.json.backup')
-    )
-    foreach ($f in $fileTargets) {
-        if (Test-Path $f) {
-            $sz = (Get-Item $f -ErrorAction SilentlyContinue).Length
-            if (-not $DryRun) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
-            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
-            Write-Host ('  removed config: {0}{1}' -f (Split-Path $f -Leaf), $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
-        }
-    }
-
-    # --- 6. TEMP *.node (napi-rs addon temp files) ---
-    $tempDir = $env:TEMP
-    if ($tempDir -and (Test-Path $tempDir)) {
-        $nodeFiles = Get-ChildItem -Path $tempDir -Filter '*.node' -File -ErrorAction SilentlyContinue
-        $nodeFreed = [long]0; $nodeCount = 0
-        foreach ($nf in $nodeFiles) {
-            $nodeFreed += $nf.Length; $nodeCount++
-            if (-not $DryRun) { Remove-Item $nf.FullName -Force -ErrorAction SilentlyContinue }
-        }
-        if ($nodeCount -gt 0) {
-            $script:CleanTotalFreed += $nodeFreed; $script:CleanTotalFiles += $nodeCount
-            $tag = if ($DryRun) { ' ~' } else { '' }
-            Write-Host ('  TEMP *.node{0}  {1} files  {2}' -f $tag, $nodeCount, (Format-Bytes $nodeFreed)) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
-        }
-    }
-
     # --- Summary ---
     Write-Host ''
     $color = if ($DryRun) { 'DarkYellow' } elseif ($script:CleanTotalFreed -gt 0) { 'Green' } else { 'DarkGray' }
@@ -858,29 +807,6 @@ function Invoke-OpencodeDeepClean {
         Invoke-CleanPath -Path $dataPath -Label '~/.local/share/opencode (sessions+db)' -DryRun:$DryRun -Recursive
         if (-not $DryRun -and (Test-Path $dataPath)) {
             Remove-Item $dataPath -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    # --- 3. Desktop app data (%APPDATA%/ai.opencode.desktop) ---
-    $desktopPath = Join-Path $env:APPDATA 'ai.opencode.desktop'
-    if (Test-Path $desktopPath) {
-        Invoke-CleanPath -Path $desktopPath -Label '%APPDATA%/ai.opencode.desktop' -DryRun:$DryRun -Recursive
-        if (-not $DryRun -and (Test-Path $desktopPath)) {
-            Remove-Item $desktopPath -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    # --- 4. Global config alternates (loose files) ---
-    $looseConfigs = @(
-        (Join-Path $HOME '.opencode.json'),
-        (Join-Path $env:LOCALAPPDATA 'opencode\.opencode.json')
-    )
-    foreach ($f in $looseConfigs) {
-        if (Test-Path $f) {
-            $sz = (Get-Item $f -ErrorAction SilentlyContinue).Length
-            if (-not $DryRun) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
-            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
-            Write-Host ('  removed config: {0}{1}' -f $f, $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
         }
     }
 
