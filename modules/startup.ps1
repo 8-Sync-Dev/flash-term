@@ -173,6 +173,7 @@ function Register-8SyncAlias {
             'gsd'      { Invoke-GsdCommand -Rest $Rest }
             'gsd-1'    { Invoke-Gsd1Command -Rest $Rest }
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
+            'remove'   { Invoke-RemoveCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }

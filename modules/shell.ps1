@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','gsd','gsd-1','gguf')
+    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','gsd','gsd-1','gguf','remove')
 
         # subcommands per mode
         $subMap = @{
@@ -64,10 +64,11 @@ function Register-8SyncCompleter {
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--envs','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
-            opencode = @('export','apply','reinstall','install','setup','status','connect','help','cli','--cli','--dry-run','--force','--model','--plan','claude-max','codex-max','gemini-max','glm-max','claude-codex-gemini','claude','codex','gemini','glm','groq','gguf')
+            opencode = @('export','apply','reinstall','fresh-install','deep-clean','uninstall-claude','install','setup','status','connect','help','cli','--cli','--dry-run','--force','--model','--plan','claude-max','codex-max','gemini-max','glm-max','claude-codex-gemini','claude','codex','gemini','glm','groq','gguf')
             gsd = @('setup','key','keys','status','add','connect','remove','help','--dry-run','--auto','--pick','--balance','--plan','--model','--tier','--only','--planning','--exec','light','balanced','heavy','max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini','glm-max','claude','codex','gemini','glm','kimi','groq','copilot','gguf','--port','--name','zai','kimi-coding','groq','google','anthropic','openai','tavily','brave','ollama','context7','jina')
             'gsd-1' = @('help','status','guide','setup','--dry-run','--model','--plan','claude','codex','claude-codex')
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
+            remove   = @('claude-code','--dry-run','help')
         }
 
         if ($count -le 1) {

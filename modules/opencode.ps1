@@ -845,6 +845,35 @@ function Invoke-OpencodeDeepClean {
     Write-Host ('  OpenCode deep clean complete{0}: {1} files, {2}' -f $tag, $script:CleanTotalFiles, (Format-Bytes $script:CleanTotalFreed)) -ForegroundColor $color
 }
 
+# ---------------------------------------------------------------------------
+#  Top-level `8sync remove <target>` dispatcher
+# ---------------------------------------------------------------------------
+function Invoke-RemoveCommand {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    $dryRun = $Rest -contains '--dry-run'
+    $target = ''
+    foreach ($t in $Rest) {
+        if ($t -notlike '--*') { $target = $t.ToLowerInvariant(); break }
+    }
+
+    switch ($target) {
+        'claude-code' {
+            Invoke-ClaudeCodeUninstall -DryRun:$dryRun
+        }
+        default {
+            Write-Host ''
+            Write-HintSection 'REMOVE -- uninstall tools and clean leftovers'
+            Write-HintRow '8sync remove claude-code'            'Deep uninstall Claude Code CLI (native + npm + bun)'
+            Write-HintRow '8sync remove claude-code --dry-run'  'Preview what would be removed'
+            Write-Host ''
+        }
+    }
+}
+
 function Show-OpencodeHelp {
     Write-Host ''
     Write-HintSection 'OPENCODE -- OpenCode config setup + portable bundle flows'

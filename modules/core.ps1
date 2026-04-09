@@ -341,6 +341,7 @@ function Show-8SyncHint {
     Write-HintRow '8sync gsd status'                'Show GSD paths, logged-in providers, API key status'
     Write-HintRow '8sync gsd add gguf'              'Register running llama-server as GSD provider in models.json'
     Write-HintRow '8sync gsd remove gguf'           'Remove gguf-local-* providers from models.json'
+    Write-HintRow '8sync remove claude-code'       'Deep uninstall Claude Code CLI (native + npm + bun)'
 
     Write-HintSection 'GGUF'
     Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
