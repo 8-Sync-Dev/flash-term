@@ -787,7 +787,7 @@ function Invoke-OpencodeDeepClean {
     param([switch]$DryRun)
 
     Write-Host ''
-    Write-Host '  OPENCODE -- deep clean (cache + db)' -ForegroundColor Yellow
+    Write-Host '  OPENCODE -- deep clean (cache + db + sessions, keeps login)' -ForegroundColor Yellow
 
     $script:CleanTotalFreed = [long]0
     $script:CleanTotalFiles = 0
@@ -801,23 +801,26 @@ function Invoke-OpencodeDeepClean {
         }
     }
 
-    # --- 2. DB files only (~/.local/share/opencode) -- keep sessions ---
+    # --- 2. Data dir (~/.local/share/opencode) -- wipe everything EXCEPT auth.json ---
     $dataPath = Join-Path $HOME '.local\share\opencode'
     if (Test-Path $dataPath) {
-        $dbFreed = [long]0; $dbCount = 0
-        $dbPatterns = @('*.db', '*.db-wal', '*.db-shm', '*.sqlite', '*.sqlite-wal', '*.sqlite-shm')
-        foreach ($pat in $dbPatterns) {
-            $dbFiles = Get-ChildItem -Path $dataPath -Filter $pat -Recurse -File -ErrorAction SilentlyContinue
-            foreach ($f in $dbFiles) {
-                $dbFreed += $f.Length; $dbCount++
-                if (-not $DryRun) { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue }
+        $items = Get-ChildItem -Path $dataPath -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'auth.json' }
+        $dataFreed = [long]0; $dataCount = 0
+        foreach ($item in $items) {
+            if ($item.PSIsContainer) {
+                $files = Get-ChildItem -Path $item.FullName -Recurse -File -Force -ErrorAction SilentlyContinue
+                foreach ($f in $files) { $dataFreed += $f.Length; $dataCount++ }
+                if (-not $DryRun) { Remove-Item $item.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+            } else {
+                $dataFreed += $item.Length; $dataCount++
+                if (-not $DryRun) { Remove-Item $item.FullName -Force -ErrorAction SilentlyContinue }
             }
         }
-        if ($dbCount -gt 0) {
-            $script:CleanTotalFreed += $dbFreed; $script:CleanTotalFiles += $dbCount
+        if ($dataCount -gt 0) {
+            $script:CleanTotalFreed += $dataFreed; $script:CleanTotalFiles += $dataCount
             $tag = if ($DryRun) { ' ~' } else { '' }
-            $color = if ($DryRun) { 'DarkYellow' } elseif ($dbFreed -gt 0) { 'Green' } else { 'DarkGray' }
-            Write-Host ('  ~/.local/share/opencode (db){0}  {1} files  {2}' -f $tag, $dbCount, (Format-Bytes $dbFreed)) -ForegroundColor $color
+            $color = if ($DryRun) { 'DarkYellow' } elseif ($dataFreed -gt 0) { 'Green' } else { 'DarkGray' }
+            Write-Host ('  ~/.local/share/opencode (all except auth.json){0}  {1} files  {2}' -f $tag, $dataCount, (Format-Bytes $dataFreed)) -ForegroundColor $color
         }
     }
 
@@ -838,7 +841,7 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
     Write-HintRow '8sync opencode reinstall [folder]'         'Force wipe ~/.config/opencode, re-apply bundle + npm i'
-    Write-HintRow '8sync opencode deep-clean'                 'Uninstall Claude Code + clean OC cache/db (keeps login + sessions)'
+    Write-HintRow '8sync opencode deep-clean'                 'Uninstall Claude Code + wipe OC cache/db/sessions (keeps login only)'
     Write-HintRow '8sync opencode uninstall-claude'           'Uninstall Claude Code CLI only (native+npm+bun)'
     Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
     Write-Host ''
