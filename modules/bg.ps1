@@ -464,95 +464,56 @@ function Invoke-BgPick {
         return
     }
 
-    $hasWezterm = Test-CommandExists 'wezterm'
-
-    # Build tab-delimited lines: id / resolution / source / tags / page
+    # Build tab-delimited lines: id / resolution / source / tags / page / preview_url
     $tab = [char]9
     $lines = $cache | ForEach-Object {
         $src  = if ($_.source) { $_.source } else { 'wallhaven' }
         $tags = if ($_.tags)   { ($_.tags | Select-Object -First 4) -join ' ' } else { '' }
-        $_.id + $tab + $_.resolution + $tab + $src + $tab + $tags + $tab + $_.page
+        $prev = if ($_.preview) { $_.preview } else { '' }
+        $_.id + $tab + $_.resolution + $tab + $src + $tab + $tags + $tab + $_.page + $tab + $prev
     }
 
-    # Write preview script: text only (metadata) — wezterm imgcat cannot run in fzf
-    # subprocess on Windows (requires TTY for terminal size query).
-    # Instead: Ctrl+P opens a full imgcat preview in the current pane, then returns to fzf.
-    $previewScriptPath = [IO.Path]::GetTempFileName() + '.ps1'
-    $previewScript = @'
-param([string]$id, [string]$res, [string]$src, [string]$tags, [string]$page)
-Write-Host ""
-Write-Host ("  " + $id) -ForegroundColor Cyan
-Write-Host ("  " + $res + "   " + $src) -ForegroundColor White
-if ($tags) { Write-Host ("  " + $tags) -ForegroundColor DarkGray }
-if ($page) { Write-Host ("  " + $page) -ForegroundColor DarkGray }
-Write-Host ""
-Write-Host "  Press Ctrl+P to preview image in terminal" -ForegroundColor DarkYellow
-'@
-    [IO.File]::WriteAllText($previewScriptPath, $previewScript, [Text.Encoding]::UTF8)
-    $previewCmd = "pwsh -NoProfile -NonInteractive -File `"$previewScriptPath`" -id {1} -res {2} -src {3} -tags {4} -page {5}"
+    # Preview strategy: chafa renders thumbnails as colored ANSI art inside fzf preview pane.
+    # wezterm imgcat does NOT work in fzf --preview (iTerm2 escape sequences leak as garbage).
+    $hasChafa = Test-CommandExists 'chafa'
+    $hasCurl  = Test-CommandExists 'curl.exe'
 
-    # Build imgcat-on-demand script triggered by Ctrl+P via fzf --bind execute
-    $imgcatScriptPath = $null
-    $bindArg = $null
-    if ($hasWezterm) {
-        $imgcatScriptPath = [IO.Path]::GetTempFileName() + '.ps1'
-        $imgcatScript = @'
-param([string]$previewUrl, [string]$id)
-if (-not $previewUrl) { Write-Host "No preview URL for $id"; exit }
-$f = [IO.Path]::GetTempFileName() + '.jpg'
-try {
-    (New-Object Net.WebClient).DownloadFile($previewUrl, $f)
-    Write-Host ""
-    wezterm imgcat --width 80 $f
-} catch { Write-Host "Download failed: $_" }
-finally { Remove-Item $f -ea 0 }
-'@
-        [IO.File]::WriteAllText($imgcatScriptPath, $imgcatScript, [Text.Encoding]::UTF8)
-
-        # Build cache as JSON for the imgcat script to look up preview URL by id
-        $cacheJson = $cache | Select-Object id, preview | ConvertTo-Json -Compress
-        $cacheJsonPath = [IO.Path]::GetTempFileName() + '.json'
-        [IO.File]::WriteAllText($cacheJsonPath, $cacheJson, [Text.Encoding]::UTF8)
-
-        $imgcatLookup = [IO.Path]::GetTempFileName() + '.ps1'
-        $lookupScript = @"
-param([string]`$id)
-`$cache = Get-Content '$cacheJsonPath' -Raw | ConvertFrom-Json
-`$entry = `$cache | Where-Object { `$_.id -eq `$id } | Select-Object -First 1
-if (-not `$entry) { Write-Host "Not found: `$id"; exit }
-`$f = [IO.Path]::GetTempFileName() + '.jpg'
-try {
-    (New-Object Net.WebClient).DownloadFile(`$entry.preview, `$f)
-    Write-Host ''
-    wezterm imgcat --width 80 `$f
-    Write-Host ''
-} catch { Write-Host "Failed: `$_" }
-finally { Remove-Item `$f -ea 0 }
-"@
-        [IO.File]::WriteAllText($imgcatLookup, $lookupScript, [Text.Encoding]::UTF8)
-        $bindArg = "ctrl-p:execute(pwsh -NoProfile -NonInteractive -File `"$imgcatLookup`" -id {1})"
+    if ($hasChafa -and $hasCurl) {
+        # .cmd preview script: fast startup (no PowerShell overhead), downloads thumbnail once,
+        # caches in %TEMP%\_bg_thumbs\, renders with chafa as ANSI block art.
+        $thumbDir = Join-Path $env:TEMP '_bg_thumbs'
+        if (-not (Test-Path $thumbDir)) { $null = New-Item -Path $thumbDir -ItemType Directory -Force }
+        $previewCmd = Join-Path $env:TEMP '_bg_preview.cmd'
+        @"
+@echo off
+setlocal
+set "ID=%~1"
+set "PREVIEW_URL=%~2"
+set "PAGE_URL=%~3"
+set "TAGS=%~4"
+set "THUMBDIR=%TEMP%\_bg_thumbs"
+if not exist "%THUMBDIR%" mkdir "%THUMBDIR%" 2>nul
+set "THUMB=%THUMBDIR%\%ID%.jpg"
+if not exist "%THUMB%" (
+    curl.exe -sL -o "%THUMB%" "%PREVIEW_URL%" --max-time 5 2>nul
+)
+if exist "%THUMB%" (
+    chafa --size=55x16 --animate=off "%THUMB%" 2>nul
+)
+echo.
+echo  Page: %PAGE_URL%
+if not "%TAGS%"=="" echo  Tags: %TAGS%
+"@ | Set-Content -Path $previewCmd -Encoding ASCII -Force
+        # fzf fields: {1}=id {2}=res {3}=src {4}=tags {5}=page {6}=preview_url
+        $fzfPreview = "cmd /c `"$previewCmd`" {1} {6} {5} {4}"
+        $selected = $lines | fzf --delimiter "`t" --with-nth 1,2,3,4 --prompt='BG> ' --height=80% --layout=reverse --border --info=inline --preview $fzfPreview --preview-window=right:55%:wrap
+    } else {
+        # Text-only fallback
+        $selected = $lines | fzf --delimiter "`t" --with-nth 1,2,3,4 --prompt='BG> ' --height=60% --layout=reverse --border --info=inline --preview "echo Tags: {4} & echo Page: {5}" --preview-window=down:3:wrap
+        if (-not $hasChafa) {
+            Write-Host '  Tip: scoop install chafa  — enables thumbnail preview in picker.' -ForegroundColor DarkGray
+        }
     }
-
-    $fzfArgs = @(
-        '--delimiter', "`t",
-        '--with-nth', '1,2,3,4',
-        '--prompt', 'BG> ',
-        '--height', '70%',
-        '--layout', 'reverse',
-        '--border',
-        '--info', 'inline',
-        '--preview', $previewCmd,
-        '--preview-window', 'right:40%:wrap'
-    )
-    if ($bindArg) { $fzfArgs += '--bind'; $fzfArgs += $bindArg }
-
-    $selected = $lines | fzf @fzfArgs
-
-    # Cleanup
-    Remove-Item $previewScriptPath -ErrorAction SilentlyContinue
-    if ($imgcatLookup)   { Remove-Item $imgcatLookup   -ErrorAction SilentlyContinue }
-    if ($imgcatScriptPath) { Remove-Item $imgcatScriptPath -ErrorAction SilentlyContinue }
-    if ($cacheJsonPath)  { Remove-Item $cacheJsonPath  -ErrorAction SilentlyContinue }
 
     if (-not $selected) { return }
     $selectedId = ($selected -split "`t")[0]
