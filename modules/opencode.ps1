@@ -837,9 +837,9 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode setup --dry-run --model=glm' 'Preview generated config without writing'
     Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
-    Write-HintRow '8sync opencode reinstall [folder]'         'Force reinstall + deep clean (Claude Code uninstall + OC cache/db wipe)'
-    Write-HintRow '8sync opencode uninstall-claude'           'Deep uninstall Claude Code CLI (native+npm+bun+all data/cache)'
-    Write-HintRow '8sync opencode deep-clean'                 'Deep clean OpenCode cache + db (keeps sessions + ~/.config/opencode)'
+    Write-HintRow '8sync opencode reinstall [folder]'         'Force wipe ~/.config/opencode, re-apply bundle + npm i'
+    Write-HintRow '8sync opencode deep-clean'                 'Uninstall Claude Code + clean OC cache/db (keeps login + sessions)'
+    Write-HintRow '8sync opencode uninstall-claude'           'Uninstall Claude Code CLI only (native+npm+bun)'
     Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
     Write-Host ''
     Write-Host '  -- GGUF / local model -----------------------------------------------' -ForegroundColor DarkGray
@@ -1251,19 +1251,17 @@ function Invoke-OpencodeCommand {
         'export'    { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'apply'     { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
         'reinstall' {
-            # Step 1: wipe ~/.config/opencode, re-apply bundle + npm i
             Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force
-            # Step 2: deep uninstall Claude Code CLI (native + npm + bun + all data)
-            Invoke-ClaudeCodeUninstall -DryRun:$dryRun
-            # Step 3: deep clean OpenCode cache, sessions, db (keeps fresh ~/.config/opencode)
-            Invoke-OpencodeDeepClean -DryRun:$dryRun
         }
         'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'setup'     { Invoke-OpencodeSetup -Rest ($Rest | Select-Object -Skip 1) }
         '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
         'status'    { Invoke-OpencodeStatus }
         'uninstall-claude' { Invoke-ClaudeCodeUninstall -DryRun:$dryRun }
-        'deep-clean'       { Invoke-OpencodeDeepClean -DryRun:$dryRun }
+        'deep-clean' {
+            Invoke-ClaudeCodeUninstall -DryRun:$dryRun
+            Invoke-OpencodeDeepClean -DryRun:$dryRun
+        }
         'connect' {
             $conSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
             switch ($conSub) {
