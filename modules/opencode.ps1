@@ -792,12 +792,26 @@ function Invoke-OpencodeDeepClean {
     $script:CleanTotalFreed = [long]0
     $script:CleanTotalFiles = 0
 
-    # --- 1. Cache dir (~/.cache/opencode) -- plugin packages, provider caches, node_modules ---
+    # --- 1. Cache dir (~/.cache/opencode) -- keep node_modules (installed from bundle via npm i) ---
     $cachePath = Join-Path $HOME '.cache\opencode'
     if (Test-Path $cachePath) {
-        Invoke-CleanPath -Path $cachePath -Label '~/.cache/opencode' -DryRun:$DryRun -Recursive
-        if (-not $DryRun -and (Test-Path $cachePath)) {
-            Remove-Item $cachePath -Recurse -Force -ErrorAction SilentlyContinue
+        $cacheItems = Get-ChildItem -Path $cachePath -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'node_modules' }
+        $cacheFreed = [long]0; $cacheCount = 0
+        foreach ($item in $cacheItems) {
+            if ($item.PSIsContainer) {
+                $files = Get-ChildItem -Path $item.FullName -Recurse -File -Force -ErrorAction SilentlyContinue
+                foreach ($f in $files) { $cacheFreed += $f.Length; $cacheCount++ }
+                if (-not $DryRun) { Remove-Item $item.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+            } else {
+                $cacheFreed += $item.Length; $cacheCount++
+                if (-not $DryRun) { Remove-Item $item.FullName -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        if ($cacheCount -gt 0) {
+            $script:CleanTotalFreed += $cacheFreed; $script:CleanTotalFiles += $cacheCount
+            $tag = if ($DryRun) { ' ~' } else { '' }
+            $color = if ($DryRun) { 'DarkYellow' } elseif ($cacheFreed -gt 0) { 'Green' } else { 'DarkGray' }
+            Write-Host ('  ~/.cache/opencode (keeps node_modules){0}  {1} files  {2}' -f $tag, $cacheCount, (Format-Bytes $cacheFreed)) -ForegroundColor $color
         }
     }
 
