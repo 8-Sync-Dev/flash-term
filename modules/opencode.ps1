@@ -693,6 +693,204 @@ function Invoke-OpencodeSetup {
     }
 }
 
+# ---------------------------------------------------------------------------
+#  Deep uninstall: Claude Code CLI (native binary + npm + bun + all data)
+# ---------------------------------------------------------------------------
+function Invoke-ClaudeCodeUninstall {
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-Host '  CLAUDE CODE -- deep uninstall' -ForegroundColor Yellow
+
+    # Reset counters for this session
+    $script:CleanTotalFreed = [long]0
+    $script:CleanTotalFiles = 0
+
+    # --- 1. npm global uninstall ---
+    $npmRoot = $null
+    try { $npmRoot = (npm root -g 2>$null) } catch {}
+    $npmClaudePkg = if ($npmRoot) { Join-Path $npmRoot '@anthropic-ai\claude-code' } else { $null }
+    if ($npmClaudePkg -and (Test-Path $npmClaudePkg)) {
+        Write-Host '  npm uninstall -g @anthropic-ai/claude-code' -ForegroundColor DarkGray
+        if (-not $DryRun) {
+            npm uninstall -g @anthropic-ai/claude-code 2>$null | Out-Null
+        }
+        Write-Host ('  npm global package removed{0}' -f $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor Green
+    }
+    # leftover npm node_modules
+    $npmLeftover = Join-Path $env:APPDATA 'npm\node_modules\@anthropic-ai'
+    if (Test-Path $npmLeftover) {
+        Invoke-CleanPath -Path $npmLeftover -Label 'npm @anthropic-ai leftover' -DryRun:$DryRun -Recursive
+    }
+    # npm bin shims (claude.cmd / claude.ps1 in npm prefix)
+    $npmBin = Join-Path $env:APPDATA 'npm'
+    foreach ($shim in @('claude', 'claude.cmd', 'claude.ps1')) {
+        $shimPath = Join-Path $npmBin $shim
+        if (Test-Path $shimPath) {
+            $sz = (Get-Item $shimPath -ErrorAction SilentlyContinue).Length
+            if (-not $DryRun) { Remove-Item $shimPath -Force -ErrorAction SilentlyContinue }
+            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
+            Write-Host ('  removed npm shim: {0}{1}' -f $shim, $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
+        }
+    }
+
+    # --- 2. Bun global ---
+    $bunBin = Join-Path $HOME '.bun\bin\claude'
+    $bunBinExe = Join-Path $HOME '.bun\bin\claude.exe'
+    $bunMod = Join-Path $HOME '.bun\install\global\node_modules\@anthropic-ai'
+    foreach ($p in @($bunBin, $bunBinExe)) {
+        if (Test-Path $p) {
+            $sz = (Get-Item $p -ErrorAction SilentlyContinue).Length
+            if (-not $DryRun) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
+            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
+            Write-Host ('  removed bun binary: {0}{1}' -f (Split-Path $p -Leaf), $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
+        }
+    }
+    if (Test-Path $bunMod) {
+        Invoke-CleanPath -Path $bunMod -Label 'bun @anthropic-ai modules' -DryRun:$DryRun -Recursive
+    }
+
+    # --- 3. Native binary ---
+    $nativePaths = @(
+        (Join-Path $HOME '.local\bin\claude.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\claude\claude.exe')
+    )
+    foreach ($bin in $nativePaths) {
+        if (Test-Path $bin) {
+            $sz = (Get-Item $bin -ErrorAction SilentlyContinue).Length
+            if (-not $DryRun) { Remove-Item $bin -Force -ErrorAction SilentlyContinue }
+            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
+            Write-Host ('  removed native: {0}{1}' -f $bin, $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
+        }
+    }
+    # Remove Programs\claude dir if empty
+    $nativeDir = Join-Path $env:LOCALAPPDATA 'Programs\claude'
+    if ((Test-Path $nativeDir) -and -not $DryRun) {
+        $remaining = Get-ChildItem $nativeDir -Force -ErrorAction SilentlyContinue
+        if (-not $remaining -or $remaining.Count -eq 0) {
+            Remove-Item $nativeDir -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # --- 4. Data / config / cache directories ---
+    $dirTargets = @(
+        @{ Path = (Join-Path $HOME '.claude');                       Label = '~/.claude (data)' },
+        @{ Path = (Join-Path $HOME '.local\share\claude');           Label = '~/.local/share/claude' },
+        @{ Path = (Join-Path $HOME '.local\state\claude');           Label = '~/.local/state/claude' },
+        @{ Path = (Join-Path $HOME '.cache\claude');                 Label = '~/.cache/claude' },
+        @{ Path = (Join-Path $env:APPDATA 'claude-code');            Label = '%APPDATA%/claude-code' },
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'claude-code');       Label = '%LOCALAPPDATA%/claude-code' },
+        @{ Path = (Join-Path $env:LOCALAPPDATA '.claude-code-cache'); Label = '%LOCALAPPDATA%/.claude-code-cache' },
+        @{ Path = (Join-Path $env:APPDATA 'Claude');                 Label = 'Claude Desktop config' }
+    )
+    foreach ($t in $dirTargets) {
+        if (Test-Path $t.Path) {
+            Invoke-CleanPath -Path $t.Path -Label $t.Label -DryRun:$DryRun -Recursive
+            # Remove the dir itself after files are cleaned
+            if (-not $DryRun -and (Test-Path $t.Path)) {
+                Remove-Item $t.Path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # --- 5. Standalone config files ---
+    $fileTargets = @(
+        (Join-Path $HOME '.claude.json'),
+        (Join-Path $HOME 'claude.json.backup')
+    )
+    foreach ($f in $fileTargets) {
+        if (Test-Path $f) {
+            $sz = (Get-Item $f -ErrorAction SilentlyContinue).Length
+            if (-not $DryRun) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
+            Write-Host ('  removed config: {0}{1}' -f (Split-Path $f -Leaf), $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
+        }
+    }
+
+    # --- 6. TEMP *.node (napi-rs addon temp files) ---
+    $tempDir = $env:TEMP
+    if ($tempDir -and (Test-Path $tempDir)) {
+        $nodeFiles = Get-ChildItem -Path $tempDir -Filter '*.node' -File -ErrorAction SilentlyContinue
+        $nodeFreed = [long]0; $nodeCount = 0
+        foreach ($nf in $nodeFiles) {
+            $nodeFreed += $nf.Length; $nodeCount++
+            if (-not $DryRun) { Remove-Item $nf.FullName -Force -ErrorAction SilentlyContinue }
+        }
+        if ($nodeCount -gt 0) {
+            $script:CleanTotalFreed += $nodeFreed; $script:CleanTotalFiles += $nodeCount
+            $tag = if ($DryRun) { ' ~' } else { '' }
+            Write-Host ('  TEMP *.node{0}  {1} files  {2}' -f $tag, $nodeCount, (Format-Bytes $nodeFreed)) -ForegroundColor $(if ($DryRun) { 'DarkYellow' } else { 'Green' })
+        }
+    }
+
+    # --- Summary ---
+    Write-Host ''
+    $color = if ($DryRun) { 'DarkYellow' } elseif ($script:CleanTotalFreed -gt 0) { 'Green' } else { 'DarkGray' }
+    $tag   = if ($DryRun) { ' (dry-run)' } else { '' }
+    Write-Host ('  Claude Code uninstall complete{0}: {1} files, {2}' -f $tag, $script:CleanTotalFiles, (Format-Bytes $script:CleanTotalFreed)) -ForegroundColor $color
+}
+
+# ---------------------------------------------------------------------------
+#  Deep clean: OpenCode cache, sessions/db, desktop app data
+#  (Runs AFTER reinstall -- keeps ~/.config/opencode which was just rebuilt)
+# ---------------------------------------------------------------------------
+function Invoke-OpencodeDeepClean {
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-Host '  OPENCODE -- deep clean (cache + sessions + db)' -ForegroundColor Yellow
+
+    $script:CleanTotalFreed = [long]0
+    $script:CleanTotalFiles = 0
+
+    # --- 1. Cache dir (~/.cache/opencode) -- plugin packages, provider caches, node_modules ---
+    $cachePath = Join-Path $HOME '.cache\opencode'
+    if (Test-Path $cachePath) {
+        Invoke-CleanPath -Path $cachePath -Label '~/.cache/opencode' -DryRun:$DryRun -Recursive
+        if (-not $DryRun -and (Test-Path $cachePath)) {
+            Remove-Item $cachePath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # --- 2. Data / sessions / DB (~/.local/share/opencode) ---
+    $dataPath = Join-Path $HOME '.local\share\opencode'
+    if (Test-Path $dataPath) {
+        Invoke-CleanPath -Path $dataPath -Label '~/.local/share/opencode (sessions+db)' -DryRun:$DryRun -Recursive
+        if (-not $DryRun -and (Test-Path $dataPath)) {
+            Remove-Item $dataPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # --- 3. Desktop app data (%APPDATA%/ai.opencode.desktop) ---
+    $desktopPath = Join-Path $env:APPDATA 'ai.opencode.desktop'
+    if (Test-Path $desktopPath) {
+        Invoke-CleanPath -Path $desktopPath -Label '%APPDATA%/ai.opencode.desktop' -DryRun:$DryRun -Recursive
+        if (-not $DryRun -and (Test-Path $desktopPath)) {
+            Remove-Item $desktopPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # --- 4. Global config alternates (loose files) ---
+    $looseConfigs = @(
+        (Join-Path $HOME '.opencode.json'),
+        (Join-Path $env:LOCALAPPDATA 'opencode\.opencode.json')
+    )
+    foreach ($f in $looseConfigs) {
+        if (Test-Path $f) {
+            $sz = (Get-Item $f -ErrorAction SilentlyContinue).Length
+            if (-not $DryRun) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+            $script:CleanTotalFreed += $sz; $script:CleanTotalFiles++
+            Write-Host ('  removed config: {0}{1}' -f $f, $(if ($DryRun) { ' ~' } else { '' })) -ForegroundColor DarkGray
+        }
+    }
+
+    # --- Summary ---
+    Write-Host ''
+    $color = if ($DryRun) { 'DarkYellow' } elseif ($script:CleanTotalFreed -gt 0) { 'Green' } else { 'DarkGray' }
+    $tag   = if ($DryRun) { ' (dry-run)' } else { '' }
+    Write-Host ('  OpenCode deep clean complete{0}: {1} files, {2}' -f $tag, $script:CleanTotalFiles, (Format-Bytes $script:CleanTotalFreed)) -ForegroundColor $color
+}
+
 function Show-OpencodeHelp {
     Write-Host ''
     Write-HintSection 'OPENCODE -- OpenCode config setup + portable bundle flows'
@@ -702,7 +900,9 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode setup --dry-run --model=glm' 'Preview generated config without writing'
     Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
-    Write-HintRow '8sync opencode reinstall [folder]'         'Force reinstall (wipe ~/.config/opencode, then apply + npm i)'
+    Write-HintRow '8sync opencode reinstall [folder]'         'Force reinstall + deep clean (Claude Code uninstall + OC cache/db wipe)'
+    Write-HintRow '8sync opencode uninstall-claude'           'Deep uninstall Claude Code CLI (native+npm+bun+all data/cache)'
+    Write-HintRow '8sync opencode deep-clean'                 'Deep clean OpenCode cache, sessions, db (keeps ~/.config/opencode)'
     Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
     Write-Host ''
     Write-Host '  -- GGUF / local model -----------------------------------------------' -ForegroundColor DarkGray
@@ -1113,11 +1313,20 @@ function Invoke-OpencodeCommand {
     switch ($sub) {
         'export'    { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'apply'     { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
-        'reinstall' { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force }
+        'reinstall' {
+            # Step 1: wipe ~/.config/opencode, re-apply bundle + npm i
+            Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force
+            # Step 2: deep uninstall Claude Code CLI (native + npm + bun + all data)
+            Invoke-ClaudeCodeUninstall -DryRun:$dryRun
+            # Step 3: deep clean OpenCode cache, sessions, db (keeps fresh ~/.config/opencode)
+            Invoke-OpencodeDeepClean -DryRun:$dryRun
+        }
         'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'setup'     { Invoke-OpencodeSetup -Rest ($Rest | Select-Object -Skip 1) }
         '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
         'status'    { Invoke-OpencodeStatus }
+        'uninstall-claude' { Invoke-ClaudeCodeUninstall -DryRun:$dryRun }
+        'deep-clean'       { Invoke-OpencodeDeepClean -DryRun:$dryRun }
         'connect' {
             $conSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
             switch ($conSub) {
