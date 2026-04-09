@@ -846,6 +846,62 @@ function Invoke-OpencodeDeepClean {
 }
 
 # ---------------------------------------------------------------------------
+#  oh-my-openagent: run installer (bunx oh-my-opencode install)
+#  Sets up model routing, agent configs, fallback chains
+#  Ref: https://github.com/code-yeongyu/oh-my-openagent
+# ---------------------------------------------------------------------------
+function Invoke-OhMyOpenagentInstall {
+    param(
+        [switch]$DryRun,
+        [string]$Claude  = 'yes',
+        [string]$OpenAI  = 'yes',
+        [string]$Gemini  = 'no',
+        [string]$Copilot = 'no'
+    )
+
+    Write-Host ''
+    Write-Host '  OH-MY-OPENAGENT -- install / setup model routing' -ForegroundColor Yellow
+
+    # Validate Claude flag
+    if ($Claude -notin @('no','yes','max20')) {
+        Write-Host "  [error] --claude must be no|yes|max20, got: $Claude" -ForegroundColor Red
+        return
+    }
+
+    # Check bun is available
+    $bun = Get-Command bun -ErrorAction SilentlyContinue
+    $bunx = Get-Command bunx -ErrorAction SilentlyContinue
+    if (-not $bun -and -not $bunx) {
+        Write-Host '  [error] bun/bunx not found. Install bun first:' -ForegroundColor Red
+        Write-Host '    powershell -c "irm bun.sh/install.ps1 | iex"' -ForegroundColor White
+        Write-Host '    or: scoop install bun' -ForegroundColor White
+        Write-Host ''
+        return
+    }
+
+    $cmd = "bunx oh-my-opencode install --no-tui --claude=$Claude --openai=$OpenAI --gemini=$Gemini --copilot=$Copilot"
+
+    Write-Host "  $cmd" -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] would run the above command' -ForegroundColor DarkYellow
+        Write-Host '  [dry-run] creates: ~/.config/opencode/oh-my-openagent.json' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    try {
+        & bunx oh-my-opencode install --no-tui "--claude=$Claude" "--openai=$OpenAI" "--gemini=$Gemini" "--copilot=$Copilot"
+        Write-Host ''
+        Write-Host '  oh-my-openagent install completed.' -ForegroundColor Green
+    } catch {
+        Write-Host ("  [error] oh-my-openagent install failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    }
+    Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
 #  Top-level `8sync remove <target>` dispatcher
 # ---------------------------------------------------------------------------
 function Invoke-RemoveCommand {
@@ -884,9 +940,11 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
     Write-HintRow '8sync opencode reinstall [folder]'         'Force wipe ~/.config/opencode, re-apply bundle + npm i'
-    Write-HintRow '8sync opencode fresh-install [folder]'    'Deep clean + reinstall in one shot (ideal for new machines)'
-    Write-HintRow '8sync opencode deep-clean'                 'Uninstall Claude Code + wipe OC cache/db/sessions (keeps login only)'
-    Write-HintRow '8sync opencode uninstall-claude'           'Uninstall Claude Code CLI only (native+npm+bun)'
+    Write-HintRow '8sync opencode fresh-install [folder]'              'Full setup: clean + reinstall + oh-my-openagent (1 command)'
+    Write-HintRow '  --claude=yes|max20|no --openai=yes|no'          '  subscription flags (default: claude=yes openai=yes)'
+    Write-HintRow '  --gemini=yes|no --copilot=yes|no'               '  additional providers'
+    Write-HintRow '8sync opencode deep-clean'                         'Uninstall Claude Code + wipe OC cache/db/sessions (keeps login only)'
+    Write-HintRow '8sync opencode uninstall-claude'                   'Uninstall Claude Code CLI only (native+npm+bun)'
     Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
     Write-Host ''
     Write-Host '  -- GGUF / local model -----------------------------------------------' -ForegroundColor DarkGray
@@ -895,10 +953,10 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode connect gguf --name id'     'Override provider id (default: gguf-local-<model>)'
     Write-HintRow '8sync opencode connect gguf --dry-run'     'Preview change without writing'
     Write-Host ''
-    Write-Host '  Target machine setup:' -ForegroundColor DarkGray
-    Write-Host '    1) Copy/extract bundle folder (default: oc-bundle) into machine' -ForegroundColor DarkGray
-    Write-Host '    2) Run: 8sync opencode reinstall [folder]' -ForegroundColor DarkGray
-    Write-Host '    3) Or generate local config directly: 8sync opencode setup --plan=claude-max' -ForegroundColor DarkGray
+    Write-Host '  Target machine setup (1 command):' -ForegroundColor DarkGray
+    Write-Host '    1) git pull (or copy oc-bundle folder)' -ForegroundColor DarkGray
+    Write-Host '    2) 8sync opencode fresh-install --claude=yes --openai=yes' -ForegroundColor DarkGray
+    Write-Host '       (uninstalls Claude Code, cleans cache/db, applies bundle, runs oh-my-openagent installer)' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Note: Do NOT push bundle to public repo with secrets in opencode.json.' -ForegroundColor DarkYellow
     Write-Host ''
@@ -1029,11 +1087,11 @@ function Invoke-OpencodeApply {
     }
 
     Write-Host ''
-    Write-Host '  [opencode] Setup complete!' -ForegroundColor Cyan
+    Write-Host '  [opencode] Bundle applied + npm i done.' -ForegroundColor Cyan
     Write-Host '  Next steps:' -ForegroundColor DarkGray
-    Write-Host '    1) Restart OpenCode -- plugins auto-install on startup' -ForegroundColor DarkGray
-    Write-Host '    2) Verify model routing: opencode debug config' -ForegroundColor DarkGray
-    Write-Host '    3) If needed, generate a fresh runtime config: 8sync opencode setup --model=claude+codex' -ForegroundColor DarkGray
+    Write-Host '    1) Run oh-my-openagent installer: bunx oh-my-opencode install --no-tui --claude=yes --openai=yes' -ForegroundColor DarkGray
+    Write-Host '       Or use: 8sync opencode fresh-install (does everything in 1 shot)' -ForegroundColor DarkGray
+    Write-Host '    2) Verify: bunx oh-my-opencode doctor' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -1301,9 +1359,18 @@ function Invoke-OpencodeCommand {
             Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force
         }
         'fresh-install' {
+            # Parse oh-my-openagent subscription flags (defaults: claude=yes, openai=yes)
+            $omaFlags = @{ Claude = 'yes'; OpenAI = 'yes'; Gemini = 'no'; Copilot = 'no' }
+            foreach ($arg in $Rest) {
+                if ($arg -match '^--claude=(no|yes|max20)$')  { $omaFlags.Claude  = $Matches[1] }
+                if ($arg -match '^--openai=(no|yes)$')        { $omaFlags.OpenAI  = $Matches[1] }
+                if ($arg -match '^--gemini=(no|yes)$')        { $omaFlags.Gemini  = $Matches[1] }
+                if ($arg -match '^--copilot=(no|yes)$')       { $omaFlags.Copilot = $Matches[1] }
+            }
             Invoke-ClaudeCodeUninstall -DryRun:$dryRun
             Invoke-OpencodeDeepClean -DryRun:$dryRun
             Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force
+            Invoke-OhMyOpenagentInstall -DryRun:$dryRun -Claude $omaFlags.Claude -OpenAI $omaFlags.OpenAI -Gemini $omaFlags.Gemini -Copilot $omaFlags.Copilot
         }
         'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'setup'     { Invoke-OpencodeSetup -Rest ($Rest | Select-Object -Skip 1) }
