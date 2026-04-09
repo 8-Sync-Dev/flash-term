@@ -855,6 +855,7 @@ function Show-OpencodeHelp {
     Write-HintRow '8sync opencode export [folder]'            'Export ~/.config/opencode to bundle folder (default: oc-bundle)'
     Write-HintRow '8sync opencode apply [folder]'             'Copy bundle -> ~/.config/opencode and run npm i'
     Write-HintRow '8sync opencode reinstall [folder]'         'Force wipe ~/.config/opencode, re-apply bundle + npm i'
+    Write-HintRow '8sync opencode fresh-install [folder]'    'Deep clean + reinstall in one shot (ideal for new machines)'
     Write-HintRow '8sync opencode deep-clean'                 'Uninstall Claude Code + wipe OC cache/db/sessions (keeps login only)'
     Write-HintRow '8sync opencode uninstall-claude'           'Uninstall Claude Code CLI only (native+npm+bun)'
     Write-HintRow '8sync opencode status'                     'Show source/bundle/npm readiness'
@@ -1268,6 +1269,11 @@ function Invoke-OpencodeCommand {
         'export'    { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'apply'     { Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force:$force }
         'reinstall' {
+            Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force
+        }
+        'fresh-install' {
+            Invoke-ClaudeCodeUninstall -DryRun:$dryRun
+            Invoke-OpencodeDeepClean -DryRun:$dryRun
             Invoke-OpencodeApply -BundleDir $bundleDir -DryRun:$dryRun -Force
         }
         'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
