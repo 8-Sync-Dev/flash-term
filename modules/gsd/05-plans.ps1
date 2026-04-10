@@ -27,6 +27,7 @@ function Show-GsdPlans {
     Write-HintRow 'pro'                 'Sonnet plan/completion + kimi+codex planning + groq free'
     Write-HintRow 'normal'              'No Claude cost: gemini plan + glm-5.1 exec + groq'
     Write-HintRow 'claude-max'          '100% Claude: Opus plan + Sonnet exec + Haiku workers'
+    Write-HintRow 'claude-codex-review' 'Claude codes + Codex reviews: Opus plan, Sonnet exec, Codex validation/completion'
     Write-HintRow 'codex-max'           '100% OpenAI: gpt-5.4 plan + gpt-5.3-codex planning-heavy stack'
     Write-HintRow 'gemini-max'          '100% Google: gemini-3.1-pro plan+exec (2M ctx, free)'
     Write-HintRow 'glm-max'             '100% ZAI: glm-5.1 plan/exec + glm-4.x workers; no OAuth needed'

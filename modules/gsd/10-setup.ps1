@@ -414,7 +414,7 @@ function Invoke-GsdSetup {
 
     $bundleDir = Resolve-GsdBundleDir
     $gsdHome = Resolve-GsdHome
-    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'codex-max', 'gemini-max', 'claude-codex-gemini', 'glm-max')
+    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'claude-codex-review', 'codex-max', 'gemini-max', 'claude-codex-gemini', 'glm-max')
     $planLower = $Plan.ToLowerInvariant().Trim()
 
     if ($planLower -ne '' -and $validPlans -notcontains $planLower) {
@@ -531,6 +531,11 @@ function Invoke-GsdSetup {
             Write-Host '  optional: /login github-copilot  (extra model access)' -ForegroundColor DarkGray
             Write-Host '  Models : Opus plan -> codex exec -> gemini research (best of three)' -ForegroundColor DarkGray
             Write-Host '  The Big Three -- Anthropic + OpenAI + Google' -ForegroundColor Cyan
+        }
+        'claude-codex-review' {
+            Write-Host '  /login -> anthropic  openai-codex' -ForegroundColor Yellow
+            Write-Host '  Models : Opus plan/research -> Sonnet exec -> Codex validation/completion/subagent' -ForegroundColor DarkGray
+            Write-Host '  Claude codes, Codex reviews -- cross-model peer review at $0 (Codex OAuth free)' -ForegroundColor Cyan
         }
     }
 

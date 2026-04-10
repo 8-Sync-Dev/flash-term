@@ -41,7 +41,7 @@ function Invoke-GsdSetupWizard {
     Write-Host ''
 
     # ── Step 2: cost/balance mode ─────────────────────────────────────────────
-    Write-Host '  Step 2/3  Cost tier' -ForegroundColor Yellow
+    Write-Host '  Step 2  Cost tier' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  [1] balanced  Coding models lead exec; sonnet leads planning; haiku as cheap fallback  (recommended)' -ForegroundColor Cyan
     Write-Host '  [2] heavy     Sonnet leads planning + exec; strongest anthropic coverage' -ForegroundColor White
@@ -58,11 +58,47 @@ function Invoke-GsdSetupWizard {
     Write-Host ("  -> Tier: {0}" -f $tierArg) -ForegroundColor Cyan
     Write-Host ''
 
-    # ── Step 3: confirm ───────────────────────────────────────────────────────
-    Write-Host '  Step 3/3  Confirm' -ForegroundColor Yellow
+    # ── Step 3: role assignment ───────────────────────────────────────────────
+    $planningPin = ''
+    $execPin = ''
+
+    if ($modelArg -match 'claude') {
+        Write-Host '  Step 3/4  Role assignment (Claude detected)' -ForegroundColor Yellow
+        Write-Host ''
+        Write-Host '  [1] auto       Let 8sync decide based on tier (default)' -ForegroundColor Cyan
+        Write-Host '  [2] opus-plan  Opus plans/research, Sonnet codes, others review' -ForegroundColor White
+        Write-Host '  [3] sonnet-all Sonnet does everything (no Opus)' -ForegroundColor White
+        Write-Host ''
+        $roleRaw = Read-Host '  Choice [1]'
+        switch ($roleRaw.Trim()) {
+            '2' {
+                $planningPin = 'anthropic/claude-opus-4-6'
+                $execPin = 'anthropic/claude-sonnet-4-6'
+                Write-Host ''
+                Write-Host '  -> Opus plans + Sonnet codes' -ForegroundColor Cyan
+            }
+            '3' {
+                $planningPin = 'anthropic/claude-sonnet-4-6'
+                $execPin = 'anthropic/claude-sonnet-4-6'
+                Write-Host ''
+                Write-Host '  -> Sonnet everywhere' -ForegroundColor Cyan
+            }
+            default {
+                Write-Host ''
+                Write-Host '  -> Auto (tier-based)' -ForegroundColor Cyan
+            }
+        }
+        Write-Host ''
+    }
+
+    # ── Step 4: confirm ───────────────────────────────────────────────────────
+    $stepLabel = if ($modelArg -match 'claude') { '4/4' } else { '3/3' }
+    Write-Host ("  Step {0}  Confirm" -f $stepLabel) -ForegroundColor Yellow
     Write-Host ''
     Write-Host ("  Stack   : {0}" -f $modelArg) -ForegroundColor White
     Write-Host ("  Tier    : {0}" -f $tierArg) -ForegroundColor White
+    if ($planningPin) { Write-Host ("  Planning: {0}" -f $planningPin) -ForegroundColor White }
+    if ($execPin)     { Write-Host ("  Exec    : {0}" -f $execPin) -ForegroundColor White }
     Write-Host ("  Write to: {0}" -f (Join-Path (Resolve-GsdHome) 'PREFERENCES.md')) -ForegroundColor DarkGray
     Write-Host ''
     $confirm = Read-Host '  Apply? [Y/n]'
@@ -72,7 +108,7 @@ function Invoke-GsdSetupWizard {
         return
     }
 
-    Invoke-GsdSetupFromModel -Model $modelArg -DryRun:$DryRun -Tier $tierArg
+    Invoke-GsdSetupFromModel -Model $modelArg -DryRun:$DryRun -Tier $tierArg -PlanningPin $planningPin -ExecPin $execPin
 }
 
 function Invoke-GsdPlanPicker {
