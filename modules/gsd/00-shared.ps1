@@ -232,6 +232,142 @@ function Get-GsdResourceLoaderShimPath {
     return Join-Path (Resolve-GsdHome) 'resource-loader.js'
 }
 
+function Resolve-GsdNodeModulesTarget {
+    $candidates = @()
+
+    $gsdCommand = Get-Command gsd -ErrorAction SilentlyContinue
+    if ($gsdCommand) {
+        try {
+            $cmdDir = Split-Path $gsdCommand.Source -Parent
+            $candidates += [System.IO.Path]::GetFullPath((Join-Path $cmdDir 'node_modules'))
+        } catch {}
+    }
+
+    $candidates += @(
+        (Join-Path $HOME 'scoop\apps\nodejs-lts\current\bin\node_modules'),
+        (Join-Path $HOME 'scoop\persist\nodejs-lts\bin\node_modules')
+    )
+
+    foreach ($candidate in ($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Invoke-GsdNodeModulesBridgeFix {
+    param([switch]$DryRun)
+
+    $agentDir = Resolve-GsdAgentDir
+    $bridgePath = Join-Path $agentDir 'node_modules'
+    $targetPath = Resolve-GsdNodeModulesTarget
+
+    Write-Host '  [gsd] Repairing node_modules bridge...' -ForegroundColor Cyan
+
+    if (-not $targetPath) {
+        Write-Host '  [warn]    Could not locate installed node_modules for gsd-pi' -ForegroundColor DarkYellow
+        return
+    }
+
+    $scopeTargetPath = Join-Path $targetPath 'gsd-pi\packages'
+    if (-not (Test-Path $scopeTargetPath)) {
+        Write-Host ("  [warn]    Missing scoped package source: {0}" -f $scopeTargetPath) -ForegroundColor DarkYellow
+    }
+
+    $bridgeReady = $false
+    if (Test-Path $bridgePath) {
+        try {
+            $item = Get-Item -LiteralPath $bridgePath -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $item.Target -contains $targetPath) {
+                $bridgeReady = $true
+            }
+        } catch {}
+    }
+
+    if ($DryRun) {
+        if (-not $bridgeReady) {
+            Write-Host ("  [dry-run] bridge {0} -> {1}" -f $bridgePath, $targetPath) -ForegroundColor DarkYellow
+        }
+        $scopePath = Join-Path $bridgePath '@gsd'
+        if (Test-Path $scopeTargetPath) {
+            Write-Host ("  [dry-run] bridge {0} -> {1}" -f $scopePath, $scopeTargetPath) -ForegroundColor DarkYellow
+        }
+        return
+    }
+
+    try {
+        if (-not $bridgeReady) {
+            if (Test-Path $bridgePath) {
+                Remove-Item -LiteralPath $bridgePath -Recurse -Force -ErrorAction Stop
+            }
+
+            if (-not (Test-Path $agentDir)) {
+                $null = New-Item -Path $agentDir -ItemType Directory -Force
+            }
+
+            $null = New-Item -Path $bridgePath -ItemType Junction -Target $targetPath -Force
+            Write-Host '  [ok]      Restored ~/.gsd/agent/node_modules bridge' -ForegroundColor Green
+        } else {
+            Write-Host '  [ok]      ~/.gsd/agent/node_modules bridge already points at installed runtime' -ForegroundColor Green
+        }
+
+        if (Test-Path $scopeTargetPath) {
+            $scopePath = Join-Path $bridgePath '@gsd'
+            $scopeReady = $false
+            if (Test-Path $scopePath) {
+                try {
+                    $scopeItem = Get-Item -LiteralPath $scopePath -Force
+                    if (($scopeItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $scopeItem.Target -contains $scopeTargetPath) {
+                        $scopeReady = $true
+                    }
+                } catch {}
+            }
+
+            if (-not $scopeReady) {
+                if (Test-Path $scopePath) {
+                    Remove-Item -LiteralPath $scopePath -Recurse -Force -ErrorAction Stop
+                }
+                $null = New-Item -Path $scopePath -ItemType Junction -Target $scopeTargetPath -Force
+                Write-Host '  [ok]      Restored ~/.gsd/agent/node_modules/@gsd scope bridge' -ForegroundColor Green
+            } else {
+                Write-Host '  [ok]      ~/.gsd/agent/node_modules/@gsd scope bridge already valid' -ForegroundColor Green
+            }
+        }
+
+        $extDir = Join-Path $agentDir 'extensions'
+        $extDepsTarget = Join-Path $targetPath 'gsd-pi\node_modules'
+        $extBridgePath = Join-Path $extDir 'node_modules'
+        if (Test-Path $extDepsTarget) {
+            $extBridgeReady = $false
+            if (Test-Path $extBridgePath) {
+                try {
+                    $extItem = Get-Item -LiteralPath $extBridgePath -Force
+                    if (($extItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $extItem.Target -contains $extDepsTarget) {
+                        $extBridgeReady = $true
+                    }
+                } catch {}
+            }
+
+            if (-not $extBridgeReady) {
+                if (Test-Path $extBridgePath) {
+                    Remove-Item -LiteralPath $extBridgePath -Recurse -Force -ErrorAction Stop
+                }
+                if (-not (Test-Path $extDir)) {
+                    $null = New-Item -Path $extDir -ItemType Directory -Force
+                }
+                $null = New-Item -Path $extBridgePath -ItemType Junction -Target $extDepsTarget -Force
+                Write-Host '  [ok]      Restored ~/.gsd/agent/extensions/node_modules deps bridge' -ForegroundColor Green
+            } else {
+                Write-Host '  [ok]      ~/.gsd/agent/extensions/node_modules deps bridge already valid' -ForegroundColor Green
+            }
+        }
+    } catch {
+        Write-Host ("  [warn]    Failed to restore node_modules bridge: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+}
+
 function Invoke-GsdResourceLoaderFix {
     param([switch]$DryRun)
 
@@ -277,6 +413,51 @@ export * from '${targetUri}';
         Write-Host '  [ok]      Restored ~/.gsd/resource-loader.js compatibility shim' -ForegroundColor Green
     } catch {
         Write-Host ("  [warn]    Failed to write resource-loader shim: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+}
+
+function Invoke-GsdAutoExtensionLoaderPatch {
+    param([switch]$DryRun)
+
+    $autoPath = Join-Path (Resolve-GsdAgentDir) 'extensions\gsd\auto.js'
+    if (-not (Test-Path $autoPath)) {
+        Write-Host '  [warn]    auto.js not found under ~/.gsd/agent/extensions/gsd' -ForegroundColor DarkYellow
+        return
+    }
+
+    $oldBlock = @"
+        const _req = createRequire(import.meta.url);
+        const pkgRoot = dirname(_req.resolve("gsd-pi/package.json"));
+        const { initResources } = await import(join(pkgRoot, "dist", "resource-loader.js"));
+"@
+
+    $newBlock = @"
+        const { initResources } = await import("../../../resource-loader.js");
+"@
+
+    try {
+        $raw = Get-Content $autoPath -Raw -Encoding UTF8
+        if ($raw.Contains($newBlock)) {
+            Write-Host '  [ok]      auto.js already imports ~/.gsd/resource-loader.js bridge' -ForegroundColor Green
+            return
+        }
+
+        if (-not $raw.Contains($oldBlock)) {
+            Write-Host '  [warn]    auto.js has unexpected loader block shape; skipped patch' -ForegroundColor DarkYellow
+            return
+        }
+
+        if ($DryRun) {
+            Write-Host ("  [dry-run] patch {0}" -f $autoPath) -ForegroundColor DarkYellow
+            return
+        }
+
+        $updated = $raw.Replace($oldBlock, $newBlock)
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($autoPath, $updated, $utf8NoBom)
+        Write-Host '  [ok]      Patched auto.js to use ~/.gsd/resource-loader.js bridge' -ForegroundColor Green
+    } catch {
+        Write-Host ("  [warn]    Failed to patch auto.js loader import: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
     }
 }
 

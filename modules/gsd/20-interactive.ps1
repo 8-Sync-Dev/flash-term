@@ -199,9 +199,11 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd status' -ForegroundColor White
     Write-Host '        Show active files, auth providers, key status, and missing setup.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix [--dry-run]' -ForegroundColor White
-    Write-Host '        Unified repair: refresh gsd-pi, restore ~/.gsd/resource-loader.js, patch runtime, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
+    Write-Host '        Fast repair: restore ~/.gsd/agent/node_modules and ~/.gsd/resource-loader.js, patch runtime, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix --refresh' -ForegroundColor White
+    Write-Host '        Also run npm/bun upgrade for gsd-pi when you explicitly want a slower runtime refresh.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --stable' -ForegroundColor White
-    Write-Host '        Same unified fix, but explicitly using the pinned stable profile contract for runtime patching.' -ForegroundColor DarkGray
+    Write-Host '        Same fix path, but explicitly using the pinned stable profile contract for runtime patching.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --force' -ForegroundColor White
     Write-Host '        Also back up and rebuild gsd.db, completed-units.json, and routing-history.json when the DB is genuinely corrupted.' -ForegroundColor DarkGray
     Write-Host ''

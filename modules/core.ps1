@@ -336,7 +336,8 @@ function Show-8SyncHint {
     Write-HintRow '8sync opencode --dry-run'         'Preview exported/applied files only, no changes'
     Write-HintRow '8sync opencode status'            'Show source + bundle status and runtime readiness'
     Write-HintRow '8sync gsd setup'                 'Generate routing and auto-apply GSD Anthropic OAuth fix (#145-style)'
-    Write-HintRow '8sync gsd fix [--dry-run]'       'Unified repair: refresh gsd-pi, restore resource-loader shim, patch runtime, clean stale DB sidecars'
+    Write-HintRow '8sync gsd fix [--dry-run]'       'Fast repair: restore node_modules/resource-loader bridges, patch runtime, clean stale DB sidecars'
+    Write-HintRow '8sync gsd fix --refresh'         'Also upgrade gsd-pi runtime when you explicitly want a slower package refresh'
     Write-HintRow '8sync gsd fix --force'           'Also back up and rebuild gsd.db + milestone cache files when the project DB is corrupted'
     Write-HintRow '8sync gsd-1 help'                'OpenCode GSD (.planning/) guide bridge for the current project'
     Write-HintRow '8sync gsd-1 status'              'Check .planning/config.json, oc-config.json, ROADMAP.md, STATE.md'
@@ -345,6 +346,7 @@ function Show-8SyncHint {
     Write-HintRow '8sync gsd add gguf'              'Register running llama-server as GSD provider in models.json'
     Write-HintRow '8sync gsd remove gguf'           'Remove gguf-local-* providers from models.json'
     Write-HintRow '8sync remove claude-code'       'Deep uninstall Claude Code CLI (native + npm + bun)'
+    Write-HintRow '8sync remove gsd2 --dry-run'    'Preview deep removal of gsd-2 (gsd-pi@latest) from this machine'
 
     Write-HintSection 'GGUF'
     Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'

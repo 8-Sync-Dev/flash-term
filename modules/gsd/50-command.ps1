@@ -101,7 +101,8 @@ function Invoke-GsdFix {
     param(
         [switch]$DryRun,
         [switch]$Stable,
-        [switch]$Force
+        [switch]$Force,
+        [switch]$Refresh
     )
 
     Write-Host ''
@@ -110,8 +111,15 @@ function Invoke-GsdFix {
         Write-Host '  [stable] Applying stable GSD patch profile' -ForegroundColor Cyan
     }
 
-    Invoke-GsdPackageRefresh -DryRun:$DryRun
+    if ($Refresh) {
+        Invoke-GsdPackageRefresh -DryRun:$DryRun
+    } else {
+        Write-Host '  [ok]      Skipped gsd-pi package refresh (use --refresh to upgrade runtime)' -ForegroundColor Green
+    }
+
+    Invoke-GsdNodeModulesBridgeFix -DryRun:$DryRun
     Invoke-GsdResourceLoaderFix -DryRun:$DryRun
+    Invoke-GsdAutoExtensionLoaderPatch -DryRun:$DryRun
     Invoke-GsdRuntimePatch -DryRun:$DryRun -Stable:$Stable
     Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
 

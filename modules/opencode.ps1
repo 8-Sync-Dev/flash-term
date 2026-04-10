@@ -972,6 +972,8 @@ function Invoke-RemoveCommand {
     )
 
     $dryRun = $Rest -contains '--dry-run'
+    $keepHome = $Rest -contains '--keep-home'
+    $keepNpmCache = $Rest -contains '--keep-npm-cache'
     $target = ''
     foreach ($t in $Rest) {
         if ($t -notlike '--*') { $target = $t.ToLowerInvariant(); break }
@@ -981,11 +983,39 @@ function Invoke-RemoveCommand {
         'claude-code' {
             Invoke-ClaudeCodeUninstall -DryRun:$dryRun
         }
+        'gsd2' {
+            $scriptPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\remove-gsd2-deep.ps1'))
+            if (-not (Test-Path $scriptPath)) {
+                Write-Host ("  [error] remove script not found: {0}" -f $scriptPath) -ForegroundColor Red
+                return
+            }
+
+            try {
+                & $scriptPath -DryRun:$dryRun -KeepHome:$keepHome -KeepNpmCache:$keepNpmCache
+            } catch {
+                Write-Host ("  [error] remove gsd2 failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            }
+        }
+        'gsd-2' {
+            $scriptPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\remove-gsd2-deep.ps1'))
+            if (-not (Test-Path $scriptPath)) {
+                Write-Host ("  [error] remove script not found: {0}" -f $scriptPath) -ForegroundColor Red
+                return
+            }
+
+            try {
+                & $scriptPath -DryRun:$dryRun -KeepHome:$keepHome -KeepNpmCache:$keepNpmCache
+            } catch {
+                Write-Host ("  [error] remove gsd-2 failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            }
+        }
         default {
             Write-Host ''
             Write-HintSection 'REMOVE -- uninstall tools and clean leftovers'
             Write-HintRow '8sync remove claude-code'            'Deep uninstall Claude Code CLI (native + npm + bun)'
             Write-HintRow '8sync remove claude-code --dry-run'  'Preview what would be removed'
+            Write-HintRow '8sync remove gsd2 [--dry-run]'       'Deep remove gsd-2 (gsd-pi@latest) runtime + npm/scoop leftovers'
+            Write-HintRow '  --keep-home --keep-npm-cache'      'Optional: keep ~/.gsd and npm _npx cache while removing binaries/packages'
             Write-Host ''
         }
     }
