@@ -162,6 +162,7 @@ function Invoke-GsdPlanPicker {
     $destPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
+        Invoke-GsdRuntimePatch
         Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
         Write-Host ''
         Write-Host '  Next: /gsd prefs to verify   /model to browse available models' -ForegroundColor DarkGray
@@ -175,7 +176,7 @@ function Show-GsdHelp {
     Write-Host ''
     Write-Host '  Core commands' -ForegroundColor Cyan
     Write-Host '    8sync gsd setup --model <stack>' -ForegroundColor White
-    Write-Host '        Preferred. Generate routing from brand stack, e.g. codex+glm.' -ForegroundColor DarkGray
+    Write-Host '        Preferred. Generate routing from brand stack, then auto-apply GSD Anthropic OAuth fix.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd setup --model' -ForegroundColor White
     Write-Host '        Show accepted brand tokens, examples, and preset guidance.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd setup --plan <name>' -ForegroundColor White
@@ -197,6 +198,10 @@ function Show-GsdHelp {
     Write-Host '        List all providers grouped by type and show current status.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd status' -ForegroundColor White
     Write-Host '        Show active files, auth providers, key status, and missing setup.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix' -ForegroundColor White
+    Write-Host '        Force-apply the GSD Anthropic OAuth prompt fix (#145-style) and normalize provider label.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix --stable' -ForegroundColor White
+    Write-Host '        Same runtime fix, but explicitly using the pinned stable profile contract.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Quick start' -ForegroundColor Cyan
     Write-Host '    --model codex' -ForegroundColor White

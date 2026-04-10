@@ -6,7 +6,39 @@ prefer_skills: []
 avoid_skills: []
 skill_rules: []
 custom_instructions: []
-models: {}
+models:
+  planning:
+    model: openai-codex/gpt-5.4
+    fallbacks:
+      - openai-codex/gpt-5.3-codex
+  research:
+    model: openai-codex/gpt-5.4
+    fallbacks:
+      - openai-codex/gpt-5.3-codex
+  discuss:
+    model: openai-codex/gpt-5.4
+    fallbacks:
+      - openai-codex/gpt-5.3-codex
+  execution:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - openai-codex/gpt-5.4
+  execution_simple:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - openai-codex/gpt-5.1-codex-mini
+  completion:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - openai-codex/gpt-5.4
+  validation:
+    model: openai-codex/gpt-5.4
+    fallbacks:
+      - openai-codex/gpt-5.3-codex
+  subagent:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - openai-codex/gpt-5.1-codex-mini
 skill_discovery:
 skill_staleness_days:
 auto_supervisor: {}

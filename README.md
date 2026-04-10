@@ -36,6 +36,43 @@ git clone https://github.com/8-Sync-Dev/wezterm-config.git "$HOME\.config\wezter
 8sync sync          # Install/update all managed tools via scoop
 ```
 
+## Stable Recovery Profiles
+
+Use the pinned stable profiles when upstream updates or local runtime drift break OpenCode or GSD.
+
+### OpenCode
+
+```powershell
+8sync opencode reinstall --stable
+```
+
+Full clean rebuild:
+
+```powershell
+8sync opencode fresh-install --stable --claude=yes --openai=yes
+```
+
+### GSD
+
+Force runtime patch only:
+
+```powershell
+8sync gsd fix --stable
+```
+
+Setup plus patch:
+
+```powershell
+8sync gsd setup --model claude+codex --stable
+```
+
+See:
+
+- `stable-patches/README.md`
+- `stable-patches/opencode/STABLE.md`
+- `stable-patches/gsd/STABLE.md`
+- `CHANGELOG.md`
+
 ## Documentation
 
 | Guide | Description |

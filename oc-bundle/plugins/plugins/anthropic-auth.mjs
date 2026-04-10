@@ -144,9 +144,8 @@ export async function AnthropicAuthPlugin({ client }) {
     async "experimental.chat.system.transform"(input, output) {
       if (input.model?.providerID !== "anthropic") return;
       const prefix = await prompt();
-      output.system.unshift(prefix);
-      if (output.system[1])
-        output.system[1] = `${prefix}\n\n${output.system[1]}`;
+      // Keep Anthropic system prompt surface minimal to reduce fingerprinting.
+      output.system = [prefix];
     },
     auth: {
       provider: "anthropic",

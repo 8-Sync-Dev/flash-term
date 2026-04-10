@@ -377,6 +377,7 @@ function Invoke-GsdSetupFromModel {
 
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
+        Invoke-GsdRuntimePatch
         Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
         Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
         Write-Host ''
@@ -430,6 +431,7 @@ function Invoke-GsdSetup {
 
     try {
         Copy-Item -Path $srcFile -Destination $destFile -Force -ErrorAction Stop
+        Invoke-GsdRuntimePatch -DryRun:$DryRun
         Write-Host ("  [ok] {0}" -f $destFile) -ForegroundColor Green
     } catch {
         Write-Host ("  [error] {0} -- {1}" -f $destFile, $_.Exception.Message) -ForegroundColor Red

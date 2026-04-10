@@ -25,6 +25,30 @@ function Invoke-GsdStatus {
     }
     Write-Host ''
 
+    $patch = Get-GsdRuntimePatchStatus
+    $providerPatchColor = switch ($patch.ProviderPatch) {
+        'patched'   { 'Green' }
+        'unpatched' { 'Yellow' }
+        'missing'   { 'DarkYellow' }
+        default     { 'Red' }
+    }
+    $labelColor = switch ($patch.UiLabel) {
+        'anthropic'     { 'Green' }
+        'anthropic-api' { 'Yellow' }
+        'missing'       { 'DarkYellow' }
+        default         { 'Red' }
+    }
+    $settingsColor = if ($patch.Settings -eq 'ok') { 'Green' } elseif ($patch.Settings -eq 'missing') { 'DarkYellow' } else { 'Red' }
+
+    Write-Host '  Runtime patch status:' -ForegroundColor Cyan
+    Write-Host ("    Anthropic OAuth prompt fix   {0}" -f $patch.ProviderPatch) -ForegroundColor $providerPatchColor
+    Write-Host ("    Anthropic UI label          {0}" -f $patch.UiLabel) -ForegroundColor $labelColor
+    Write-Host ("    settings.json               {0}" -f $patch.Settings) -ForegroundColor $settingsColor
+    if ($patch.DefaultProvider -or $patch.DefaultModel) {
+        Write-Host ("    default model               {0}/{1}" -f $patch.DefaultProvider, $patch.DefaultModel) -ForegroundColor DarkGray
+    }
+    Write-Host ''
+
     $prefPath = Join-Path $gsdHome 'PREFERENCES.md'
     $detectedPlan = ''
     if (Test-Path $prefPath) {

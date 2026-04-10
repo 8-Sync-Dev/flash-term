@@ -20,7 +20,7 @@
   "provider": {
     "anthropic": {
       "options": {
-        "apiKey": "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"
+        "apiKey": "${ANTHROPIC_API_KEY}"
       }
     },
     "gguf-local-model": {
@@ -67,28 +67,28 @@
       ],
       "environment": {
         "Z_AI_MODE": "ZAI",
-        "Z_AI_API_KEY": "89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+        "Z_AI_API_KEY": "${ZAI_API_KEY}"
       }
     },
     "web-search-prime": {
       "type": "remote",
       "url": "https://api.z.ai/api/mcp/web_search_prime/mcp",
       "headers": {
-        "Authorization": "Bearer 89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+        "Authorization": "Bearer ${ZAI_API_KEY}"
       }
     },
     "web-reader": {
       "type": "remote",
       "url": "https://api.z.ai/api/mcp/web_reader/mcp",
       "headers": {
-        "Authorization": "Bearer 89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+        "Authorization": "Bearer ${ZAI_API_KEY}"
       }
     },
     "zread": {
       "type": "remote",
       "url": "https://api.z.ai/api/mcp/zread/mcp",
       "headers": {
-        "Authorization": "Bearer 89955387bc3844eaa247426937d1a326.hXaDPXZsXsJDWMxx"
+        "Authorization": "Bearer ${ZAI_API_KEY}"
       }
     },
     "context7": {
@@ -218,6 +218,20 @@
     "anthropic",
     "openai"
   ],
+  "mode": {
+    "build": {
+      "prompt": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    "plan": {
+      "prompt": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    "general": {
+      "prompt": "You are Claude Code, Anthropic's official CLI for Claude."
+    },
+    "explore": {
+      "prompt": "You are Claude Code, Anthropic's official CLI for Claude."
+    }
+  },
   "agent": {
     "build": {
       "model": "openai/gpt-5.3-codex"

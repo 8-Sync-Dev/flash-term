@@ -89,6 +89,7 @@ function Invoke-GsdAutoSetup {
     $destPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
+        Invoke-GsdRuntimePatch
         Write-Host ("  [ok] Written to {0}" -f $destPath) -ForegroundColor Green
         Write-Host ''
         Write-Host '  Verify: /gsd prefs   /model' -ForegroundColor DarkGray
@@ -105,6 +106,7 @@ function Invoke-GsdCommand {
     $dryRun   = $Rest -contains '--dry-run'
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
+    $stable   = $Rest -contains '--stable'
     $balance  = $Rest -contains '--balance'   # alias for --tier=balanced (backward compat)
 
     $planArg = ''
@@ -190,6 +192,7 @@ function Invoke-GsdCommand {
             }
         }
         'status' { Invoke-GsdStatus }
+        'fix'    { Invoke-GsdRuntimePatch -DryRun:$dryRun -Stable:$stable }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
         'keys'   { Show-GsdKeys }
         'add' {
