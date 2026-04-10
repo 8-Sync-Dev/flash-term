@@ -97,6 +97,28 @@ function Invoke-GsdAutoSetup {
     }
 }
 
+function Invoke-GsdFix {
+    param(
+        [switch]$DryRun,
+        [switch]$Stable,
+        [switch]$Force
+    )
+
+    Write-Host ''
+    Write-Host '  [gsd] Running unified repair...' -ForegroundColor Cyan
+    if ($Stable) {
+        Write-Host '  [stable] Applying stable GSD patch profile' -ForegroundColor Cyan
+    }
+
+    Invoke-GsdPackageRefresh -DryRun:$DryRun
+    Invoke-GsdResourceLoaderFix -DryRun:$DryRun
+    Invoke-GsdRuntimePatch -DryRun:$DryRun -Stable:$Stable
+    Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
+
+    Write-Host '  [ok]      Unified fix finished' -ForegroundColor Green
+    Write-Host ''
+}
+
 function Invoke-GsdCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -107,6 +129,7 @@ function Invoke-GsdCommand {
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
     $stable   = $Rest -contains '--stable'
+    $force    = $Rest -contains '--force'
     $balance  = $Rest -contains '--balance'   # alias for --tier=balanced (backward compat)
 
     $planArg = ''
@@ -192,7 +215,8 @@ function Invoke-GsdCommand {
             }
         }
         'status' { Invoke-GsdStatus }
-        'fix'    { Invoke-GsdRuntimePatch -DryRun:$dryRun -Stable:$stable }
+        'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force }
+        'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force | Out-Null }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
         'keys'   { Show-GsdKeys }
         'add' {

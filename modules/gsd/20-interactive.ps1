@@ -198,10 +198,12 @@ function Show-GsdHelp {
     Write-Host '        List all providers grouped by type and show current status.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd status' -ForegroundColor White
     Write-Host '        Show active files, auth providers, key status, and missing setup.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd fix' -ForegroundColor White
-    Write-Host '        Force-apply the GSD Anthropic OAuth prompt fix (#145-style) and normalize provider label.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix [--dry-run]' -ForegroundColor White
+    Write-Host '        Unified repair: refresh gsd-pi, restore ~/.gsd/resource-loader.js, patch runtime, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --stable' -ForegroundColor White
-    Write-Host '        Same runtime fix, but explicitly using the pinned stable profile contract.' -ForegroundColor DarkGray
+    Write-Host '        Same unified fix, but explicitly using the pinned stable profile contract for runtime patching.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix --force' -ForegroundColor White
+    Write-Host '        Also back up and rebuild gsd.db, completed-units.json, and routing-history.json when the DB is genuinely corrupted.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Quick start' -ForegroundColor Cyan
     Write-Host '    --model codex' -ForegroundColor White

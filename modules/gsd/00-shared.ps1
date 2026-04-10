@@ -202,6 +202,220 @@ function Invoke-GsdRuntimePatch {
     Write-Host ''
 }
 
+function Resolve-GsdResourceLoaderTarget {
+    $candidates = @()
+
+    $gsdCommand = Get-Command gsd -ErrorAction SilentlyContinue
+    if ($gsdCommand) {
+        try {
+            $cmdDir = Split-Path $gsdCommand.Source -Parent
+            $candidates += [System.IO.Path]::GetFullPath((Join-Path $cmdDir 'node_modules\gsd-pi\dist\resource-loader.js'))
+            $candidates += [System.IO.Path]::GetFullPath((Join-Path $cmdDir 'node_modules\gsd-pi\packages\pi-coding-agent\dist\core\resource-loader.js'))
+        } catch {}
+    }
+
+    $candidates += @(
+        (Join-Path $HOME 'scoop\persist\nodejs-lts\bin\node_modules\gsd-pi\dist\resource-loader.js'),
+        (Join-Path $HOME 'scoop\persist\nodejs-lts\bin\node_modules\gsd-pi\packages\pi-coding-agent\dist\core\resource-loader.js')
+    )
+
+    foreach ($candidate in ($candidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-GsdResourceLoaderShimPath {
+    return Join-Path (Resolve-GsdHome) 'resource-loader.js'
+}
+
+function Invoke-GsdResourceLoaderFix {
+    param([switch]$DryRun)
+
+    $shimPath = Get-GsdResourceLoaderShimPath
+    $targetPath = Resolve-GsdResourceLoaderTarget
+
+    Write-Host '  [gsd] Repairing resource-loader bridge...' -ForegroundColor Cyan
+
+    if (-not $targetPath) {
+        Write-Host '  [warn]    Could not locate installed gsd-pi resource-loader.js' -ForegroundColor DarkYellow
+        return
+    }
+
+    $targetUri = [System.Uri]::new($targetPath).AbsoluteUri
+    $shimContent = @"
+export * from '${targetUri}';
+"@
+
+    if ((Test-Path $shimPath)) {
+        try {
+            $current = Get-Content $shimPath -Raw -Encoding UTF8
+            if ($current -eq $shimContent) {
+                Write-Host '  [ok]      resource-loader.js shim already points at installed gsd-pi runtime' -ForegroundColor Green
+                return
+            }
+        } catch {
+            Write-Host ("  [warn]    Failed to read existing resource-loader shim: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] write {0} -> {1}" -f $shimPath, $targetPath) -ForegroundColor DarkYellow
+        return
+    }
+
+    try {
+        $parent = Split-Path $shimPath -Parent
+        if (-not (Test-Path $parent)) {
+            $null = New-Item -Path $parent -ItemType Directory -Force
+        }
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($shimPath, $shimContent, $utf8NoBom)
+        Write-Host '  [ok]      Restored ~/.gsd/resource-loader.js compatibility shim' -ForegroundColor Green
+    } catch {
+        Write-Host ("  [warn]    Failed to write resource-loader shim: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+}
+
+function Invoke-GsdPackageRefresh {
+    param([switch]$DryRun)
+
+    Write-Host '  [gsd] Refreshing gsd-pi runtime...' -ForegroundColor Cyan
+
+    if (Test-CommandExists 'npm') {
+        if ($DryRun) {
+            Write-Host '  [dry-run] npm install -g gsd-pi@latest' -ForegroundColor DarkYellow
+        } else {
+            try {
+                & npm install -g gsd-pi@latest
+                if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+                    Write-Host '  [ok]      npm install -g gsd-pi@latest' -ForegroundColor Green
+                } else {
+                    Write-Host ("  [warn]    npm install -g gsd-pi@latest exited with code {0}" -f $LASTEXITCODE) -ForegroundColor DarkYellow
+                }
+            } catch {
+                Write-Host ("  [warn]    Failed to refresh gsd-pi with npm: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+        }
+    } elseif (Test-CommandExists 'bun') {
+        if ($DryRun) {
+            Write-Host '  [dry-run] bun add -g gsd-pi@latest' -ForegroundColor DarkYellow
+        } else {
+            try {
+                & bun add -g gsd-pi@latest
+                if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+                    Write-Host '  [ok]      bun add -g gsd-pi@latest' -ForegroundColor Green
+                } else {
+                    Write-Host ("  [warn]    bun add -g gsd-pi@latest exited with code {0}" -f $LASTEXITCODE) -ForegroundColor DarkYellow
+                }
+            } catch {
+                Write-Host ("  [warn]    Failed to refresh gsd-pi with bun: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+        }
+    } else {
+        Write-Host '  [warn]    Neither npm nor bun was found; cannot refresh gsd-pi automatically' -ForegroundColor DarkYellow
+    }
+
+    if (Test-CommandExists 'gsd') {
+        if ($DryRun) {
+            Write-Host '  [dry-run] gsd --version' -ForegroundColor DarkYellow
+        } else {
+            try {
+                & gsd --version
+                if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+                    Write-Host '  [ok]      gsd --version' -ForegroundColor Green
+                } else {
+                    Write-Host ("  [warn]    gsd --version exited with code {0}" -f $LASTEXITCODE) -ForegroundColor DarkYellow
+                }
+            } catch {
+                Write-Host ("  [warn]    Failed to run gsd --version: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+        }
+    } else {
+        Write-Host '  [warn]    gsd command not found after refresh' -ForegroundColor DarkYellow
+    }
+}
+
+function Remove-GsdPathSafe {
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [switch]$DryRun
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] remove {0}" -f $Path) -ForegroundColor DarkYellow
+        return
+    }
+
+    try {
+        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+        Write-Host ("  [ok]      Removed {0}" -f $Path) -ForegroundColor Green
+    } catch {
+        Write-Host ("  [warn]    Failed to remove {0}: {1}" -f $Path, $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+}
+
+function Backup-And-Remove-GsdPath {
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [switch]$DryRun
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $backupPath = "{0}.bak-{1}" -f $Path, $stamp
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] backup {0} -> {1}" -f $Path, $backupPath) -ForegroundColor DarkYellow
+        Write-Host ("  [dry-run] remove {0}" -f $Path) -ForegroundColor DarkYellow
+        return
+    }
+
+    try {
+        Copy-Item -LiteralPath $Path -Destination $backupPath -Force -ErrorAction Stop
+        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+        Write-Host ("  [ok]      Backed up and removed {0}" -f $Path) -ForegroundColor Green
+    } catch {
+        Write-Host ("  [warn]    Failed to rebuild {0}: {1}" -f $Path, $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+}
+
+function Invoke-GsdDbRepair {
+    param(
+        [switch]$DryRun,
+        [switch]$Force,
+        [string]$ProjectPath = (Get-Location).Path
+    )
+
+    $projectRoot = [System.IO.Path]::GetFullPath($ProjectPath)
+    $projectGsd = Join-Path $projectRoot '.gsd'
+    $dbPath = Join-Path $projectGsd 'gsd.db'
+
+    Write-Host '  [gsd] Cleaning stale DB sidecars...' -ForegroundColor Cyan
+    Remove-GsdPathSafe -Path "$dbPath-wal" -DryRun:$DryRun
+    Remove-GsdPathSafe -Path "$dbPath-shm" -DryRun:$DryRun
+    Remove-GsdPathSafe -Path "$dbPath-journal" -DryRun:$DryRun
+    Remove-GsdPathSafe -Path (Join-Path $projectGsd 'auto.lock') -DryRun:$DryRun
+
+    if ($Force) {
+        Backup-And-Remove-GsdPath -Path (Join-Path $projectGsd 'completed-units.json') -DryRun:$DryRun
+        Backup-And-Remove-GsdPath -Path (Join-Path $projectGsd 'routing-history.json') -DryRun:$DryRun
+        Backup-And-Remove-GsdPath -Path $dbPath -DryRun:$DryRun
+    } else {
+        Write-Host '  [ok]      Preserved gsd.db and milestone caches (use --force to rebuild them)' -ForegroundColor Green
+    }
+}
+
 $script:GsdProviderMenu = @(
     [pscustomobject]@{ Id='anthropic';         Label='Anthropic Claude';        Desc='claude-opus-4-6 (plan/research) + sonnet-4-6 (exec) + haiku-4-5 (simple/subagent)';  Type='oauth' }
     [pscustomobject]@{ Id='github-copilot';    Label='GitHub Copilot';          Desc='gemini-3.1-pro-preview 80.6% SWE + gpt-5-codex (needs Copilot subscription)';        Type='oauth' }
