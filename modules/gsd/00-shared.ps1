@@ -65,6 +65,9 @@ function Get-GsdRuntimePatchStatus {
                 $labelStatus = 'anthropic-api'
             } elseif ($raw -match 'anthropic:\s*"anthropic"') {
                 $labelStatus = 'anthropic'
+            } elseif ($raw -match 'row\.provider' -and $raw -notmatch 'anthropic:\s*"') {
+                # New GSD version uses dynamic row.provider — no label map to patch
+                $labelStatus = 'dynamic'
             } else {
                 $labelStatus = 'custom'
             }
@@ -116,7 +119,7 @@ function Invoke-GsdRuntimePatch {
 
     if (Test-Path $providerPath) {
         try {
-            $raw = Get-Content $providerPath -Raw -Encoding UTF8
+            $raw = (Get-Content $providerPath -Raw -Encoding UTF8) -replace "`r`n", "`n"
             $oldBlock = @"
     if (isOAuthToken) {
         params.system = [
@@ -147,6 +150,9 @@ function Invoke-GsdRuntimePatch {
     }
 "@
 
+            $oldBlock = $oldBlock -replace "`r`n", "`n"
+            $newBlock = $newBlock -replace "`r`n", "`n"
+
             $status = Get-GsdRuntimePatchStatus
             if ($status.ProviderPatch -eq 'patched') {
                 Write-Host '  [ok]      Anthropic OAuth system prompt fix already applied' -ForegroundColor Green
@@ -172,7 +178,9 @@ function Invoke-GsdRuntimePatch {
     if (Test-Path $labelPath) {
         try {
             $raw = Get-Content $labelPath -Raw -Encoding UTF8
-            if ($raw -match 'anthropic:\s*"anthropic"') {
+            if ($raw -match 'row\.provider' -and $raw -notmatch 'anthropic:\s*"') {
+                Write-Host '  [ok]      Model selector uses dynamic provider labels (no patch needed)' -ForegroundColor Green
+            } elseif ($raw -match 'anthropic:\s*"anthropic"') {
                 Write-Host '  [ok]      Anthropic provider label already normalized' -ForegroundColor Green
             } elseif ($raw -match 'anthropic:\s*"anthropic-api"') {
                 if ($DryRun) {

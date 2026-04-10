@@ -34,6 +34,7 @@ function Invoke-GsdStatus {
     }
     $labelColor = switch ($patch.UiLabel) {
         'anthropic'     { 'Green' }
+        'dynamic'       { 'Green' }
         'anthropic-api' { 'Yellow' }
         'missing'       { 'DarkYellow' }
         default         { 'Red' }
