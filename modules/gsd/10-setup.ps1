@@ -31,6 +31,7 @@ function Build-GsdModelsYaml {
     $simp  = [System.Collections.Generic.List[string]]::new()
     $comp  = [System.Collections.Generic.List[string]]::new()
     $sub   = [System.Collections.Generic.List[string]]::new()
+    $vald  = [System.Collections.Generic.List[string]]::new()
 
     # ── Model strength + cost matrix ──────────────────────────────────────────
     # Cost tier cheap -> expensive:
@@ -113,11 +114,21 @@ function Build-GsdModelsYaml {
     if ($hasCopilot)   { $sub.Add('github-copilot/gemini-3.1-pro-preview') }
     if ($hasGemini -and -not $hasCopilot) { $sub.Add('google-gemini-cli/gemini-3.1-pro-preview') }
 
+    # ── validation: cross-model review when possible, coding models lead ──────
+    if ($hasCodex)     { $vald.Add('openai-codex/gpt-5.3-codex') }
+    if ($hasKimi)      { $vald.Add('kimi-coding/kimi-k2.5') }
+    if ($hasZai)       { $vald.Add('zai/glm-5.1') }
+    if ($hasCopilot)   { $vald.Add('github-copilot/gemini-3.1-pro-preview') }
+    if ($hasGemini -and -not $hasCopilot) { $vald.Add('google-gemini-cli/gemini-3.1-pro-preview') }
+    if ($hasGroq)      { $vald.Add('groq/kimi-k2-instruct') }
+    if ($hasAnthropic) { $vald.Add('anthropic/claude-sonnet-4-6') }
+
     function Dedupe { param($L); $seen=[System.Collections.Generic.HashSet[string]]::new(); $L|Where-Object{$seen.Add($_)} }
 
     $plan  = @(Dedupe $plan);  $rsrch = @(Dedupe $rsrch)
     $exec  = @(Dedupe $exec);  $simp  = @(Dedupe $simp)
     $comp  = @(Dedupe $comp);  $sub   = @(Dedupe $sub)
+    $vald  = @(Dedupe $vald)
 
     # --planning=<model>: pin specific model as primary for planning/research
     if (-not [string]::IsNullOrWhiteSpace($PlanningPin)) {
@@ -141,6 +152,7 @@ function Build-GsdModelsYaml {
         $simp  = PinProvider $simp  $OnlyProvider
         $comp  = PinProvider $comp  $OnlyProvider
         $sub   = PinProvider $sub   $OnlyProvider
+        $vald  = PinProvider $vald  $OnlyProvider
     }
 
     if ($plan.Count -eq 0 -or $exec.Count -eq 0) { return $null }
@@ -170,6 +182,8 @@ $(Fmt 'research'         $rsrch)
 $(Fmt 'execution'        $exec)
 
 $(Fmt 'execution_simple' $simp)
+
+$(Fmt 'validation'       $vald)
 
 $(Fmt 'completion'       $comp)
 
