@@ -229,6 +229,14 @@ function Write-GsdPreferencesModels {
         return $true
     }
 
+    # Ensure dynamic_routing is disabled so runtime uses exact model config
+    if ($newContent -notmatch 'dynamic_routing:') {
+        $newContent = $newContent -replace '(?m)(^token_profile:)', "dynamic_routing:`n  enabled: false`n`n`$1"
+        if ($newContent -notmatch 'dynamic_routing:') {
+            $newContent = $newContent -replace '(?m)(^models:)', "dynamic_routing:`n  enabled: false`n`n`$1"
+        }
+    }
+
     $dir = Split-Path $DestPath -Parent
     if (-not (Test-Path $dir)) { $null = New-Item -Path $dir -ItemType Directory -Force }
 
@@ -431,6 +439,22 @@ function Invoke-GsdSetup {
 
     try {
         Copy-Item -Path $srcFile -Destination $destFile -Force -ErrorAction Stop
+
+        # Ensure dynamic_routing is disabled so runtime uses exact model config
+        try {
+            $prefContent = (Get-Content $destFile -Raw -Encoding UTF8) -replace "`r`n", "`n"
+            if ($prefContent -notmatch 'dynamic_routing:') {
+                $injected = $prefContent -replace '(?m)(^token_profile:)', "dynamic_routing:`n  enabled: false`n`n`$1"
+                if ($injected -notmatch 'dynamic_routing:') {
+                    $injected = $prefContent -replace '(?m)(^models:)', "dynamic_routing:`n  enabled: false`n`n`$1"
+                }
+                if ($injected -match 'dynamic_routing:') {
+                    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                    [System.IO.File]::WriteAllText($destFile, $injected, $utf8NoBom)
+                }
+            }
+        } catch {}
+
         Invoke-GsdRuntimePatch -DryRun:$DryRun
         Write-Host ("  [ok] {0}" -f $destFile) -ForegroundColor Green
     } catch {
