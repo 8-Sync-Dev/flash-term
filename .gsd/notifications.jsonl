@@ -5,3 +5,4 @@
 {"id":"16223946-45df-435b-adc8-30876c765726","ts":"2026-04-08T09:21:27.672Z","severity":"warning","message":"Web search: Set BRAVE_API_KEY or use an Anthropic model for built-in search","source":"notify","read":false}
 {"id":"21abf8e2-b512-4367-b70e-34c205d135a3","ts":"2026-04-08T09:36:55.145Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
 {"id":"0f2fa941-3298-45be-a912-81d9d27e0c90","ts":"2026-04-08T09:45:55.346Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"13e0da2e-421c-46e4-abff-7a1e95d18da4","ts":"2026-04-13T23:55:15.350Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}

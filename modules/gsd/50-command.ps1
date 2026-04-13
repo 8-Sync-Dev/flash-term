@@ -125,16 +125,16 @@ function Invoke-GsdVersionCheck {
         $pin = [System.Version]::new($pinned)
 
         if ($cur -gt $pin) {
-            Write-Host ("  [warn]    gsd-pi {0} is NEWER than pinned {1} — downgrading for compatibility" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
+            Write-Host ("  [warn]    gsd-pi {0} is NEWER than pinned {1} -- downgrading for compatibility" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
             Invoke-GsdPackageRefresh -DryRun:$DryRun
             return $true
         } elseif ($cur -lt $pin) {
-            Write-Host ("  [warn]    gsd-pi {0} is OLDER than pinned {1} — upgrading" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
+            Write-Host ("  [warn]    gsd-pi {0} is OLDER than pinned {1} -- upgrading" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
             Invoke-GsdPackageRefresh -DryRun:$DryRun
             return $true
         }
     } catch {
-        Write-Host ("  [warn]    Cannot parse version '{0}' — skipping version check" -f $currentVersion) -ForegroundColor DarkYellow
+        Write-Host ("  [warn]    Cannot parse version '{0}' -- skipping version check" -f $currentVersion) -ForegroundColor DarkYellow
     }
 
     return $true
@@ -154,7 +154,7 @@ function Invoke-GsdFix {
         Write-Host '  [stable] Applying stable GSD patch profile' -ForegroundColor Cyan
     }
 
-    # 1) Version check — auto sync to pinned version
+    # 1) Version check -- auto sync to pinned version
     $null = Invoke-GsdVersionCheck -DryRun:$DryRun
 
     if ($Refresh) {
@@ -170,7 +170,7 @@ function Invoke-GsdFix {
     # 3) DB repair for current project
     Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
 
-    # 4) Scan ALL projects with .gsd/ on all drives — works on any machine
+    # 4) Scan ALL projects with .gsd/ on all drives -- works on any machine
     Write-Host '  [gsd] Scanning all drives for projects with .gsd/ folders...' -ForegroundColor Cyan
 
     $projectPaths = [System.Collections.Generic.List[string]]::new()
@@ -181,7 +181,7 @@ function Invoke-GsdFix {
     $scanRoots = [System.Collections.Generic.List[string]]::new()
 
     if (-not [string]::IsNullOrWhiteSpace($env:GSD_WORKSPACE_ROOT)) {
-        # Explicit override — respect it
+        # Explicit override -- respect it
         $env:GSD_WORKSPACE_ROOT -split ';' | Where-Object { Test-Path $_ } | ForEach-Object { $scanRoots.Add($_) }
     } else {
         # Auto: scan every fixed drive root
@@ -214,7 +214,7 @@ function Invoke-GsdFix {
     if ($projectPaths.Count -le 1) {
         Write-Host '  [ok]      No other projects with .gsd/ found' -ForegroundColor Green
     } else {
-        Write-Host ("  [gsd] Found {0} project(s) — cleaning stale sidecars:" -f $projectPaths.Count) -ForegroundColor Cyan
+        Write-Host ("  [gsd] Found {0} project(s) -- cleaning stale sidecars:" -f $projectPaths.Count) -ForegroundColor Cyan
         foreach ($p in $projectPaths) {
             if ($p -eq $currentPath) { continue }   # already handled above
 
@@ -356,7 +356,7 @@ function Invoke-GsdCommand {
                     Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg
                 }
             } else {
-                # No flags — launch interactive wizard
+                # No flags -- launch interactive wizard
                 Invoke-GsdSetupWizard -DryRun:$dryRun
             }
         }

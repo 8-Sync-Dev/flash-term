@@ -53,7 +53,7 @@ function Build-GsdModelsYaml {
     # opus NEVER appears unless explicitly pinned via --planning=opus or --exec=opus
 
     # Tier-based anthropic model selection
-    # Opus NEVER appears by default — only via --planning=opus or --exec=opus
+    # Opus NEVER appears by default -- only via --planning=opus or --exec=opus
     $anthropicPlanPrimary = switch ($Tier) {
         'light'  { $null }                              # anthropic skipped as primary
         default  { 'claude-code/claude-sonnet-4-6' }    # balanced & heavy both use sonnet
@@ -82,7 +82,7 @@ function Build-GsdModelsYaml {
     if ($hasCopilot) { $exec.Add('github-copilot/gemini-3.1-pro-preview') }
     if ($hasGemini -and -not $hasCopilot) { $exec.Add('google-gemini-cli/gemini-3.1-pro-preview') }
     if ($hasGroq)    { $exec.Add('groq/kimi-k2-instruct') }
-    if ($hasGguf)    { $exec.Add($GgufRef) }   # local free — before paid anthropic
+    if ($hasGguf)    { $exec.Add($GgufRef) }   # local free -- before paid anthropic
     if ($hasAnthropic -and $anthropicExecFallback) { $exec.Add($anthropicExecFallback) }
 
     # ── execution_simple: gguf/groq/flash always lead ─────────────────────────
@@ -490,7 +490,7 @@ function Build-ClaudeMaxYaml {
 
     return @"
   # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')  claude-max [use-model=$UseModel] [tier=$Tier]
-  # 100% Claude Anthropic — models: $modelsUsed
+  # 100% Claude Anthropic -- models: $modelsUsed
 
 $(Fmt 'planning'         $planModels)
 

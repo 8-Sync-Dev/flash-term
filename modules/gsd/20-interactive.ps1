@@ -348,7 +348,7 @@ function Show-GsdKeys {
     Write-Host '    anthropic          /login anthropic' -ForegroundColor White
     Write-Host '    github-copilot     /login github-copilot   (needs Copilot subscription)' -ForegroundColor White
     Write-Host '    google-gemini-cli  /login google-gemini-cli (free via Cloud Code Assist)' -ForegroundColor White
-    Write-Host '    openai-codex       /login openai-codex      (free via ChatGPT OAuth — planning only)' -ForegroundColor White
+    Write-Host '    openai-codex       /login openai-codex      (free via ChatGPT OAuth -- planning only)' -ForegroundColor White
     Write-Host ''
     Write-Host '  Search provider active in pi: /search-provider [tavily|brave|ollama|auto]' -ForegroundColor DarkGray
     Write-Host '  Set key first: 8sync gsd key tavily <key>   then /search-provider tavily' -ForegroundColor DarkGray
