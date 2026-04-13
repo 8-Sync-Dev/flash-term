@@ -170,28 +170,44 @@ function Invoke-GsdFix {
     # 3) DB repair for current project
     Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
 
-    # 4) Scan ALL projects with .gsd/ and clean stale sidecars
-    Write-Host '  [gsd] Scanning all projects with .gsd/ folders...' -ForegroundColor Cyan
-
-    $searchRoots = @()
-    if (-not [string]::IsNullOrWhiteSpace($env:GSD_WORKSPACE_ROOT)) {
-        $searchRoots = $env:GSD_WORKSPACE_ROOT -split ';' | Where-Object { Test-Path $_ }
-    } else {
-        @('D:\Work_Space_2026', (Join-Path $HOME 'Projects'), (Join-Path $HOME 'repos'), (Join-Path $HOME 'dev')) |
-            Where-Object { Test-Path $_ } | ForEach-Object { $searchRoots += $_ }
-    }
+    # 4) Scan ALL projects with .gsd/ on all drives — works on any machine
+    Write-Host '  [gsd] Scanning all drives for projects with .gsd/ folders...' -ForegroundColor Cyan
 
     $projectPaths = [System.Collections.Generic.List[string]]::new()
     $currentPath = $PWD.Path
-    $currentGsd = Join-Path $currentPath '.gsd'
-    if (Test-Path $currentGsd) { $projectPaths.Add($currentPath) }
+    if (Test-Path (Join-Path $currentPath '.gsd')) { $projectPaths.Add($currentPath) }
 
-    foreach ($root in $searchRoots) {
+    # Gather scan roots: every fixed-drive root + user home
+    $scanRoots = [System.Collections.Generic.List[string]]::new()
+
+    if (-not [string]::IsNullOrWhiteSpace($env:GSD_WORKSPACE_ROOT)) {
+        # Explicit override — respect it
+        $env:GSD_WORKSPACE_ROOT -split ';' | Where-Object { Test-Path $_ } | ForEach-Object { $scanRoots.Add($_) }
+    } else {
+        # Auto: scan every fixed drive root
+        Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+            Where-Object { $null -ne $_.Free -and (Test-Path $_.Root) } |
+            ForEach-Object { $scanRoots.Add($_.Root) }
+
+        # Also home dir in case drives missed it
+        if ($scanRoots -notcontains $HOME -and (Test-Path $HOME)) { $scanRoots.Add($HOME) }
+    }
+
+    foreach ($root in $scanRoots) {
         try {
-            Get-ChildItem -Path $root -Directory -Recurse -Depth 3 -Filter '.gsd' -ErrorAction SilentlyContinue | ForEach-Object {
-                $projPath = $_.Parent.FullName
-                if (-not $projectPaths.Contains($projPath)) { $projectPaths.Add($projPath) }
-            }
+            Get-ChildItem -Path $root -Directory -Recurse -Depth 5 -Filter '.gsd' -Force -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $fp = $_.FullName
+                    $fp -notmatch '[\\/]node_modules[\\/]' -and
+                    $fp -notmatch '[\\/]\.npm[\\/]' -and
+                    $fp -notmatch '[\\/]scoop[\\/]' -and
+                    $fp -notmatch '[\\/]AppData[\\/]' -and
+                    $fp -notmatch '[\\/]\.cache[\\/]' -and
+                    $fp -ne (Join-Path $HOME '.gsd')           # skip global ~/.gsd (not a project)
+                } | ForEach-Object {
+                    $projPath = $_.Parent.FullName
+                    if (-not $projectPaths.Contains($projPath)) { $projectPaths.Add($projPath) }
+                }
         } catch {}
     }
 
