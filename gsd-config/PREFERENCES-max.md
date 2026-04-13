@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -49,6 +52,12 @@ models:
   #   planning/research  → Opus 4.6 primary (deepest reasoning)
   #   execution          → kimi K2.5 primary (best coding), codex + glm fallback
   #   execution_simple   → groq free (zero cost) cascade
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - anthropic/claude-sonnet-4-6
   #   completion         → Sonnet 4.6 (quality summary, không cần Opus)
   #   subagent           → kimi K2.5 primary, groq free workers
   # ══════════════════════════════════════════════════════════════════════════════
@@ -86,6 +95,7 @@ models:
       - zai/glm-5-turbo
       - zai/glm-5
       - anthropic/claude-haiku-4-5
+
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:

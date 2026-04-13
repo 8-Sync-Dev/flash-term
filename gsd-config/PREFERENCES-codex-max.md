@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -31,6 +34,12 @@ models:
   #   planning/research  → gpt-5.4 (OpenAI flagship, frontier reasoning)
   #   execution          → gpt-5.3-codex (coding specialist, SWE optimized)
   #   execution_simple   → gpt-5.1-codex-max (fast, lightweight)
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - anthropic/claude-sonnet-4-6
   #   completion         → gpt-5.3-codex (precise summary)
   #   subagent           → gpt-5.3-codex primary, gpt-5.1-codex-max workers
   #
@@ -67,6 +76,7 @@ models:
     model: openai-codex/gpt-5.1-codex-max
     fallbacks:
       - openai-codex/gpt-5.3-codex
+
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:

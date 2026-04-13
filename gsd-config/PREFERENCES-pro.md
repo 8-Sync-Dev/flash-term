@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -74,6 +77,12 @@ models:
       - zai/glm-4.7
       - zai/glm-4.7-flash
 
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - anthropic/claude-sonnet-4-6
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
     model: anthropic/claude-sonnet-4-6

@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -33,6 +36,12 @@ models:
   #   planning/research  → gemini-3.1-pro (free) + codex gpt-5.3 (free, planning only)
   #   execution          → glm-5.1 primary (agentic S+), glm-5-turbo/groq fallback
   #   execution_simple   → groq free cascade
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - anthropic/claude-sonnet-4-6
   #   completion         → glm-5.1 + glm-5-turbo
   #   subagent           → glm-5.1 primary, full groq/zai cascade
   #
@@ -75,6 +84,7 @@ models:
       - zai/glm-4.5
       - zai/glm-4.5-air
       - zai/glm-4.7
+
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:

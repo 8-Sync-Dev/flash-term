@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -32,8 +35,9 @@ models:
   #   planning/research  → Opus 4-6 (deepest reasoning, planning king)
   #   execution          → Sonnet 4-6 (agentic workhorse)
   #   execution_simple   → Haiku 4-5 (fast, low cost)
+  #   validation         → Sonnet 4-6 (review, same-provider consistency)
   #   completion         → Sonnet 4-6 (quality summary)
-  #   subagent           → Sonnet 4-6 primary, Haiku workers
+  #   subagent           → Sonnet 4-6 primary, Haiku fallback
   #
   # USE WHEN:
   #   - Có claude.ai Max subscription ($100/mo) hoặc paid Anthropic API key
@@ -65,6 +69,12 @@ models:
     model: anthropic/claude-haiku-4-5
     fallbacks:
       - anthropic/claude-sonnet-4-6
+
+  # ── VALIDATION (reviewer) ───────────────────────────────────────────────────
+  validation:
+    model: anthropic/claude-sonnet-4-6
+    fallbacks:
+      - anthropic/claude-opus-4-6
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:

@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -32,6 +35,12 @@ models:
   #   planning/research  → gemini-3.1-pro-preview (2M ctx, deep reasoning)
   #   execution          → gemini-3.1-pro-preview (massive context = whole-repo edits)
   #   execution_simple   → gemini-2.5-pro (API key, low quota fallback)
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: anthropic/claude-sonnet-4-6
+    fallbacks:
+      - anthropic/claude-opus-4-6
   #   completion         → gemini-3.1-pro-preview (large-ctx summary)
   #   subagent           → gemini-3.1-pro-preview primary
   #
@@ -67,6 +76,7 @@ models:
     model: google/gemini-2.5-pro
     fallbacks:
       - github-copilot/gemini-3.1-pro-preview
+
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:

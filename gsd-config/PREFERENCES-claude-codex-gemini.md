@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -34,11 +37,18 @@ models:
   #   Research  : Opus 4-6 (breadth+depth) → gemini-3.1-pro (2M ctx) → gpt-5.4
   #   Execution : gpt-5.3-codex (coding SOTA) → Sonnet 4-6 → gemini-3.1-pro
   #   Simple    : gemini-3.1-pro-preview (free, large ctx) → gpt-5.1-codex-max
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - anthropic/claude-sonnet-4-6
   #   Completion: Sonnet 4-6 (quality) → gpt-5.3-codex → gemini-3.1-pro
   #   Subagent  : gpt-5.3-codex → Sonnet 4-6 → gemini-3.1-pro
   #
   # STRATEGY:
   #   Dùng strengths của từng provider:
+
   #   - Claude  : planning, reasoning, nuanced completion
   #   - Codex   : execution workhorse, coding-specialist SWE tasks
   #   - Gemini  : research (2M ctx), fallback execution, long-doc tasks
@@ -80,6 +90,7 @@ models:
     fallbacks:
       - openai-codex/gpt-5.1-codex-max
       - anthropic/claude-haiku-4-5
+
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:

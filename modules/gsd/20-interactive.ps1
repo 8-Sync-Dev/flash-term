@@ -275,6 +275,8 @@ function Show-GsdHelp {
     Write-Host '        Preview mixed high-end routing before apply.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd setup --plan max' -ForegroundColor White
     Write-Host '        Apply existing curated preset directly.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --plan claude-codex-review' -ForegroundColor White
+    Write-Host '        Opus plan + Sonnet code + Codex review. Cross-model peer review at $0.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Rule of thumb' -ForegroundColor Cyan
     Write-Host '    no +        => single brand only' -ForegroundColor DarkGray

@@ -17,6 +17,9 @@ phases:
   skip_slice_research: false
   reassess_after_slice: false
 
+dynamic_routing:
+  enabled: false
+
 token_profile: balanced
 
 models:
@@ -45,6 +48,12 @@ models:
   #   planning/research  → glm-5.1 (depth), fallback glm-5-turbo/glm-5
   #   execution          → glm-5.1 primary, cascade xuống theo c-limit
   #   execution_simple   → glm-4.5 (c20, nhiều parallel) → glm-4.5-air
+
+  # -- VALIDATION (reviewer) -----------------------------------------------
+  validation:
+    model: zai/glm-5.1
+    fallbacks:
+      - anthropic/claude-sonnet-4-6
   #   completion         → glm-5.1 → glm-5-turbo
   #   subagent           → glm-4.5 (c20) primary worker, glm-5.1 planning, full cascade
   #
@@ -87,6 +96,7 @@ models:
       - zai/glm-4.7
       - zai/glm-4.6
       - zai/glm-4.7-flashx
+
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
