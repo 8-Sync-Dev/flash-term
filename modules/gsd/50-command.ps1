@@ -120,7 +120,6 @@ function Invoke-GsdVersionCheck {
         return $true
     }
 
-    # Compare versions: if current > pinned, need downgrade
     try {
         $cur = [System.Version]::new($currentVersion)
         $pin = [System.Version]::new($pinned)
@@ -155,18 +154,80 @@ function Invoke-GsdFix {
         Write-Host '  [stable] Applying stable GSD patch profile' -ForegroundColor Cyan
     }
 
-    # Always check version — auto-downgrade if newer than pinned
+    # 1) Version check — auto sync to pinned version
     $null = Invoke-GsdVersionCheck -DryRun:$DryRun
 
     if ($Refresh) {
         Invoke-GsdPackageRefresh -DryRun:$DryRun
     }
 
+    # 2) Bridge repairs
     Invoke-GsdNodeModulesBridgeFix -DryRun:$DryRun
     Invoke-GsdResourceLoaderFix -DryRun:$DryRun
     Invoke-GsdAutoExtensionLoaderPatch -DryRun:$DryRun
     Invoke-GsdRuntimePatch -DryRun:$DryRun -Stable:$Stable
+
+    # 3) DB repair for current project
     Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
+
+    # 4) Scan ALL projects with .gsd/ and clean stale sidecars
+    Write-Host '  [gsd] Scanning all projects with .gsd/ folders...' -ForegroundColor Cyan
+
+    $searchRoots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:GSD_WORKSPACE_ROOT)) {
+        $searchRoots = $env:GSD_WORKSPACE_ROOT -split ';' | Where-Object { Test-Path $_ }
+    } else {
+        @('D:\Work_Space_2026', (Join-Path $HOME 'Projects'), (Join-Path $HOME 'repos'), (Join-Path $HOME 'dev')) |
+            Where-Object { Test-Path $_ } | ForEach-Object { $searchRoots += $_ }
+    }
+
+    $projectPaths = [System.Collections.Generic.List[string]]::new()
+    $currentPath = $PWD.Path
+    $currentGsd = Join-Path $currentPath '.gsd'
+    if (Test-Path $currentGsd) { $projectPaths.Add($currentPath) }
+
+    foreach ($root in $searchRoots) {
+        try {
+            Get-ChildItem -Path $root -Directory -Recurse -Depth 3 -Filter '.gsd' -ErrorAction SilentlyContinue | ForEach-Object {
+                $projPath = $_.Parent.FullName
+                if (-not $projectPaths.Contains($projPath)) { $projectPaths.Add($projPath) }
+            }
+        } catch {}
+    }
+
+    if ($projectPaths.Count -le 1) {
+        Write-Host '  [ok]      No other projects with .gsd/ found' -ForegroundColor Green
+    } else {
+        Write-Host ("  [gsd] Found {0} project(s) — cleaning stale sidecars:" -f $projectPaths.Count) -ForegroundColor Cyan
+        foreach ($p in $projectPaths) {
+            if ($p -eq $currentPath) { continue }   # already handled above
+
+            $dbPath   = Join-Path $p '.gsd\gsd.db'
+            $walPath  = "$dbPath-wal"
+            $shmPath  = "$dbPath-shm"
+            $lockPath = Join-Path $p '.gsd\auto.lock'
+
+            $issues = @()
+            if (Test-Path $walPath)  { $issues += 'wal' }
+            if (Test-Path $shmPath)  { $issues += 'shm' }
+            if (Test-Path $lockPath) { $issues += 'lock' }
+
+            $projName = Split-Path $p -Leaf
+            if ($issues.Count -eq 0) {
+                Write-Host ("    {0,-40} [clean]" -f $projName) -ForegroundColor Green
+            } else {
+                $tag = '[stale: {0}]' -f ($issues -join ',')
+                if ($DryRun) {
+                    Write-Host ("    {0,-40} {1} -> [dry-run] would clean" -f $projName, $tag) -ForegroundColor DarkYellow
+                } else {
+                    if (Test-Path $walPath)  { Remove-Item -LiteralPath $walPath  -Force -ErrorAction SilentlyContinue }
+                    if (Test-Path $shmPath)  { Remove-Item -LiteralPath $shmPath  -Force -ErrorAction SilentlyContinue }
+                    if (Test-Path $lockPath) { Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue }
+                    Write-Host ("    {0,-40} {1} -> cleaned" -f $projName, $tag) -ForegroundColor Green
+                }
+            }
+        }
+    }
 
     Write-Host '  [ok]      Unified fix finished' -ForegroundColor Green
     Write-Host ''
