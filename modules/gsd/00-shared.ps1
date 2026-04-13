@@ -466,16 +466,18 @@ function Invoke-GsdPackageRefresh {
 
     Write-Host '  [gsd] Refreshing gsd-pi runtime...' -ForegroundColor Cyan
 
+    $pinnedPkg = "gsd-pi@$script:GsdPinnedVersion"
+
     if (Test-CommandExists 'npm') {
         if ($DryRun) {
-            Write-Host '  [dry-run] npm install -g gsd-pi@latest' -ForegroundColor DarkYellow
+            Write-Host ("  [dry-run] npm install -g {0}" -f $pinnedPkg) -ForegroundColor DarkYellow
         } else {
             try {
-                & npm install -g gsd-pi@latest
+                & npm install -g $pinnedPkg
                 if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
-                    Write-Host '  [ok]      npm install -g gsd-pi@latest' -ForegroundColor Green
+                    Write-Host ("  [ok]      npm install -g {0}" -f $pinnedPkg) -ForegroundColor Green
                 } else {
-                    Write-Host ("  [warn]    npm install -g gsd-pi@latest exited with code {0}" -f $LASTEXITCODE) -ForegroundColor DarkYellow
+                    Write-Host ("  [warn]    npm install -g {0} exited with code {1}" -f $pinnedPkg, $LASTEXITCODE) -ForegroundColor DarkYellow
                 }
             } catch {
                 Write-Host ("  [warn]    Failed to refresh gsd-pi with npm: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
@@ -483,14 +485,14 @@ function Invoke-GsdPackageRefresh {
         }
     } elseif (Test-CommandExists 'bun') {
         if ($DryRun) {
-            Write-Host '  [dry-run] bun add -g gsd-pi@latest' -ForegroundColor DarkYellow
+            Write-Host ("  [dry-run] bun add -g {0}" -f $pinnedPkg) -ForegroundColor DarkYellow
         } else {
             try {
-                & bun add -g gsd-pi@latest
+                & bun add -g $pinnedPkg
                 if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
-                    Write-Host '  [ok]      bun add -g gsd-pi@latest' -ForegroundColor Green
+                    Write-Host ("  [ok]      bun add -g {0}" -f $pinnedPkg) -ForegroundColor Green
                 } else {
-                    Write-Host ("  [warn]    bun add -g gsd-pi@latest exited with code {0}" -f $LASTEXITCODE) -ForegroundColor DarkYellow
+                    Write-Host ("  [warn]    bun add -g {0} exited with code {1}" -f $pinnedPkg, $LASTEXITCODE) -ForegroundColor DarkYellow
                 }
             } catch {
                 Write-Host ("  [warn]    Failed to refresh gsd-pi with bun: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
@@ -596,6 +598,8 @@ function Invoke-GsdDbRepair {
         Write-Host '  [ok]      Preserved gsd.db and milestone caches (use --force to rebuild them)' -ForegroundColor Green
     }
 }
+
+$script:GsdPinnedVersion = '2.69.0'
 
 $script:GsdProviderMenu = @(
     [pscustomobject]@{ Id='anthropic';         Label='Anthropic Claude';        Desc='claude-opus-4-6 (plan/research) + sonnet-4-6 (exec) + haiku-4-5 (simple/subagent)';  Type='oauth' }

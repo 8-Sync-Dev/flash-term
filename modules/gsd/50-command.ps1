@@ -97,6 +97,50 @@ function Invoke-GsdAutoSetup {
     }
 }
 
+function Invoke-GsdVersionCheck {
+    param([switch]$DryRun)
+
+    $pinned = $script:GsdPinnedVersion
+    Write-Host ("  [gsd] Checking gsd-pi version (pinned: {0})..." -f $pinned) -ForegroundColor Cyan
+
+    $currentVersion = ''
+    if (Test-CommandExists 'gsd') {
+        try {
+            $currentVersion = (& gsd --version 2>$null).Trim()
+        } catch {}
+    }
+
+    if ([string]::IsNullOrWhiteSpace($currentVersion)) {
+        Write-Host '  [warn]    gsd command not found or --version failed' -ForegroundColor DarkYellow
+        return $false
+    }
+
+    if ($currentVersion -eq $pinned) {
+        Write-Host ("  [ok]      gsd-pi version {0} matches pinned" -f $currentVersion) -ForegroundColor Green
+        return $true
+    }
+
+    # Compare versions: if current > pinned, need downgrade
+    try {
+        $cur = [System.Version]::new($currentVersion)
+        $pin = [System.Version]::new($pinned)
+
+        if ($cur -gt $pin) {
+            Write-Host ("  [warn]    gsd-pi {0} is NEWER than pinned {1} — downgrading for compatibility" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
+            Invoke-GsdPackageRefresh -DryRun:$DryRun
+            return $true
+        } elseif ($cur -lt $pin) {
+            Write-Host ("  [warn]    gsd-pi {0} is OLDER than pinned {1} — upgrading" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
+            Invoke-GsdPackageRefresh -DryRun:$DryRun
+            return $true
+        }
+    } catch {
+        Write-Host ("  [warn]    Cannot parse version '{0}' — skipping version check" -f $currentVersion) -ForegroundColor DarkYellow
+    }
+
+    return $true
+}
+
 function Invoke-GsdFix {
     param(
         [switch]$DryRun,
@@ -111,10 +155,11 @@ function Invoke-GsdFix {
         Write-Host '  [stable] Applying stable GSD patch profile' -ForegroundColor Cyan
     }
 
+    # Always check version — auto-downgrade if newer than pinned
+    $null = Invoke-GsdVersionCheck -DryRun:$DryRun
+
     if ($Refresh) {
         Invoke-GsdPackageRefresh -DryRun:$DryRun
-    } else {
-        Write-Host '  [ok]      Skipped gsd-pi package refresh (use --refresh to upgrade runtime)' -ForegroundColor Green
     }
 
     Invoke-GsdNodeModulesBridgeFix -DryRun:$DryRun
