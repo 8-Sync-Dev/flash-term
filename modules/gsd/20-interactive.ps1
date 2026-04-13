@@ -277,6 +277,10 @@ function Show-GsdHelp {
     Write-Host '        Apply existing curated preset directly.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd setup --plan claude-codex-review' -ForegroundColor White
     Write-Host '        Opus plan + Sonnet code + Codex review. Cross-model peer review at $0.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --plan claude-max --use-model=opus+sonnet' -ForegroundColor White
+    Write-Host '        Full Claude without Haiku. Sonnet handles simple tasks too.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd setup --plan claude-max --use-model=sonnet+haiku --tier=light' -ForegroundColor White
+    Write-Host '        Budget Claude: Haiku leads most tasks, Sonnet only for planning.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Rule of thumb' -ForegroundColor Cyan
     Write-Host '    no +        => single brand only' -ForegroundColor DarkGray

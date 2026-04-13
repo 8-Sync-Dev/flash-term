@@ -406,6 +406,136 @@ function Invoke-GsdSetupFromModel {
     }
 }
 
+function Build-ClaudeMaxYaml {
+    param(
+        [string]$UseModel = 'opus+sonnet+haiku',
+        [string]$Tier = 'balanced'
+    )
+
+    $models = $UseModel -split '\+' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ -ne '' } | Select-Object -Unique
+
+    $hasOpus   = $models -contains 'opus'
+    $hasSonnet = $models -contains 'sonnet'
+    $hasHaiku  = $models -contains 'haiku'
+
+    if (-not $hasOpus -and -not $hasSonnet -and -not $hasHaiku) {
+        Write-Host '  [error] --use-model must include at least one of: opus, sonnet, haiku' -ForegroundColor Red
+        return $null
+    }
+
+    # Model IDs
+    $opus   = 'anthropic/claude-opus-4-6'
+    $sonnet = 'anthropic/claude-sonnet-4-6'
+    $haiku  = 'anthropic/claude-haiku-4-5'
+
+    # Helper: pick best available model in preference order
+    function Pick {
+        param([string[]]$Preference)
+        $available = $Preference | Where-Object {
+            ($_ -eq $opus -and $hasOpus) -or ($_ -eq $sonnet -and $hasSonnet) -or ($_ -eq $haiku -and $hasHaiku)
+        }
+        return @($available)
+    }
+
+    # ── Role assignment by tier ───────────────────────────────────────────────
+    #
+    # heavy    = best model for each role, spread load to strongest available
+    # balanced = moderate cost, strongest plan but cheaper exec/simple
+    # light    = budget mode, cheapest model leads, expensive only as fallback
+    #
+    switch ($Tier) {
+        'heavy' {
+            $planModels   = Pick @($opus, $sonnet, $haiku)
+            $rsrchModels  = Pick @($opus, $sonnet, $haiku)
+            $execModels   = Pick @($sonnet, $opus, $haiku)
+            $simpModels   = Pick @($sonnet, $haiku, $opus)
+            $valdModels   = Pick @($sonnet, $opus, $haiku)
+            $compModels   = Pick @($sonnet, $haiku, $opus)
+            $subModels    = Pick @($sonnet, $haiku, $opus)
+        }
+        'light' {
+            $planModels   = Pick @($sonnet, $haiku, $opus)
+            $rsrchModels  = Pick @($sonnet, $haiku, $opus)
+            $execModels   = Pick @($haiku, $sonnet, $opus)
+            $simpModels   = Pick @($haiku, $sonnet)
+            $valdModels   = Pick @($haiku, $sonnet, $opus)
+            $compModels   = Pick @($haiku, $sonnet)
+            $subModels    = Pick @($haiku, $sonnet)
+        }
+        default {
+            # balanced
+            $planModels   = Pick @($opus, $sonnet, $haiku)
+            $rsrchModels  = Pick @($opus, $sonnet, $haiku)
+            $execModels   = Pick @($sonnet, $opus, $haiku)
+            $simpModels   = Pick @($haiku, $sonnet)
+            $valdModels   = Pick @($sonnet, $opus, $haiku)
+            $compModels   = Pick @($sonnet, $haiku)
+            $subModels    = Pick @($haiku, $sonnet)
+        }
+    }
+
+    if ($planModels.Count -eq 0 -or $execModels.Count -eq 0) {
+        Write-Host '  [error] Cannot build routing from selected models + tier' -ForegroundColor Red
+        return $null
+    }
+
+    function Fmt { param([string]$Role, [string[]]$M)
+        if ($M.Count -eq 0) { return '' }
+        $l = @("  ${Role}:", "    model: $($M[0])")
+        if ($M.Count -gt 1) { $l += '    fallbacks:'; 1..($M.Count-1) | ForEach-Object { $l += "      - $($M[$_])" } }
+        $l -join "`n"
+    }
+
+    $modelsUsed = ($models | ForEach-Object { $_.Substring(0,1).ToUpper() + $_.Substring(1) }) -join '+'
+
+    return @"
+  # Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')  claude-max [use-model=$UseModel] [tier=$Tier]
+  # 100% Claude Anthropic — models: $modelsUsed
+
+$(Fmt 'planning'         $planModels)
+
+$(Fmt 'research'         $rsrchModels)
+
+$(Fmt 'execution'        $execModels)
+
+$(Fmt 'execution_simple' $simpModels)
+
+$(Fmt 'validation'       $valdModels)
+
+$(Fmt 'completion'       $compModels)
+
+$(Fmt 'subagent'         $subModels)
+"@.TrimEnd()
+}
+
+function Invoke-GsdClaudeMaxSetup {
+    param(
+        [switch]$DryRun,
+        [string]$UseModel = 'opus+sonnet+haiku',
+        [string]$Tier = 'balanced'
+    )
+
+    Write-Host ''
+    Write-Host ("  [gsd] Claude Max setup  models={0}  tier={1}" -f $UseModel, $Tier) -ForegroundColor Cyan
+    Write-Host ''
+
+    $yaml = Build-ClaudeMaxYaml -UseModel $UseModel -Tier $Tier
+    if (-not $yaml) { return }
+
+    Write-Host '  Generated routing:' -ForegroundColor Cyan
+    $yaml -split "`n" | Select-Object -First 30 | ForEach-Object { Write-Host ("    {0}" -f $_) -ForegroundColor DarkGray }
+    Write-Host ''
+
+    $destPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
+    $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
+    if ($ok -and -not $DryRun) {
+        Invoke-GsdRuntimePatch
+        Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
+        Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
+        Write-Host ''
+    }
+}
+
 function Invoke-GsdSetup {
     param(
         [switch]$DryRun,

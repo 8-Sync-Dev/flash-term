@@ -206,6 +206,18 @@ function Invoke-GsdCommand {
     $execEq  = $Rest | Where-Object { $_ -like '--exec=*' } | Select-Object -First 1
     if ($execEq) { $execPin = $execEq -replace '^--exec=', '' }
 
+    # --use-model=opus+sonnet+haiku  pick which Claude models for claude-max
+    $useModelArg = ''
+    $useModelEq  = $Rest | Where-Object { $_ -like '--use-model=*' } | Select-Object -First 1
+    if ($useModelEq) {
+        $useModelArg = ($useModelEq -replace '^--use-model=', '').ToLowerInvariant()
+    } else {
+        $useModelIdx = [Array]::IndexOf($Rest, '--use-model')
+        if ($useModelIdx -ge 0 -and $useModelIdx + 1 -lt $Rest.Count -and $Rest[$useModelIdx + 1] -notlike '--*') {
+            $useModelArg = $Rest[$useModelIdx + 1].ToLowerInvariant()
+        }
+    }
+
     $sub = if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
     switch ($sub) {
         'setup' {
@@ -216,7 +228,11 @@ function Invoke-GsdCommand {
             } elseif (-not [string]::IsNullOrWhiteSpace($modelArg)) {
                 Invoke-GsdSetupFromModel -DryRun:$dryRun -Model $modelArg -Tier $tierArg -Only $onlyArg -PlanningPin $planningPin -ExecPin $execPin
             } elseif (-not [string]::IsNullOrWhiteSpace($planArg)) {
-                Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg
+                if ($planArg -eq 'claude-max' -and -not [string]::IsNullOrWhiteSpace($useModelArg)) {
+                    Invoke-GsdClaudeMaxSetup -DryRun:$dryRun -UseModel $useModelArg -Tier $tierArg
+                } else {
+                    Invoke-GsdSetup -DryRun:$dryRun -Plan $planArg
+                }
             } else {
                 # No flags — launch interactive wizard
                 Invoke-GsdSetupWizard -DryRun:$dryRun
