@@ -1,9 +1,4 @@
 {
-  "resolve_model_ids": "omit",
-  "model_profile": "balanced",
-  "research": true,
-  "plan_check": true,
-  "verifier": true,
   "model_overrides": {
     "gsd-planner": "anthropic/claude-sonnet-4-6",
     "gsd-plan-checker": "anthropic/claude-sonnet-4-6",
@@ -13,5 +8,10 @@
     "gsd-debugger": "anthropic/claude-sonnet-4-6",
     "gsd-doc-writer": "openai/gpt-5.3-codex",
     "gsd-integration-checker": "openai/gpt-5.3-codex"
-  }
+  },
+  "resolve_model_ids": "omit",
+  "model_profile": "balanced",
+  "research": true,
+  "plan_check": true,
+  "verifier": true
 }

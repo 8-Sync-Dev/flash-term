@@ -104,7 +104,7 @@ function Invoke-GsdVersionCheck {
     Write-Host ("  [gsd] Checking gsd-pi version (pinned: {0})..." -f $pinned) -ForegroundColor Cyan
 
     $currentVersion = ''
-    if (Test-CommandExists 'gsd') {
+    if (Get-Command 'gsd' -ErrorAction SilentlyContinue) {
         try {
             $currentVersion = (& gsd --version 2>$null).Trim()
         } catch {}

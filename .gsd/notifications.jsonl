@@ -5,4 +5,17 @@
 {"id":"16223946-45df-435b-adc8-30876c765726","ts":"2026-04-08T09:21:27.672Z","severity":"warning","message":"Web search: Set BRAVE_API_KEY or use an Anthropic model for built-in search","source":"notify","read":false}
 {"id":"21abf8e2-b512-4367-b70e-34c205d135a3","ts":"2026-04-08T09:36:55.145Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
 {"id":"0f2fa941-3298-45be-a912-81d9d27e0c90","ts":"2026-04-08T09:45:55.346Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
-{"id":"13e0da2e-421c-46e4-abff-7a1e95d18da4","ts":"2026-04-13T23:55:15.350Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
+{"id":"0b7442dc-d49d-4f49-b41e-a371b36b48c7","ts":"2026-04-10T03:16:16.578Z","severity":"warning","message":"Web search: Set BRAVE_API_KEY or use an Anthropic model for built-in search","source":"notify","read":false}
+{"id":"7e3e08c8-c1e0-4bc5-9a31-5e84f6ffa294","ts":"2026-04-10T03:16:56.816Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
+{"id":"d2696dbf-ba83-4808-b2df-89cadf9787dd","ts":"2026-04-10T03:17:32.111Z","severity":"warning","message":"Web search: Set BRAVE_API_KEY or use an Anthropic model for built-in search","source":"notify","read":false}
+{"id":"a7d2805a-a97c-4eb6-857c-7ed4496e212a","ts":"2026-04-10T03:28:32.199Z","severity":"warning","message":"Web search: Set BRAVE_API_KEY or use an Anthropic model for built-in search","source":"notify","read":false}
+{"id":"b3a085da-273d-417f-ba23-d58d5a7fe634","ts":"2026-04-10T03:33:56.862Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
+{"id":"043e0d8e-e9e0-4df8-9105-685a385afb58","ts":"2026-04-10T03:57:24.749Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
+{"id":"dcac9f84-8686-433e-8638-36cd84d2fc9c","ts":"2026-04-10T04:05:05.662Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"23866235-78de-45a1-98b2-5a2ce0232c03","ts":"2026-04-10T04:16:40.266Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"1c716777-1f75-461e-a4f5-d68479554bf0","ts":"2026-04-10T04:25:01.232Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
+{"id":"d2696d6c-185e-4a76-bc34-0758e7040292","ts":"2026-04-10T07:22:59.786Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"6d21da7c-456d-4bf4-bd80-b5a30331c3b9","ts":"2026-04-10T09:23:52.104Z","severity":"warning","message":"Web search: Set BRAVE_API_KEY or use an Anthropic model for built-in search","source":"notify","read":false}
+{"id":"7da93012-8c7e-41ae-80e3-e2b864922d65","ts":"2026-04-10T09:23:53.903Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"3987c31e-4728-4bcc-86ff-a0d5dbb1208a","ts":"2026-04-10T09:24:52.529Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"f6e0dc3d-6400-46ad-b164-800b046b0e9a","ts":"2026-04-13T09:02:22.724Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
