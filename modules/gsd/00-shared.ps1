@@ -568,6 +568,187 @@ function Get-GsdPiAiModelsDir {
     return $null
 }
 
+# Known model templates -- extend this table when new models launch
+$script:GsdModelTemplates = @{
+    'claude-opus-4-7' = @{
+        name = 'Claude Opus 4.7'; api = 'anthropic-messages'; provider = 'anthropic'
+        baseUrl = 'https://api.anthropic.com'; reasoning = $true; input = @('text','image')
+        costIn = 5; costOut = 25; cacheRead = 0.5; cacheWrite = 6.25
+        contextWindow = 1000000; maxTokens = 128000; xhigh = $true
+    }
+    'claude-sonnet-4-7' = @{
+        name = 'Claude Sonnet 4.7'; api = 'anthropic-messages'; provider = 'anthropic'
+        baseUrl = 'https://api.anthropic.com'; reasoning = $true; input = @('text','image')
+        costIn = 3; costOut = 15; cacheRead = 0.3; cacheWrite = 3.75
+        contextWindow = 1000000; maxTokens = 128000; xhigh = $true
+    }
+    'claude-opus-4-6' = @{
+        name = 'Claude Opus 4.6'; api = 'anthropic-messages'; provider = 'anthropic'
+        baseUrl = 'https://api.anthropic.com'; reasoning = $true; input = @('text','image')
+        costIn = 5; costOut = 25; cacheRead = 0.5; cacheWrite = 6.25
+        contextWindow = 1000000; maxTokens = 128000; xhigh = $true
+    }
+}
+
+function Invoke-GsdModelAdd {
+    param(
+        [string[]]$Rest,
+        [switch]$DryRun
+    )
+
+    $modelId = ($Rest | Where-Object { $_ -notlike '--*' } | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($modelId)) {
+        Write-Host ''
+        Write-Host '  Usage: 8sync gsd model add <model-id>' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host '  Available model templates:' -ForegroundColor Cyan
+        foreach ($k in $script:GsdModelTemplates.Keys | Sort-Object) {
+            $t = $script:GsdModelTemplates[$k]
+            Write-Host ("    {0,-30} {1} (${2}/{3} per 1M tokens)" -f $k, $t.name, $t.costIn, $t.costOut) -ForegroundColor Gray
+        }
+        Write-Host ''
+        Write-Host '  Or specify any model-id -- it will be added based on opus-4-6 template.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $piAiDir = Get-GsdPiAiModelsDir
+    if (-not $piAiDir) {
+        Write-Host '  [err]     Cannot locate gsd-pi models directory' -ForegroundColor Red
+        return
+    }
+
+    $genFile = Join-Path $piAiDir 'models.generated.js'
+    $modelsFile = Join-Path $piAiDir 'models.js'
+
+    if (-not (Test-Path $genFile)) {
+        Write-Host '  [err]     models.generated.js not found' -ForegroundColor Red
+        return
+    }
+
+    $genRaw = Get-Content $genFile -Raw -Encoding UTF8
+    if ($genRaw -match [regex]::Escape("`"$modelId`"")) {
+        Write-Host ("  [ok]      {0} already exists in model registry" -f $modelId) -ForegroundColor Green
+        return
+    }
+
+    # Resolve template
+    $tmpl = $script:GsdModelTemplates[$modelId]
+    if (-not $tmpl) {
+        # Infer from model ID pattern
+        if ($modelId -match 'opus') {
+            $tmpl = $script:GsdModelTemplates['claude-opus-4-6'].Clone()
+        } elseif ($modelId -match 'sonnet') {
+            $tmpl = $script:GsdModelTemplates['claude-sonnet-4-7'].Clone()
+        } else {
+            $tmpl = $script:GsdModelTemplates['claude-opus-4-6'].Clone()
+        }
+        $tmpl.name = $modelId -replace '-', ' ' -replace '(\b\w)', { $_.Value.ToUpper() }
+    }
+
+    $inputArr = ($tmpl.input | ForEach-Object { "`"$_`"" }) -join ', '
+    $entry = @"
+        "$modelId": {
+            id: "$modelId",
+            name: "$($tmpl.name)",
+            api: "$($tmpl.api)",
+            provider: "$($tmpl.provider)",
+            baseUrl: "$($tmpl.baseUrl)",
+            reasoning: $($tmpl.reasoning.ToString().ToLower()),
+            input: [$inputArr],
+            cost: {
+                input: $($tmpl.costIn),
+                output: $($tmpl.costOut),
+                cacheRead: $($tmpl.cacheRead),
+                cacheWrite: $($tmpl.cacheWrite),
+            },
+            contextWindow: $($tmpl.contextWindow),
+            maxTokens: $($tmpl.maxTokens),
+        },
+"@
+
+    # Find anchor: insert after claude-opus-4-6 or last anthropic entry
+    $anchor = '"claude-opus-4-6":'
+    $anchorIdx = $genRaw.IndexOf($anchor)
+    if ($anchorIdx -lt 0) {
+        $anchor = '"claude-opus-4-5":'
+        $anchorIdx = $genRaw.IndexOf($anchor)
+    }
+
+    if ($anchorIdx -ge 0) {
+        $closingPattern = "`n        },"
+        $closingIdx = $genRaw.IndexOf($closingPattern, $anchorIdx)
+        if ($closingIdx -ge 0) {
+            $insertAt = $closingIdx + $closingPattern.Length
+            if ($DryRun) {
+                Write-Host ("  [dry-run] would add {0} to model registry" -f $modelId) -ForegroundColor DarkYellow
+            } else {
+                $genRaw = $genRaw.Insert($insertAt, "`n$entry")
+                [System.IO.File]::WriteAllText($genFile, $genRaw, [System.Text.UTF8Encoding]::new($false))
+                Write-Host ("  [ok]      Added {0} to model registry" -f $modelId) -ForegroundColor Green
+            }
+        } else {
+            Write-Host '  [err]     Could not find entry boundary in models.generated.js' -ForegroundColor Red
+            return
+        }
+    } else {
+        Write-Host '  [err]     Could not find anchor entry in models.generated.js' -ForegroundColor Red
+        return
+    }
+
+    # Patch xhigh capability if needed
+    if ($tmpl.xhigh -and (Test-Path $modelsFile)) {
+        $modRaw = Get-Content $modelsFile -Raw -Encoding UTF8
+        $shortId = $modelId -replace 'claude-', ''
+        $dotId = $shortId -replace '-(\d)', '.$1'
+        if ($modRaw -notmatch [regex]::Escape($shortId)) {
+            # Find the anthropic capability patch line and extend it
+            $pattern = 'm.id.includes\("opus-4-6"\) \|\| m.id.includes\("opus-4\.6"\)'
+            if ($modRaw -match $pattern) {
+                $oldMatch = ($modRaw | Select-String -Pattern $pattern -AllMatches).Matches[0].Value
+                $newMatch = "$oldMatch || m.id.includes(`"$shortId`") || m.id.includes(`"$dotId`")"
+                if (-not $DryRun) {
+                    $modRaw = $modRaw.Replace($oldMatch, $newMatch)
+                    [System.IO.File]::WriteAllText($modelsFile, $modRaw, [System.Text.UTF8Encoding]::new($false))
+                    Write-Host ("  [ok]      Patched xhigh capability for {0}" -f $modelId) -ForegroundColor Green
+                }
+            }
+        }
+    }
+}
+
+function Invoke-GsdModelList {
+    $piAiDir = Get-GsdPiAiModelsDir
+    if (-not $piAiDir) {
+        Write-Host '  [err]     Cannot locate gsd-pi models directory' -ForegroundColor Red
+        return
+    }
+
+    $genFile = Join-Path $piAiDir 'models.generated.js'
+    if (-not (Test-Path $genFile)) {
+        Write-Host '  [err]     models.generated.js not found' -ForegroundColor Red
+        return
+    }
+
+    $genRaw = Get-Content $genFile -Raw -Encoding UTF8
+    $matches = [regex]::Matches($genRaw, '"(claude-[^"]+)":\s*\{[^}]*name:\s*"([^"]+)"')
+
+    Write-Host ''
+    Write-Host '  Anthropic models in GSD registry:' -ForegroundColor Cyan
+    Write-Host ''
+    $seen = @{}
+    foreach ($m in $matches) {
+        $id = $m.Groups[1].Value
+        $name = $m.Groups[2].Value
+        if (-not $seen.ContainsKey($id)) {
+            $seen[$id] = $true
+            $patched = if ($script:GsdModelTemplates.ContainsKey($id)) { ' [patched]' } else { '' }
+            Write-Host ("    {0,-35} {1}{2}" -f $id, $name, $patched) -ForegroundColor Gray
+        }
+    }
+    Write-Host ''
+}
+
 function Invoke-GsdPackageRefresh {
     param([switch]$DryRun)
 

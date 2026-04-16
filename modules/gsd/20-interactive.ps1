@@ -243,6 +243,15 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd fix --force' -ForegroundColor White
     Write-Host '        Also back up and rebuild gsd.db, completed-units.json, and routing-history.json when the DB is genuinely corrupted.' -ForegroundColor DarkGray
     Write-Host ''
+    Write-Host '  Model management' -ForegroundColor Cyan
+    Write-Host '    8sync gsd model add <model-id>' -ForegroundColor White
+    Write-Host '        Add a new model to GSD registry without upgrading gsd-pi.' -ForegroundColor DarkGray
+    Write-Host '        e.g. 8sync gsd model add claude-opus-4-7' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd model add' -ForegroundColor White
+    Write-Host '        Show available model templates with pricing.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd model list' -ForegroundColor White
+    Write-Host '        List all Anthropic models currently in registry.' -ForegroundColor DarkGray
+    Write-Host ''
     Write-Host '  Quick start' -ForegroundColor Cyan
     Write-Host '    --model codex' -ForegroundColor White
     Write-Host '        Single-brand. Use only the selected ecosystem.' -ForegroundColor DarkGray

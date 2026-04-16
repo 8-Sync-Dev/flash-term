@@ -366,6 +366,25 @@ function Invoke-GsdCommand {
         'status' { Invoke-GsdStatus }
         'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force }
         'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force | Out-Null }
+        'model' {
+            $modelSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
+            switch ($modelSub) {
+                'add'  { Invoke-GsdModelAdd -Rest ($Rest | Select-Object -Skip 2) -DryRun:$dryRun }
+                'list' { Invoke-GsdModelList }
+                default { Write-Host @"
+  Usage: 8sync gsd model <command>
+
+  Commands:
+    add <model-id>     Add a new model to GSD registry (without upgrading gsd-pi)
+    list               List all patched/available models
+
+  Examples:
+    8sync gsd model add claude-opus-4-7
+    8sync gsd model add claude-sonnet-4-7
+    8sync gsd model list
+"@ -ForegroundColor DarkGray }
+            }
+        }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
         'keys'   { Show-GsdKeys }
         'add' {
