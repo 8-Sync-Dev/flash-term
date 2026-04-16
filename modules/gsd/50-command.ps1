@@ -167,7 +167,10 @@ function Invoke-GsdFix {
     Invoke-GsdAutoExtensionLoaderPatch -DryRun:$DryRun
     Invoke-GsdRuntimePatch -DryRun:$DryRun -Stable:$Stable
 
-    # 3) DB repair for current project
+    # 3) Model registry patch (add new models without upgrading gsd-pi)
+    Invoke-GsdModelRegistryPatch -DryRun:$DryRun
+
+    # 4) DB repair for current project
     Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
 
     # 4) Scan ALL projects with .gsd/ on all drives -- works on any machine

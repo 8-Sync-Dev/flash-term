@@ -461,6 +461,113 @@ function Invoke-GsdAutoExtensionLoaderPatch {
     }
 }
 
+function Invoke-GsdModelRegistryPatch {
+    param([switch]$DryRun)
+
+    $piAiDir = Get-GsdPiAiModelsDir
+    if (-not $piAiDir) { return }
+
+    $genFile = Join-Path $piAiDir 'models.generated.js'
+    $modelsFile = Join-Path $piAiDir 'models.js'
+
+    if (-not (Test-Path $genFile)) {
+        Write-Host '  [warn]    models.generated.js not found -- skipping model registry patch' -ForegroundColor DarkYellow
+        return
+    }
+
+    # -- 1) Inject claude-opus-4-7 entry into models.generated.js (anthropic section)
+    $genRaw = Get-Content $genFile -Raw -Encoding UTF8
+    if ($genRaw -match 'claude-opus-4-7') {
+        Write-Host '  [ok]      claude-opus-4-7 already in model registry' -ForegroundColor Green
+    } else {
+        $opus47Entry = @'
+        "claude-opus-4-7": {
+            id: "claude-opus-4-7",
+            name: "Claude Opus 4.7",
+            api: "anthropic-messages",
+            provider: "anthropic",
+            baseUrl: "https://api.anthropic.com",
+            reasoning: true,
+            input: ["text", "image"],
+            cost: {
+                input: 5,
+                output: 25,
+                cacheRead: 0.5,
+                cacheWrite: 6.25,
+            },
+            contextWindow: 1000000,
+            maxTokens: 128000,
+        },
+'@
+        # Insert right after the claude-opus-4-6 entry closing
+        $anchor = '"claude-opus-4-6":'
+        $anchorIdx = $genRaw.IndexOf($anchor)
+        if ($anchorIdx -ge 0) {
+            # Find the closing "}," for this entry (next "}," after the anchor block)
+            $searchFrom = $anchorIdx
+            $closingPattern = "`n        },"
+            $closingIdx = $genRaw.IndexOf($closingPattern, $searchFrom)
+            if ($closingIdx -ge 0) {
+                $insertAt = $closingIdx + $closingPattern.Length
+                if ($DryRun) {
+                    Write-Host '  [dry-run] would inject claude-opus-4-7 into models.generated.js' -ForegroundColor DarkYellow
+                } else {
+                    $genRaw = $genRaw.Insert($insertAt, "`n$opus47Entry")
+                    [System.IO.File]::WriteAllText($genFile, $genRaw, [System.Text.UTF8Encoding]::new($false))
+                    Write-Host '  [ok]      Injected claude-opus-4-7 into models.generated.js' -ForegroundColor Green
+                }
+            } else {
+                Write-Host '  [warn]    Could not locate opus-4-6 entry boundary -- skipping injection' -ForegroundColor DarkYellow
+            }
+        } else {
+            Write-Host '  [warn]    Could not find claude-opus-4-6 anchor in models.generated.js' -ForegroundColor DarkYellow
+        }
+    }
+
+    # -- 2) Add capability patch for opus-4-7 in models.js (supportsXhigh)
+    if (Test-Path $modelsFile) {
+        $modRaw = Get-Content $modelsFile -Raw -Encoding UTF8
+        if ($modRaw -match 'opus-4-7|opus-4\.7') {
+            Write-Host '  [ok]      opus-4-7 capability patch already in models.js' -ForegroundColor Green
+        } else {
+            $oldCaps = 'match: (m) => m.api === "anthropic-messages" && (m.id.includes("opus-4-6") || m.id.includes("opus-4.6")),'
+            $newCaps = 'match: (m) => m.api === "anthropic-messages" && (m.id.includes("opus-4-6") || m.id.includes("opus-4.6") || m.id.includes("opus-4-7") || m.id.includes("opus-4.7")),'
+            if ($modRaw.Contains($oldCaps)) {
+                if ($DryRun) {
+                    Write-Host '  [dry-run] would patch opus-4-7 xhigh capability in models.js' -ForegroundColor DarkYellow
+                } else {
+                    $modRaw = $modRaw.Replace($oldCaps, $newCaps)
+                    [System.IO.File]::WriteAllText($modelsFile, $modRaw, [System.Text.UTF8Encoding]::new($false))
+                    Write-Host '  [ok]      Patched opus-4-7 xhigh capability in models.js' -ForegroundColor Green
+                }
+            } else {
+                Write-Host '  [warn]    Could not find capability patch anchor in models.js' -ForegroundColor DarkYellow
+            }
+        }
+    }
+}
+
+function Get-GsdPiAiModelsDir {
+    $gsdPiBase = $null
+    if (Test-CommandExists 'gsd') {
+        try {
+            $gsdBin = (Get-Command gsd -ErrorAction SilentlyContinue).Source
+            if ($gsdBin) {
+                $gsdPiBase = Split-Path (Split-Path $gsdBin)
+                if (-not (Test-Path (Join-Path $gsdPiBase 'packages'))) {
+                    $gsdPiBase = Join-Path (Split-Path $gsdBin) 'node_modules\gsd-pi'
+                }
+            }
+        } catch {}
+    }
+    if (-not $gsdPiBase -or -not (Test-Path $gsdPiBase)) {
+        $gsdPiBase = Join-Path $HOME 'scoop\persist\nodejs-lts\bin\node_modules\gsd-pi'
+    }
+    $dir = Join-Path $gsdPiBase 'packages\pi-ai\dist'
+    if (Test-Path $dir) { return $dir }
+    return $null
+}
+
 function Invoke-GsdPackageRefresh {
     param([switch]$DryRun)
 
