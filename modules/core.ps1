@@ -330,6 +330,8 @@ function Show-8SyncHint {
     Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
     Write-HintRow '8sync clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
     Write-HintRow '8sync theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
+    Write-HintRow '8sync forge install'              'Install ForgeCode AI pair programmer (forgecode.dev)'
+    Write-HintRow '8sync forge status'               'Show forge version, binary path, dependency check'
     Write-HintRow '8sync opencode'                   'Export portable OpenCode bundle to ./oc-bundle (exclude lib, node_modules, *.ps1, *.py)'
     Write-HintRow '8sync opencode reinstall'         'Purge auth/plugin cache, then force reinstall from ./oc-bundle -> ~/.config/opencode + npm i'
     Write-HintRow '8sync opencode fresh-install --stable' 'Full clean + reinstall + oma install using the pinned stable profile'

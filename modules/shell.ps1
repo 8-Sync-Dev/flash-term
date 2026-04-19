@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','gsd','gsd-1','gguf','remove')
+    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','forge','gsd','gsd-1','gguf','remove')
 
         # subcommands per mode
         $subMap = @{
@@ -65,6 +65,7 @@ function Register-8SyncCompleter {
             clean = @('help','--days','--dry-run','--envs','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
             opencode = @('export','apply','reinstall','fresh-install','deep-clean','uninstall-claude','install','setup','status','connect','help','cli','--cli','--dry-run','--force','--stable','--model','--plan','--claude=yes','--claude=max20','--claude=no','--openai=yes','--openai=no','--gemini=yes','--gemini=no','--copilot=yes','--copilot=no','claude-max','codex-max','gemini-max','glm-max','claude-codex-gemini','claude','codex','gemini','glm','groq','gguf')
+            forge    = @('install','update','status','login','provider','uninstall','remove','help','--force','--dry-run')
             gsd = @('setup','fix','key','keys','status','add','connect','remove','help','--dry-run','--auto','--pick','--stable','--force','--refresh','--balance','--plan','--model','--tier','--only','--planning','--exec','--use-model','opus+sonnet+haiku','opus+sonnet','sonnet+haiku','sonnet','light','balanced','heavy','max','pro','normal','claude-max','claude-codex-review','codex-max','gemini-max','claude-codex-gemini','glm-max','claude','codex','gemini','glm','kimi','groq','copilot','gguf','--port','--name','zai','kimi-coding','groq','google','anthropic','openai','tavily','brave','ollama','context7','jina')
             'gsd-1' = @('help','status','guide','setup','--dry-run','--model','--plan','claude','codex','claude-codex')
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
