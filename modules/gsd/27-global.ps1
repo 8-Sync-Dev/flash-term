@@ -246,15 +246,47 @@ function Invoke-GsdGlobalPromote {
     if (-not $source) {
         Write-Host ''
         Write-Host '  [err]     no promote source found.' -ForegroundColor Red
-        Write-Host '  [hint]    options:' -ForegroundColor DarkGray
-        Write-Host '            1. --version latest       use wezterm/test/latest active current/' -ForegroundColor DarkGray
-        Write-Host '            2. --version baseline     use wezterm/test/baseline active current/' -ForegroundColor DarkGray
-        Write-Host '            3. --version 2.69.0       specific baseline directory' -ForegroundColor DarkGray
-        Write-Host '            4. --from <path>          explicit path (project or current/ dir)' -ForegroundColor DarkGray
-        Write-Host '            5. cd into a project with .gsd/vendor/gsd-pi/current/' -ForegroundColor DarkGray
-        Write-Host ''
-        Write-Host '  Run `8sync gsd global status` to list available sources.' -ForegroundColor DarkGray
-        Write-Host ''
+
+        # Detect unbuilt source (common case): current/ exists but dist/loader.js missing
+        $wez = Get-GsdWezTermRoot
+        $unbuilt = @()
+        foreach ($name in @('latest','baseline')) {
+            $candidate = Join-Path $wez ("test\{0}\.gsd\vendor\gsd-pi\current" -f $name)
+            if ((Test-Path (Join-Path $candidate 'package.json')) -and -not (Test-Path (Join-Path $candidate 'dist\loader.js'))) {
+                $unbuilt += [pscustomobject]@{ Name = $name; Path = $candidate }
+            }
+        }
+
+        if ($unbuilt.Count -gt 0) {
+            Write-Host '  [diag]    source exists but is NOT built (no dist/loader.js):' -ForegroundColor Yellow
+            foreach ($u in $unbuilt) {
+                Write-Host ("            test/{0}/  -> {1}" -f $u.Name, $u.Path) -ForegroundColor DarkYellow
+            }
+            Write-Host ''
+            Write-Host '  [fix]     build the source first:' -ForegroundColor Green
+            $firstName = $unbuilt[0].Name
+            Write-Host ("            cd test/{0}" -f $firstName) -ForegroundColor White
+            Write-Host '            8sync gsd local install         # npm install' -ForegroundColor White
+            if ($firstName -eq 'latest') {
+                Write-Host '            8sync gsd local apply-anthropic-patch  # restore OAuth (latest only)' -ForegroundColor White
+            }
+            Write-Host '            8sync gsd local build           # npm run build:core' -ForegroundColor White
+            Write-Host '            8sync gsd global promote --version latest' -ForegroundColor White
+            Write-Host ''
+            Write-Host '  [alt]     or do all above in one command:' -ForegroundColor DarkGray
+            Write-Host ("            8sync gsd local setup --version {0}" -f $firstName) -ForegroundColor White
+            Write-Host ''
+        } else {
+            Write-Host '  [hint]    options:' -ForegroundColor DarkGray
+            Write-Host '            1. --version latest       use wezterm/test/latest active current/' -ForegroundColor DarkGray
+            Write-Host '            2. --version baseline     use wezterm/test/baseline active current/' -ForegroundColor DarkGray
+            Write-Host '            3. --version 2.69.0       specific baseline directory' -ForegroundColor DarkGray
+            Write-Host '            4. --from <path>          explicit path (project or current/ dir)' -ForegroundColor DarkGray
+            Write-Host '            5. cd into a project with .gsd/vendor/gsd-pi/current/' -ForegroundColor DarkGray
+            Write-Host ''
+            Write-Host '  Run `8sync gsd global status` to list available sources.' -ForegroundColor DarkGray
+            Write-Host ''
+        }
         return
     }
 

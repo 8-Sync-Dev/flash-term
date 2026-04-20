@@ -745,6 +745,158 @@ function Ensure-GsdSandboxProject {
     return $sandbox
 }
 
+# ---------------------------------------------------------------------------
+#  Invoke-GsdLocalBuild -- run `npm run build:core` inside current/ to
+#  compile TypeScript sources -> dist/loader.js + provider artifacts.
+#  Required after apply-anthropic-patch or when current/ lacks dist/.
+# ---------------------------------------------------------------------------
+function Invoke-GsdLocalBuild {
+    param([switch]$DryRun)
+
+    $projectRoot = Resolve-GsdProjectRoot
+    if (-not $projectRoot) {
+        Write-Host '  [err]     No .gsd/ project root found.' -ForegroundColor Red
+        return
+    }
+
+    $currentDir = Join-Path $projectRoot '.gsd\vendor\gsd-pi\current'
+    if (-not (Test-Path (Join-Path $currentDir 'package.json'))) {
+        Write-Host '  [err]     current/package.json missing. Run `8sync gsd local use <target>` first.' -ForegroundColor Red
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  [gsd local] build (runs npm run build:core inside current/)' -ForegroundColor Cyan
+    Write-Host ("  cwd       : {0}" -f $currentDir) -ForegroundColor DarkGray
+
+    if (-not (Test-CommandExists 'npm')) {
+        Write-Host '  [err]     npm not found. Install Node.js first.' -ForegroundColor Red
+        return
+    }
+
+    # Detect which build script exists (build:core preferred, fallback to build)
+    $pkgJsonPath = Join-Path $currentDir 'package.json'
+    $buildScript = 'build:core'
+    try {
+        $pkg = Get-Content $pkgJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($pkg.scripts) {
+            if (-not $pkg.scripts.'build:core' -and $pkg.scripts.build) {
+                $buildScript = 'build'
+            }
+        }
+    } catch {}
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] npm run {0}" -f $buildScript) -ForegroundColor DarkYellow
+        return
+    }
+
+    try {
+        Push-Location $currentDir
+        & npm run $buildScript
+        if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+            Write-Host ("  [ok]      npm run {0} completed" -f $buildScript) -ForegroundColor Green
+            # Verify dist/loader.js exists
+            if (Test-Path (Join-Path $currentDir 'dist\loader.js')) {
+                Write-Host '  [ok]      dist/loader.js produced' -ForegroundColor Green
+            } else {
+                Write-Host '  [warn]    dist/loader.js not found after build — check npm output above' -ForegroundColor DarkYellow
+            }
+        } else {
+            Write-Host ("  [err]     npm run {0} exited with code {1}" -f $buildScript, $LASTEXITCODE) -ForegroundColor Red
+        }
+    } catch {
+        Write-Host ("  [err]     build failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    } finally {
+        try { Pop-Location } catch {}
+    }
+    Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+#  Invoke-GsdLocalApplyAnthropicPatch -- restore Anthropic OAuth module that
+#  upstream gsd-pi removed in commit c2acb1fb4 (TOS compliance). Copies the
+#  saved patches from modules/gsd/patches/ into current/ so /login anthropic
+#  works again. Build must follow this step to compile .ts -> .js.
+# ---------------------------------------------------------------------------
+function Invoke-GsdLocalApplyAnthropicPatch {
+    param([switch]$DryRun)
+
+    $projectRoot = Resolve-GsdProjectRoot
+    if (-not $projectRoot) {
+        Write-Host '  [err]     No .gsd/ project root found.' -ForegroundColor Red
+        return
+    }
+
+    $currentDir = Join-Path $projectRoot '.gsd\vendor\gsd-pi\current'
+    if (-not (Test-Path $currentDir)) {
+        Write-Host '  [err]     current/ missing. Run `8sync gsd local use latest` first.' -ForegroundColor Red
+        return
+    }
+
+    # Resolve patch files shipped with wezterm repo
+    $wez = Get-GsdWezTermRootLocal
+    $patchDir = Join-Path $wez 'modules\gsd\patches'
+    $srcAnthropic = Join-Path $patchDir 'anthropic-oauth.ts'
+    $srcIndex     = Join-Path $patchDir 'oauth-index-with-anthropic.ts'
+
+    if (-not (Test-Path $srcAnthropic) -or -not (Test-Path $srcIndex)) {
+        Write-Host '  [err]     patch sources missing in modules/gsd/patches/' -ForegroundColor Red
+        Write-Host ("          expected: {0}" -f $srcAnthropic) -ForegroundColor DarkGray
+        Write-Host ("          expected: {0}" -f $srcIndex) -ForegroundColor DarkGray
+        return
+    }
+
+    # Destination files inside current/
+    $oauthDir  = Join-Path $currentDir 'packages\pi-ai\src\utils\oauth'
+    $destAnthropic = Join-Path $oauthDir 'anthropic.ts'
+    $destIndex     = Join-Path $oauthDir 'index.ts'
+
+    if (-not (Test-Path $oauthDir)) {
+        Write-Host ("  [err]     oauth dir missing: {0}" -f $oauthDir) -ForegroundColor Red
+        Write-Host '          current/ may not be gsd-pi 2.70+ source tree' -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  [gsd local] apply-anthropic-patch (restore OAuth for TOS-removed Anthropic)' -ForegroundColor Cyan
+    Write-Host ("  patch dir : {0}" -f $patchDir) -ForegroundColor DarkGray
+    Write-Host ("  target    : {0}" -f $oauthDir) -ForegroundColor DarkGray
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] copy {0} -> {1}" -f (Split-Path $srcAnthropic -Leaf), $destAnthropic) -ForegroundColor DarkYellow
+        Write-Host ("  [dry-run] copy {0} -> {1}" -f (Split-Path $srcIndex -Leaf), $destIndex) -ForegroundColor DarkYellow
+        Write-Host '  [dry-run] after: run `8sync gsd local build` to compile .ts -> dist/' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    $applied = 0
+    try {
+        # anthropic-oauth.ts -> anthropic.ts
+        Copy-Item -Path $srcAnthropic -Destination $destAnthropic -Force -ErrorAction Stop
+        Write-Host ("  [ok]      restored {0}" -f (Split-Path $destAnthropic -Leaf)) -ForegroundColor Green
+        $applied++
+    } catch {
+        Write-Host ("  [err]     failed to copy anthropic.ts: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    }
+
+    try {
+        # oauth-index-with-anthropic.ts -> index.ts
+        Copy-Item -Path $srcIndex -Destination $destIndex -Force -ErrorAction Stop
+        Write-Host ("  [ok]      restored {0}" -f (Split-Path $destIndex -Leaf)) -ForegroundColor Green
+        $applied++
+    } catch {
+        Write-Host ("  [err]     failed to copy index.ts: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    }
+
+    if ($applied -eq 2) {
+        Write-Host '  [ok]      Anthropic OAuth patch applied to source' -ForegroundColor Green
+        Write-Host '  [next]    run `8sync gsd local build` to compile .ts -> dist/' -ForegroundColor DarkGray
+    }
+    Write-Host ''
+}
+
 function Invoke-GsdLocalSetup {
     param(
         [string]$Version = 'baseline',    # 'baseline' | 'latest' | '2.69.0' | '2.76.0' ...

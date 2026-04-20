@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-04-20T09:31:29Z | Files: 285 | Described: 0/285
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T09:31:29Z","fingerprint":"9c57cbe13f461dd02ca4719652bdfc55def8a019","fileCount":285,"truncated":false} -->
+Generated: 2026-04-20T14:55:13Z | Files: 289 | Described: 0/289
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T14:55:13Z","fingerprint":"32495bb5b7e2e402e13cba7f5ed4c3fbb2f68ee7","fileCount":289,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
@@ -76,9 +76,15 @@ Generated: 2026-04-20T09:31:29Z | Files: 285 | Described: 0/285
 - `modules/gsd/10-setup.ps1`
 - `modules/gsd/20-interactive.ps1`
 - `modules/gsd/25-local.ps1`
+- `modules/gsd/27-global.ps1`
 - `modules/gsd/30-status.ps1`
 - `modules/gsd/40-gguf.ps1`
 - `modules/gsd/50-command.ps1`
+
+### modules/gsd/patches/
+- `modules/gsd/patches/anthropic-oauth.ts`
+- `modules/gsd/patches/oauth-index-with-anthropic.ts`
+- `modules/gsd/patches/README.md`
 
 ### oc-bundle/
 - `oc-bundle/.gitignore`
