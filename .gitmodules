@@ -1,4 +1,0 @@
-[submodule ".gsd/vendor/gsd-pi/latest"]
-	path = .gsd/vendor/gsd-pi/latest
-	url = https://github.com/gsd-build/gsd-2.git
-	branch = main

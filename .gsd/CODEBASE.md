@@ -1,11 +1,12 @@
 # Codebase Map
 
-Generated: 2026-04-19T12:59:43Z | Files: 283 | Described: 0/283
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-19T12:59:43Z","fingerprint":"12f7f2ece7737494f672b2be7efb616dac9bad16","fileCount":283,"truncated":false} -->
+Generated: 2026-04-20T08:43:14Z | Files: 286 | Described: 0/286
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T08:43:14Z","fingerprint":"7afbd39a5c5fe1f72cf28a6877a9b52b15465a71","fileCount":286,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
 - `.gitignore`
+- `.gitmodules`
 - `AGENTS.md`
 - `CHANGELOG.md`
 - `CLAUDE.md`
@@ -58,6 +59,7 @@ Generated: 2026-04-19T12:59:43Z | Files: 283 | Described: 0/283
 - `modules/bg.ps1`
 - `modules/clean.ps1`
 - `modules/core.ps1`
+- `modules/forge.ps1`
 - `modules/gguf.ps1`
 - `modules/gpu.ps1`
 - `modules/gsd.ps1`
@@ -74,6 +76,7 @@ Generated: 2026-04-19T12:59:43Z | Files: 283 | Described: 0/283
 - `modules/gsd/05-plans.ps1`
 - `modules/gsd/10-setup.ps1`
 - `modules/gsd/20-interactive.ps1`
+- `modules/gsd/25-local.ps1`
 - `modules/gsd/30-status.ps1`
 - `modules/gsd/40-gguf.ps1`
 - `modules/gsd/50-command.ps1`
