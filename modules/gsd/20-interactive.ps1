@@ -246,6 +246,8 @@ function Show-GsdHelp {
     Write-Host '        Opt in to global gsd-pi refresh only when you explicitly approve machine-wide changes.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd local' -ForegroundColor White
     Write-Host '        Inspect project-local .gsd/vendor/gsd-pi/current, baseline-2.69.0, and latest paths.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd guide' -ForegroundColor White
+    Write-Host '        Show Vietnamese quick guide for gsd-pi (GSD-2): features, workflow, pro tips.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Model management' -ForegroundColor Cyan
     Write-Host '    8sync gsd model add <model-id>' -ForegroundColor White
@@ -413,5 +415,48 @@ function Invoke-GsdKey {
     Write-Host ''
     Write-Host ("  [gsd] {0} set" -f $envVarName) -ForegroundColor Green
     Write-Host '  Active now + persisted to user env + written to ~/.gsd/agent/.env' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Show-GsdGuide {
+    $guidePath = Join-Path $PSScriptRoot 'docs/gsd-pi-vi.md'
+    if (-not (Test-Path $guidePath)) {
+        Write-Host ''
+        Write-Host "  [gsd] Guide not found: $guidePath" -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    # Prefer glow > bat > mdcat > raw
+    $renderer = $null
+    foreach ($cmd in @('glow', 'bat', 'mdcat')) {
+        if (Get-Command $cmd -ErrorAction SilentlyContinue) { $renderer = $cmd; break }
+    }
+
+    switch ($renderer) {
+        'glow'  { & glow -p $guidePath }
+        'bat'   { & bat --style=plain --paging=always --language=markdown $guidePath }
+        'mdcat' { & mdcat $guidePath }
+        default {
+            # Fallback: colorised pretty-print in PowerShell
+            Get-Content $guidePath -Encoding UTF8 | ForEach-Object {
+                $line = $_
+                if ($line -match '^# ')       { Write-Host $line -ForegroundColor Magenta }
+                elseif ($line -match '^## ')  { Write-Host $line -ForegroundColor Cyan }
+                elseif ($line -match '^### ') { Write-Host $line -ForegroundColor Yellow }
+                elseif ($line -match '^\s*\| ') { Write-Host $line -ForegroundColor Gray }
+                elseif ($line -match '^\s*```') { Write-Host $line -ForegroundColor DarkGray }
+                elseif ($line -match '^\s*>') { Write-Host $line -ForegroundColor DarkCyan }
+                elseif ($line -match '^\s*[-*] ') { Write-Host $line -ForegroundColor White }
+                elseif ($line -match '^\s*\d+\. ') { Write-Host $line -ForegroundColor White }
+                else { Write-Host $line -ForegroundColor Gray }
+            }
+            Write-Host ''
+            Write-Host '  Tip: install `glow` (scoop install glow) for prettier rendering.' -ForegroundColor DarkGray
+        }
+    }
+    Write-Host ''
+    Write-Host "  File: $guidePath" -ForegroundColor DarkGray
     Write-Host ''
 }

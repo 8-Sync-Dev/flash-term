@@ -422,6 +422,7 @@ function Invoke-GsdCommand {
                 default { Write-Host '  Usage: 8sync gsd remove gguf [--name <id>]' -ForegroundColor DarkGray }
             }
         }
+        'guide'  { Show-GsdGuide }
         'help'   { Show-GsdHelp }
         default  { Show-GsdHelp }
     }
