@@ -1,132 +1,222 @@
-# 🚀 gsd-pi (GSD-2) — Hướng dẫn nhanh tiếng Việt
+# 🚀 gsd-pi v2.76 — Hướng dẫn bản đang xài (tiếng Việt)
 
-> **Phiên bản tham chiếu:** `gsd-pi` v2.x (dòng GSD-2, phát hành trên npm)
-> GSD-2 là CLI độc lập xây trên Pi SDK — không còn là prompt framework như v1.
+> **Bản ưu tiên:** `gsd-pi` v2.76.x (dòng GSD-2 mới nhất trên npm, series 2.7x).
+> Tài liệu này viết cho bản **bạn đang chạy ngay bây giờ** — gõ lệnh copy-paste là chạy được.
+
+Kiểm tra bản đang dùng:
+```powershell
+gsd --version          # phải là 2.76.x
+npm view gsd-pi version # bản npm mới nhất
+8sync gsd status        # provider + routing hiện tại
+```
 
 ---
 
-## 🧠 GSD-2 là gì?
+## ⭐ Công dụng nổi bật CỦA BẢN 2.7x (mới so với 2.0)
 
-**GSD = Get Shit Done.** Hệ spec-driven development cho AI coding agent:
+Không phải lý thuyết GSD chung — đây là **những thứ chỉ bản 2.7x mới có**:
 
-- Viết spec → roadmap → milestone → slice → task → verify — tất cả commit vào git dưới `.gsd/`.
-- Agent có **context window mới 200k token cho mỗi task** — không tích rác, không "tôi sẽ ngắn gọn lại".
-- Dispatch tự chèn sẵn plan, summary, decision, roadmap — agent bắt tay vào code ngay.
-- **Một lệnh. Đi uống cafe. Về có dự án chạy được + git history sạch.**
+### 1. 🧠 Persistent Agent Memory (5 phase đã ship)
+Agent có **bộ não lâu dài** xuyên session.
+```powershell
+# Trong session GSD, agent tự gọi các tool này:
+#   capture_thought   — lưu quyết định/pattern/gotcha
+#   memory_query      — tìm lại trước khi plan
+#   gsd_graph         — duyệt đồ thị liên kết
+```
+- **Scope/tag:** nhớ theo project / milestone / slice.
+- **Hybrid retrieval:** keyword + semantic search.
+- **Knowledge graph:** planner tự lấy context từ memory cũ.
+- **Maintenance:** cap cascade, decay metrics, export/import.
+
+👉 Dự án lớn = đừng mất memory. Commit `.gsd/` đều đặn.
+
+### 2. 🪜 Sketch-then-Refine Planning (Phase 1)
+GSD giờ **phác sketch nhẹ trước**, rồi mới lock plan chi tiết. Bớt phí token khi plan sai ngay từ đầu.
+
+### 3. 🚨 Mid-Execution Escalation (Phase 2)
+Task đang chạy phát hiện độ phức tạp vượt dự kiến → **tự escalate**, rollback write nếu fail. Không cần bạn canh.
+
+### 4. 🗣 `/gsd language` — Ngôn ngữ cố định
+```
+/gsd language vi
+```
+Set 1 lần, mọi output (plan, summary, commit message) giữ nguyên ngôn ngữ cho cả project.
+
+### 5. 📰 `/gsd changelog` — Release notes tóm tắt bằng LLM
+```
+/gsd changelog
+```
+Xem đổi gì giữa các bản gsd-pi **ngay trong TUI**, không cần mở GitHub.
+
+### 6. 🎯 DB-Authoritative Milestone Completeness
+Trạng thái milestone giờ **đọc từ SQLite** (không còn từ file markers). Không còn false "merge" khi `complete-milestone` fail.
+
+### 7. 🧯 Crash Recovery siêu cứng
+- Lock file track unit đang chạy.
+- Session chết → `/gsd auto` lần sau tự **synthesize recovery briefing** từ mọi tool call đã ghi disk → resume nguyên trạng.
+- Headless crash → auto restart exponential backoff (mặc định 3 lần).
+- Parallel orchestrator persist PID + liveness → multi-worker sống sót crash.
+
+### 8. 📡 Provider Error Recovery thông minh
+- Lỗi transient (rate limit, 500/503, overloaded) → auto-resume sau delay.
+- Lỗi vĩnh viễn (auth, billing) → pause chờ bạn.
+- Fallback chain retry network trước khi đổi model.
+
+### 9. 🔁 Stuck Detection bằng sliding window
+Phát hiện lặp dispatch (cả multi-unit cycle) → retry 1 lần với **deep diagnostic** trước khi escalate.
+
+### 10. 💰 Flat-rate Provider Detection (mở rộng)
+Detect **custom + externalCli provider** (ví dụ Claude Code subscription) → auto route qua CLI khỏi tính token tiền.
+
+### 11. 🪟 Claude Code native Windows lookup
+Không còn phải symlink `claude.cmd` thủ công — bản 2.7x tự tìm đúng binary Windows.
+
+### 12. 🧰 RTK Output Compression
+Binary quản lý sẵn, nén stdout của `bash`, `async_bash`, `bg_shell`, verification. Giảm token 40-70% cho log dài.
+```powershell
+# Tắt nếu cần debug:
+$env:GSD_RTK_DISABLED = "1"
+```
+
+### 13. 🔄 Milestone merge an toàn
+- Clean up `MERGE_HEAD` trên mọi error path.
+- Auto-mode không false merge khi phase bị block + thiếu reassessment.
+
+### 14. 🧪 `/gsd doctor` tự heal
+Doctor giờ **tự chữa** dispatch fixable warnings, heal legacy task arrays / evidence rows, restore STATE.md.
 
 ---
 
-## ⚙️ Cài đặt
+## ⚡ Commands NÊN THUỘC (bản 2.7x)
 
-```bash
-# Yêu cầu: Node.js >= 22 (20.6+ tạm được, 22+ khuyến nghị)
-npm install -g gsd-pi
-
-# Vá Anthropic OAuth + routing stack cho dự án lớn
-8sync gsd setup --auto
-8sync gsd fix
+### Cài + setup lần đầu
+```powershell
+npm install -g gsd-pi                 # hoặc: npm i -g gsd-pi@2.76
+8sync gsd setup --auto                # auto-detect provider tốt nhất + apply PREFERENCES.md
+8sync gsd fix                         # repair nhanh ~/.gsd/agent nếu có gì trục trặc
 ```
 
-Nếu lỗi `experimental-strip-types` → nâng Node lên 22+.
-Nếu `gsd` bị alias bởi oh-my-zsh (`git svn dcommit`) → `unalias gsd`.
+### Tạo + chạy milestone
+```powershell
+gsd                                   # mở TUI (step mode mặc định)
+# Trong TUI:
+/gsd language vi                      # (1 lần) khóa ngôn ngữ tiếng Việt
+/gsd new-milestone                    # tạo M00x — paste spec.md vào
+/gsd auto                             # chạy toàn bộ milestone, đi uống cafe
+/gsd next                             # hoặc chạy từng unit một (an toàn hơn)
+```
+
+### Quan sát + debug
+```powershell
+/gsd query                            # snapshot JSON trạng thái (~50ms, không tốn LLM)
+/gsd changelog                        # xem bản mới có gì
+/gsd doctor                           # tự chẩn + tự heal
+/gsd migrate                          # chuyển .planning/ (GSD v1) → .gsd/ (v2)
+```
+
+### Headless cho CI/cron
+```powershell
+# Chạy auto trong GitHub Actions / cron:
+gsd headless --timeout 600000
+
+# Tạo + chạy milestone end-to-end không TUI:
+gsd headless new-milestone --context spec.md --auto
+
+# Cron-friendly: 1 unit rồi thoát
+gsd headless next
+
+# Dashboard: đọc trạng thái kiểu JSON
+gsd headless query                    # exit 0 done / 1 error / 2 blocked
+```
+
+### Wrapper 8sync (repo này)
+```powershell
+8sync gsd guide                       # mở file hướng dẫn này
+8sync gsd setup --model codex         # preset stack theo brand
+8sync gsd setup --pick                # fzf picker có status
+8sync gsd status                      # auth/key/routing
+8sync gsd keys                        # list provider
+8sync gsd model add claude-opus-4-7   # thêm model không cần upgrade gsd-pi
+8sync gsd fix --refresh               # refresh runtime local (không đụng global)
+8sync gsd local                       # inspect .gsd/vendor/gsd-pi
+```
 
 ---
 
-## 🎯 Vòng đời một milestone (dùng hàng ngày)
+## 🏗 Workflow cho dự án lớn (bản 2.7x)
 
 ```
-/gsd new-milestone    # tạo M00x từ spec
-/gsd auto             # chạy toàn bộ M00x không cần can thiệp
-/gsd next             # chạy 1 unit rồi dừng (an toàn)
-/gsd query            # snapshot JSON trạng thái (~50ms, không gọi LLM)
+1. npm i -g gsd-pi && 8sync gsd setup --auto
+2. cd project && gsd
+3. /gsd language vi              ← 1 lần duy nhất
+4. /gsd new-milestone            ← paste spec
+5. /gsd auto                     ← đi cafe
+6. Escape để pause bất cứ lúc nào → /gsd auto resume
+7. Khi xong milestone: /gsd changelog để xem gsd-pi có gì mới
 ```
 
-**Step mode** (mặc định): state machine như auto nhưng dừng giữa các unit, có wizard "đã xong gì / sắp làm gì".
-**Auto mode**: chạy cả milestone. Escape để pause bất cứ lúc nào — conversation được giữ, gõ `/gsd auto` resume từ disk.
+**Terminal 2** mở song song: chỉnh ROADMAP.md, REQUIREMENTS.md — agent pick up ở phase boundary kế tiếp **không cần stop**.
+
+**Git isolation:** set trong preferences
+```yaml
+git:
+  isolation: worktree   # hoặc branch
+```
+→ mỗi milestone một branch `milestone/<MID>`, main luôn xanh.
+
+**Verification bắt buộc:**
+```yaml
+verification_commands:
+  - npm run lint
+  - npm run typecheck
+  - npm test
+verification_auto_fix: true
+verification_max_retries: 3
+```
+→ fail tự retry, pre-existing error chỉ warn (không block).
 
 ---
 
-## 🧱 Cấu trúc hierarchy
+## 🧭 Pro tips để thành "chuyên dùng GSD" cho dự án lớn
 
-```
-Milestone (M001)
- └─ Slice (S01)               — vertical cut có thể demo
-     └─ Task (T01..Tnn)       — đơn vị dispatch thực sự
-         └─ Verification      — lint/test/typecheck tự chạy
-```
-
-Mỗi tầng đều có `PLAN.md` + `SUMMARY.md` — survive mọi `/new` và context reset.
+1. **Model 2 tier:** planning = Opus/GPT-5 (mạnh), exec = Sonnet/Haiku (rẻ) → giảm 60-80% cost.
+2. **Slice mỏng, vertical:** mỗi slice demo được độc lập → dễ rollback, dễ review.
+3. **`/gsd query` trong dashboard** thay vì parse markdown — nhanh, không tốn LLM.
+4. **Commit `.gsd/` sau mỗi session:** đó là memory dài hạn — mất nó = agent amnesia.
+5. **Bật `capture_thought` liberal:** pattern, gotcha, decision đều nên lưu — memory retrieval của 2.7x rất tốt.
+6. **`STATE.md` là single source of truth** — rối thì đọc file này, đừng hỏi agent.
+7. **Headless trong CI:** exit code 0/1/2 cực rõ ràng, dễ wrap alert Slack.
+8. **Đừng tắt RTK** trừ khi debug — log compression quý hơn bạn tưởng.
+9. **`/gsd doctor` định kỳ** — tự heal nhanh hơn fix tay.
+10. **Migrate từ v1?** `gsd migrate <path>` — giữ nguyên completion state.
 
 ---
 
-## 🔁 Tính năng killer cho **dự án lớn**
+## 🆘 Troubleshooting nhanh
 
-| Feature | Công dụng |
+| Lỗi | Fix |
 |---|---|
-| **Fresh session per unit** | Mỗi task một context 200k sạch — không còn agent "mệt mỏi" sau 3 giờ. |
-| **Context pre-loading** | Dispatch đã inline plan/summary/deps → agent không tốn tool call đọc file. |
-| **Git isolation** | `git.isolation = worktree\|branch` → mỗi milestone một branch `milestone/<MID>`. |
-| **Verification enforcement** | Chạy `npm run lint/test` sau mỗi task; fail → auto-fix retry; pre-existing errors chỉ log warning. |
-| **Validate-milestone gate** | Sau khi xong hết slice, so sánh success criteria với kết quả thực tế trước khi "seal". |
-| **Headless mode** | `gsd headless --timeout 600000` cho CI/cron; exit code 0 done / 1 error / 2 blocked; auto-restart exponential backoff. |
-| **Multi-session** | File-based IPC trong `.gsd/parallel/` — nhiều worker cùng chạy nhiều milestone. |
-| **Remote questions** | Route quyết định sang Slack/Discord khi cần human input. |
-| **RTK output compression** | Nén stdout của `bash`, `bg_shell`, verification — tiết kiệm context. |
-| **Stuck-loop detection** | Tự phát hiện loop → break → escalate. |
-| **Crash recovery** | Restart từ disk state, không mất task đã xong. |
-| **Migrate từ GSD v1** | `/gsd migrate` parse `.planning/` cũ → `.gsd/` mới, giữ completion state. |
+| `experimental-strip-types` | Nâng Node lên ≥ 22 |
+| `gsd` bị alias (oh-my-zsh) | `unalias gsd` trong `~/.zshrc` |
+| `Version mismatch detected` | `gsd update` hoặc `npm i -g gsd-pi@latest` |
+| Anthropic 401/bearer | `8sync gsd fix` (patch OAuth bearer-auth) |
+| Hang trên piped stdin | Dùng `gsd headless` thay vì `gsd auto` |
+| CLI không tìm thấy sau install | `echo 'export PATH="$(npm prefix -g)/bin:$PATH"'` |
 
 ---
 
-## 🪜 Workflow cho team / dự án lớn
-
-1. **Khởi động:** `gsd config` → set `ANTHROPIC_API_KEY` (hoặc provider khác).
-2. **Spec trước, code sau:** viết `spec.md`, rồi `gsd headless new-milestone --context spec.md --auto`.
-3. **Terminal 1** chạy `/gsd auto`; **terminal 2** dùng để review/chỉnh roadmap — quyết định terminal 2 được pick up ở phase boundary kế tiếp.
-4. **Verify chặt:** set `verification_commands`, `verification_auto_fix`, `verification_max_retries` trong preferences.
-5. **CI integration:** `gsd headless query` trả JSON → dashboard tiến độ không cần spawn LLM.
-6. **Branch-per-milestone:** git isolation giữ main luôn xanh; reviewer chỉ merge milestone branch khi gate pass.
-7. **Pause/resume:** Escape → inspect → `/gsd auto`. An toàn để handoff giữa ca hoặc giữa dev.
-
----
-
-## 🧰 Lệnh `8sync gsd` (wrapper trên config này)
-
-```
-8sync gsd setup --auto          # Auto-detect provider tốt nhất + apply
-8sync gsd setup --model codex   # Preset stack theo brand
-8sync gsd setup --pick          # fzf picker có status
-8sync gsd fix                   # Repair nhanh ~/.gsd/agent
-8sync gsd fix --refresh         # Refresh runtime local (không đụng global)
-8sync gsd status                # Auth + key + routing hiện tại
-8sync gsd keys                  # List provider + trạng thái
-8sync gsd model add <id>        # Thêm model mới không cần upgrade gsd-pi
-8sync gsd guide                 # Mở hướng dẫn này (tiếng Việt)
-8sync gsd local                 # Inspect .gsd/vendor/gsd-pi local
-```
-
----
-
-## 🔒 Pro tips để trở thành "chuyên gia GSD"
-
-1. **Luôn dùng `--auto` setup đầu project** → tự pick OAuth/API key hợp lệ nhất.
-2. **Bật git isolation** ngay milestone đầu — tránh drama merge sau này.
-3. **Viết spec kỹ, slice mỏng** — slice càng vertical càng dễ demo, càng dễ rollback.
-4. **Đừng tắt verification** — auto-fix retry rẻ hơn debug thủ công rất nhiều.
-5. **Commit `.gsd/`** — đó là bộ nhớ dài hạn của agent; mất nó = agent amnesia.
-6. **Dùng `gsd headless query`** trong script CI thay vì parse markdown.
-7. **Model routing nhiều tier:** planning dùng model mạnh (Opus/GPT-5), exec dùng model rẻ (Sonnet/Haiku) — tiết kiệm 60–80% cost.
-8. **`.gsd/STATE.md` là single source of truth** — khi rối, đọc file này trước, đừng hỏi agent.
-
----
-
-## 🔗 Tham khảo
+## 🔗 Link chính thức
 
 - npm: <https://www.npmjs.com/package/gsd-pi>
 - GitHub: <https://github.com/gsd-build/gsd-2>
-- Docs: <https://github.com/gsd-build/gsd-2/tree/main/docs/user-docs>
+- Changelog: <https://github.com/gsd-build/gsd-2/blob/main/CHANGELOG.md>
+- User guide: <https://github.com/gsd-build/gsd-2/tree/main/docs/user-docs>
 
-> Bản dịch/tóm tắt này nằm trong repo cấu hình WezTerm của bạn. Mở lại bằng:
-> ```
-> 8sync gsd guide
-> ```
+Hoặc gõ ngay:
+```powershell
+8sync gsd guide      # mở file này
+/gsd changelog       # trong TUI, xem diff release
+```
+
+> **Nhắc cuối:** GSD-2 là CLI TypeScript trên Pi SDK — không phải prompt framework. Nó tự clear context, inject đúng file lúc dispatch, quản git, track cost, detect stuck loop, recover crash. **Một lệnh. Đi chơi. Về có dự án chạy + git history sạch.**

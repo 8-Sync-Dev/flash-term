@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-04-20T16:13:07Z | Files: 290 | Described: 0/290
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T16:13:07Z","fingerprint":"1685355eced07728006d58cf9400402b061c0202","fileCount":290,"truncated":false} -->
+Generated: 2026-04-20T16:20:15Z | Files: 291 | Described: 0/291
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T16:20:15Z","fingerprint":"643aea3a570307d889df5af49ff0e9e11c960649","fileCount":291,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
@@ -80,6 +80,9 @@ Generated: 2026-04-20T16:13:07Z | Files: 290 | Described: 0/290
 - `modules/gsd/30-status.ps1`
 - `modules/gsd/40-gguf.ps1`
 - `modules/gsd/50-command.ps1`
+
+### modules/gsd/docs/
+- `modules/gsd/docs/gsd-pi-vi.md`
 
 ### modules/gsd/patches/
 - `modules/gsd/patches/anthropic-oauth.ts`
