@@ -249,6 +249,14 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd guide' -ForegroundColor White
     Write-Host '        Show Vietnamese quick guide for gsd-pi (GSD-2): features, workflow, pro tips.' -ForegroundColor DarkGray
     Write-Host ''
+    Write-Host '  Combos (NEW in 2.76 wrapper)' -ForegroundColor Cyan
+    Write-Host '    8sync gsd combo' -ForegroundColor White
+    Write-Host '        List all combos: model stacks + workflow playbooks for large projects.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd combo <name> --help' -ForegroundColor White
+    Write-Host '        Detail + copy-paste example for one combo.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd combo upgrade' -ForegroundColor White
+    Write-Host '        Step-by-step migration from older GSD version to 2.76 (ordered, safe).' -ForegroundColor DarkGray
+    Write-Host ''
     Write-Host '  Model management' -ForegroundColor Cyan
     Write-Host '    8sync gsd model add <model-id>' -ForegroundColor White
     Write-Host '        Add a new model to GSD registry without upgrading gsd-pi.' -ForegroundColor DarkGray

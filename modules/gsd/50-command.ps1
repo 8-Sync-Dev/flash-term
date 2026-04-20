@@ -422,6 +422,7 @@ function Invoke-GsdCommand {
                 default { Write-Host '  Usage: 8sync gsd remove gguf [--name <id>]' -ForegroundColor DarkGray }
             }
         }
+        'combo'  { Invoke-GsdCombo -Rest ($Rest | Select-Object -Skip 1) }
         'guide'  { Show-GsdGuide }
         'help'   { Show-GsdHelp }
         default  { Show-GsdHelp }
