@@ -92,3 +92,25 @@ In this repo, requests like "optimize startup", "make it smoother", or "reduce l
 **Rule:** Treat visual appearance and prompt wording as stable unless the user explicitly asks to redesign them. Performance work should prefer startup-path, caching, lazy-init, background-check throttling, command lookup caching, and other non-visual optimizations first.
 
 **Operational guidance:** If a change is visible to the user, ask or confirm before applying it. When optimizing WezTerm or shell startup, preserve the existing look-and-feel by default and isolate style changes from performance changes.
+
+---
+
+## Markdown đẹp trong terminal — renderer chain chuẩn của repo
+
+**Context:** Guide `8sync gsd guide` (v2026.04.20-gsd-guide-vi-2)
+
+**Công thức:**
+1. Viết markdown có emoji + heading hierarchy + bảng + blockquote + code fence có language hint.
+2. PowerShell renderer chain ưu tiên: `glow` → `bat` → `mdcat` → fallback colorised PowerShell (regex tô màu heading/code/list/blockquote).
+3. Đọc file bằng `Get-Content -Encoding UTF8` để tránh mojibake tiếng Việt.
+4. Font terminal cần Nerd Font (Cascadia Code NF / JetBrains Mono NF) cho emoji + bảng Unicode không vỡ.
+
+**Reference implementation:** `Show-GsdGuide` trong `modules/gsd/20-interactive.ps1` + dispatch `'guide'` trong `modules/gsd/50-command.ps1`.
+
+**Full doc:** `docs/guides/20260420-markdown-pretty-render.md` — có snippet copy-paste để add command `guide` cho bất kỳ module nào.
+
+**Cài renderer (optional, fallback vẫn đẹp):**
+```powershell
+scoop install glow   # khuyên dùng
+scoop install bat    # backup
+```

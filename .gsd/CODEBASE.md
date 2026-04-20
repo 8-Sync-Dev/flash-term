@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-04-20T16:20:15Z | Files: 291 | Described: 0/291
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T16:20:15Z","fingerprint":"643aea3a570307d889df5af49ff0e9e11c960649","fileCount":291,"truncated":false} -->
+Generated: 2026-04-20T16:36:29Z | Files: 291 | Described: 0/291
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T16:36:29Z","fingerprint":"643aea3a570307d889df5af49ff0e9e11c960649","fileCount":291,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
