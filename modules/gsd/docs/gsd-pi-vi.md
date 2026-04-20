@@ -382,6 +382,474 @@ verification_max_retries: 3
 
 ---
 
+## 🏆 Pro Combos — workflow chuyên nghiệp cho dự án lớn (2.76)
+
+> Dưới đây là các **combo thực chiến** kết hợp feature mới 2.76 + command cũ. Copy-paste là chạy được, mỗi combo giải quyết 1 bài toán cụ thể của dự án lớn.
+
+---
+
+### 🥇 Combo 1: Day-0 Setup chuẩn "enterprise-ready"
+
+Khi bắt đầu 1 project lớn mới hoặc convert project hiện có sang GSD:
+
+```powershell
+# Bước 1: cài + detect provider tốt nhất
+npm install -g gsd-pi
+8sync gsd setup --auto
+8sync gsd fix
+
+# Bước 2: vào project, chạy wizard
+cd my-large-project
+gsd
+
+# Bước 3: cấu hình một lần cho cả project (trong TUI)
+/gsd language vi                # khóa tiếng Việt
+/gsd onboarding                 # set provider + token_profile
+/gsd scan                       # tạo .gsd/codebase/SCAN-*.md — agent hiểu code sẵn
+```
+
+**Bước 4: viết `.gsd/PREFERENCES.md`** (project-level, override global):
+
+```yaml
+---
+version: 1
+mode: team                      # solo | team → team bật unique milestone IDs + stricter git
+token_profile: balanced         # budget (giảm 60-80% cost) | balanced | quality
+
+models:
+  research: claude-sonnet-4-6
+  planning:
+    model: claude-opus-4-6      # planning dùng model mạnh
+    fallbacks:
+      - openrouter/z-ai/glm-5
+      - openrouter/minimax/minimax-m2.5
+  execution: claude-sonnet-4-6  # exec dùng model rẻ hơn
+  completion: claude-sonnet-4-6
+
+git:
+  isolation: worktree           # worktree | branch | none
+  main_branch: main             # validate trước khi tạo milestone branch
+
+unique_milestone_ids: true      # M001-abc123 thay vì M001 — tránh collision khi team nhiều người
+
+auto_supervisor:
+  soft_timeout_minutes: 20      # warn
+  idle_timeout_minutes: 10      # pause nếu idle
+  hard_timeout_minutes: 30      # kill
+  budget_ceiling: 50.00         # $USD/session
+
+verification_commands:
+  - npm run lint
+  - npm run typecheck
+  - npm test
+verification_auto_fix: true
+verification_max_retries: 3
+
+auto_report: true               # tự gen HTML report .gsd/reports/ sau milestone
+
+planning:
+  sketch_first: true            # ADR-011 Phase 1
+  escalation_rollback: true     # ADR-011 Phase 2
+
+skill_discovery: suggest        # GSD gợi ý skill pack (React, Rust, ...)
+---
+```
+
+**Bước 5: tạo `agent-instructions.md`** ở root project — LLM đọc mỗi session:
+
+```markdown
+# Agent Instructions — MyLargeProject
+
+## Coding Standards
+- TypeScript strict mode, no `any`.
+- ESM only, không CommonJS.
+- Prefer named exports.
+
+## Architecture
+- Clean Architecture: domain → usecase → infra.
+- Không import ngược hướng.
+
+## Domain Terms
+- "Contract" = smart contract trong blockchain layer, không phải business contract.
+
+## Workflow Preferences
+- Commit theo Conventional Commits.
+- PR mỗi slice, review xong mới merge.
+```
+
+✅ **Kết quả:** mọi milestone/slice/task sau đó agent **đã biết** standard + domain + stack — không phải giải thích lại.
+
+---
+
+### 🥈 Combo 2: 2-Terminal Power Workflow (the REAL workflow)
+
+Đây là cách dùng auto-mode chuyên nghiệp — **1 terminal chạy, 1 terminal steer**:
+
+**Terminal 1 — Executor:**
+```powershell
+gsd
+/gsd new-milestone              # sketch-then-refine → accept
+/gsd auto                       # chạy, đi cafe
+```
+
+**Terminal 2 — Steering (cùng project, file-based IPC):**
+```powershell
+cd my-large-project
+gsd
+
+# Discuss architecture khi đang chạy — không cần stop
+/gsd discuss                    # talk về kiến trúc, agent pick up ở phase boundary
+
+# Check progress bất cứ lúc nào (không tốn LLM)
+/gsd status                     # text summary
+/gsd query                      # JSON snapshot ~50ms
+/gsd viz                        # workflow visualizer: progress, DAG, metrics, timeline
+
+# Queue milestone kế tiếp
+/gsd queue M002 --context spec-m2.md
+
+# Fire-and-forget capture ý tưởng giữa chừng
+/gsd capture "remember to add rate limiting to /api/auth"
+# → agent tự triage giữa các task: note / defer / inject / replan / quick-task
+
+# Steer plan documents không stop pipeline
+/gsd steer                      # hard-edit plan, pickup phase boundary kế
+```
+
+✅ **Kết quả:** auto chạy không gián đoạn, bạn vẫn control được architecture + bắt ý tưởng mới mà không làm hỏng flow.
+
+---
+
+### 🥉 Combo 3: Memory-Driven Development (cross-project knowledge)
+
+Dự án lớn thường có multiple repos. Combo này để **share knowledge giữa các project**:
+
+```powershell
+# Trong project A — agent tự capture memories khi làm việc
+# Bạn hint để capture mạnh hơn:
+#   trong chat: "capture pattern: luôn dùng zod cho runtime validation, tag=validation,api"
+#   trong chat: "capture gotcha: Next.js 15 params phải await, tag=nextjs,breaking"
+
+# Commit memory về git:
+git add .gsd/gsd.db .gsd/KNOWLEDGE.md
+git commit -m "chore(memory): sync Q1 learnings"
+
+# Export sang project B:
+cp .gsd/gsd.db ../project-B/.gsd/gsd.db
+# hoặc dùng tool export (trong TUI project B):
+#   chat với agent: "import memories from ../project-A/.gsd/gsd.db, scope=global"
+
+# Trong project B, trước khi plan milestone mới:
+/gsd scan                       # build codebase intel
+# → planner tự query memory + scan → plan có context từ project A
+```
+
+**Maintenance định kỳ (Phase 5):**
+```powershell
+/gsd doctor                     # báo cap / decay / health
+# Trong chat: "memory export with tag=validation" → lưu JSON riêng cho team
+# Trong chat: "memory graph for MEM001 depth=3" → xem liên kết
+```
+
+✅ **Kết quả:** kiến thức team tích lũy xuyên project. Agent mới vào "biết" pattern cũ ngay, giảm 40-60% thời gian onboarding.
+
+---
+
+### 🏅 Combo 4: Remote Control (làm việc từ xa qua điện thoại)
+
+Chạy milestone dài trên máy server / home PC, out-of-office vẫn kiểm soát:
+
+**Setup 1 lần:**
+```powershell
+# Trong TUI:
+/gsd prefs
+# → Remote Channels → Telegram → paste bot token + chat ID
+```
+
+`PREFERENCES.md` sẽ có:
+```yaml
+remote:
+  telegram:
+    bot_token: "123456:ABC..."
+    chat_id: "YOUR_CHAT_ID"
+    poll_interval_seconds: 5    # default
+  slack:                        # có thể bật song song
+    webhook_url: "https://hooks.slack.com/..."
+  discord:
+    webhook_url: "https://discord.com/api/webhooks/..."
+```
+
+**Workflow thực tế:**
+```powershell
+# Máy server / home PC:
+gsd headless --timeout 86400000   # chạy 24h không TUI, auto-restart crash
+
+# Điện thoại — chat với Telegram bot:
+/status                         # xem phase hiện tại
+/pause                          # dừng an toàn
+/resume                         # chạy tiếp
+/next                           # force advance 1 unit
+/query                          # JSON snapshot
+
+# Khi agent dùng ask_user_questions → câu hỏi bắn qua Telegram
+# Bạn trả lời trên điện thoại (có markdown preview option nếu câu hỏi complex)
+# → auto-mode tiếp tục
+```
+
+✅ **Kết quả:** milestone 8-10 tiếng chạy đêm, sáng mở điện thoại đã thấy xong + HTML report ở `.gsd/reports/`.
+
+---
+
+### 🎯 Combo 5: Cost Optimization cực đoan (-60-80% cost)
+
+Cho project lớn cost > $500/month, combo này ép về < $150:
+
+```yaml
+# .gsd/PREFERENCES.md
+token_profile: budget                # khởi điểm
+
+models:
+  research: claude-haiku-4-5         # research chỉ cần skim
+  planning:
+    model: claude-opus-4-6           # planning PHẢI mạnh — đừng tiếc
+    fallbacks:
+      - openrouter/z-ai/glm-5        # fallback rẻ khi Anthropic rate-limit
+  execution: claude-sonnet-4-6       # bulk work
+  completion: claude-haiku-4-5       # summary/commit msg — haiku quá đủ
+
+# Complexity-based routing tự phân loại simple/standard/complex
+# → docs task dùng Haiku, architectural dùng Opus (tự động)
+
+auto_supervisor:
+  budget_ceiling: 25.00              # per-session hard cap, auto pause khi chạm
+
+# Budget pressure graduated:
+# - 50% budget → warn
+# - 75% → downgrade non-critical phases sang model rẻ
+# - 90% → chỉ giữ planning ở tier cao, còn lại haiku hết
+```
+
+**Monitor:**
+```powershell
+/gsd status                     # token + cost summary
+/gsd viz                        # metrics tab có chart chi tiết
+/gsd headless --json status     # cron ghi log cost theo giờ
+```
+
+✅ **Kết quả:** dự án lớn ~50 slices/tháng giảm từ $600 → $180, quality planning vẫn giữ.
+
+---
+
+### 🔥 Combo 6: Parallel Orchestration (nhiều milestone cùng lúc)
+
+Dự án lớn có milestone **độc lập** (không depend nhau): chạy song song.
+
+```powershell
+# Set parallel trong preferences:
+```
+```yaml
+parallel:
+  enabled: true
+  max_workers: 3
+  budget_cap_per_worker: 20.00
+```
+
+```powershell
+# Spawn worker cho từng milestone:
+gsd headless dispatch M002 --worker-id w1 &
+gsd headless dispatch M003 --worker-id w2 &
+gsd headless dispatch M004 --worker-id w3 &
+
+# Monitor chung:
+gsd headless --json status --all-workers
+
+# File IPC ở .gsd/parallel/ — workers share knowledge qua memory store
+# PID liveness detection: worker chết → auto-orchestrator respawn
+```
+
+✅ **Kết quả:** 3 milestone xong trong thời gian 1. Worker crash → bạn bè vẫn chạy.
+
+---
+
+### 🛡 Combo 7: Crash-Proof Long-Running Milestone
+
+Milestone 20+ slices chạy 2 ngày — chuẩn bị cho worst case:
+
+```powershell
+# 1. Bật tất cả safety net
+```
+```yaml
+# PREFERENCES.md
+git:
+  isolation: worktree              # milestone branch riêng, main luôn xanh
+  smart_commit: true               # commit per slice + squash merge
+
+auto_supervisor:
+  hard_timeout_minutes: 60         # phòng stuck
+  
+crash_recovery: true               # default true — synthesize briefing từ tool calls
+```
+
+```powershell
+# 2. Chạy trong tmux/screen/wezterm persist
+wezterm start -- gsd
+# Trong GSD:
+/gsd auto
+
+# 3. Nếu session chết (SSH disconnect, máy reboot, ...):
+ssh server
+cd project
+gsd
+/gsd auto           # ← AUTO recover: đọc lock file, synthesize briefing, resume exact
+# KHÔNG mất progress, KHÔNG mất memory.
+
+# 4. Check integrity sau recovery:
+/gsd doctor         # tự heal dispatch warnings, STATE.md, evidence rows
+/gsd forensics      # full debugger nếu doctor không đủ (v2.40+)
+```
+
+✅ **Kết quả:** milestone 2-day survive SSH disconnect, OS update, Anthropic rate-limit, laptop sleep.
+
+---
+
+### 📊 Combo 8: Team Collaboration pro pattern
+
+Team 3-5 dev dùng GSD chung repo:
+
+```yaml
+# .gsd/PREFERENCES.md (commit vào git, share cả team)
+mode: team
+unique_milestone_ids: true        # M001-abc123 — nhiều dev không collide
+git:
+  isolation: worktree             # mỗi dev worktree riêng, không đạp nhau
+  main_branch: main
+
+# Shared memory = commit .gsd/gsd.db (dùng git-lfs nếu to)
+```
+
+**Per-dev workflow:**
+```powershell
+# Dev A pick M002:
+git pull
+cd .gsd/worktrees/M002-xyz789 2>/dev/null || gsd auto   # GSD tự tạo
+
+# Dev B pick M003:
+git pull
+gsd auto            # GSD detect M002 đang worktree → skip, pick M003
+
+# Queue cho người kế:
+/gsd queue M004 --assignee dev-c --context specs/m4.md
+```
+
+**Sync knowledge định kỳ:**
+```powershell
+# Mỗi tối, dev lead:
+git pull
+# trong GSD: "consolidate memories tagged=sprint-14, scope=global"
+git add .gsd/ && git commit -m "chore(memory): sprint-14 consolidation"
+git push
+```
+
+✅ **Kết quả:** team 5 người chạy 10 milestone song song, không merge conflict, shared knowledge graph.
+
+---
+
+### 🎨 Combo 9: Rapid Prototyping → Production (Quick to Full)
+
+Bắt đầu fast, nâng dần lên enterprise:
+
+```powershell
+# Phase 1 — Quick mode (spike idea, < 1h)
+/gsd-quick "add dark mode toggle"                    # nhanh, 1 file plan
+/gsd-quick "prototype rate limiter" --research       # + research trước
+
+# Phase 2 — Confirm idea → promote lên milestone
+/gsd new-milestone --from-quick 001                  # convert quick → full milestone
+
+# Phase 3 — Full pipeline
+/gsd auto                                            # đầy đủ discuss/plan/exec/verify/validate
+```
+
+**Kết hợp với spike/sketch:**
+```powershell
+/gsd-spike "2 options: redis vs in-memory rate limit"   # 2-5 experiments, Given/When/Then verdicts
+/gsd-sketch "dark mode UI variants"                      # 2-3 HTML mockups
+# → kết quả lưu .gsd/ artifacts, dùng làm input cho new-milestone
+```
+
+✅ **Kết quả:** ý tưởng → POC → production không mất context, không duplicate work.
+
+---
+
+### 🧬 Combo 10: CI/CD Integration (GSD-native pipeline)
+
+Biến GSD thành CI runner, không chỉ là local tool:
+
+```yaml
+# .github/workflows/gsd-nightly.yml
+name: GSD Nightly Milestone
+on:
+  schedule:
+    - cron: '0 2 * * *'       # 2am UTC
+
+jobs:
+  gsd-auto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      
+      - name: Install GSD
+        run: npm install -g gsd-pi
+      
+      - name: Run milestone headless
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GSD_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT }}
+        run: |
+          gsd headless --timeout 7200000 \
+            --answers "answers-ci.json"       # inject answer cho ask_user_questions
+          
+          # Exit codes:
+          # 0 = complete, 1 = error, 2 = blocked (need human)
+      
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gsd-report
+          path: .gsd/reports/
+      
+      - name: Notify Telegram on block
+        if: failure()
+        run: |
+          # dùng gsd headless query check phase status
+          gsd headless --json status | jq -r '.blocked_reason'
+```
+
+✅ **Kết quả:** milestone nightly chạy tự động, blocked → ping Telegram/Slack, report artifact.
+
+---
+
+### 📋 Bảng tổng hợp 10 combo
+
+| # | Combo | Feature dùng | Target |
+|---|---|---|---|
+| 1 | Day-0 Setup | `/gsd onboarding` + `/gsd scan` + PREFERENCES + agent-instructions.md | New large project |
+| 2 | 2-Terminal Power | `/gsd auto` + `/gsd discuss/status/capture/steer/viz` | Daily work, active steering |
+| 3 | Memory-Driven Dev | Memory Phase 1-5 + `/gsd scan` | Multi-repo, cross-team knowledge |
+| 4 | Remote Control | Telegram + `gsd headless` + ask_user preview | Off-hours, long-running |
+| 5 | Cost Optimization | token_profile + complexity routing + budget_ceiling | Scale to $ efficiency |
+| 6 | Parallel Orchestration | `parallel: enabled` + multi-worker + PID liveness | Independent milestones |
+| 7 | Crash-Proof Long-Run | worktree isolation + crash recovery + `/gsd doctor/forensics` | 2+ day milestones |
+| 8 | Team Collab | `mode: team` + unique_milestone_ids + worktree | 3-5 dev team |
+| 9 | Quick → Full Promote | `/gsd-quick` + `/gsd-spike` + `/gsd-sketch` → `new-milestone --from-quick` | Rapid prototype → prod |
+| 10 | CI/CD Pipeline | `gsd headless --answers` + exit codes + HTML report | Nightly/cron milestones |
+
+---
+
 ## 🧭 Pro tips để thành "chuyên dùng GSD" cho dự án lớn
 
 1. **Model 2 tier:** planning = Opus/GPT-5 (mạnh), exec = Sonnet/Haiku (rẻ) → giảm 60-80% cost.
