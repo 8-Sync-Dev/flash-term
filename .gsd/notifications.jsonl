@@ -24,3 +24,9 @@
 {"id":"8ac037c7-af62-434b-ae5c-f0d968fdcd1d","ts":"2026-04-19T12:29:11.914Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
 {"id":"0c60b514-d55a-4e0a-9e30-d151a9b95b2c","ts":"2026-04-19T12:59:40.658Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
 {"id":"1ac6eb3d-f4e0-4bde-a96f-4fdd07b13260","ts":"2026-04-20T07:52:41.026Z","severity":"info","message":"Native Anthropic web search active","source":"notify","read":false}
+{"id":"11930b61-797a-43d8-b760-f91edc28fd6e","ts":"2026-04-20T22:24:52.490Z","severity":"info","message":"Using existing global GSD skill preferences at C:\\Users\\Admin\\.gsd\\PREFERENCES.md","source":"notify","read":false}
+{"id":"ba2ce491-a6f7-4b85-b2d4-9df4a2cb7b13","ts":"2026-04-20T22:24:52.499Z","severity":"info","message":"GSD preferences (global) — pick a category to configure.","source":"notify","read":false}
+{"id":"f92e6ffc-4bb3-4f20-9579-e0eafc6ccde4","ts":"2026-04-20T22:25:37.578Z","severity":"info","message":"Mode: solo — defaults: auto_push=true, push_branches=false, pre_merge_check=auto, merge_strategy=squash, isolation=worktree, unique_milestone_ids=false","source":"notify","read":false}
+{"id":"084f77de-ceb1-43a5-a3e5-ea09675d5b06","ts":"2026-04-20T22:25:52.862Z","severity":"warning","message":"Context7: No CONTEXT7_API_KEY set. Using free tier (1000 req/month limit). Set CONTEXT7_API_KEY for higher limits.","source":"notify","read":false}
+{"id":"c62e2036-437f-48c8-9bb0-453fdcc7dac4","ts":"2026-04-20T22:25:52.868Z","severity":"warning","message":"Google Search: No authentication set. Log in via Google or set GEMINI_API_KEY to use google_search.","source":"notify","read":false}
+{"id":"7f1f82ee-8c0a-4ad7-93f8-46dadb0a72f8","ts":"2026-04-20T22:25:53.144Z","severity":"info","message":"Saved global preferences to C:\\Users\\Admin\\.gsd\\PREFERENCES.md","source":"notify","read":false}

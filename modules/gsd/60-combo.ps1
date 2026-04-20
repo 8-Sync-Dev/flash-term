@@ -168,6 +168,28 @@ $script:GsdComboRegistry = [ordered]@{
         example  = '8sync gsd combo memory-sync'
         handler  = { param($Rest) Invoke-GsdComboPlaybook -Name 'memory-sync' }
     }
+    'karpathy' = @{
+        category = 'workflow'
+        summary  = "Inject Andrej Karpathy's Claude Code guidelines into project"
+        details  = @(
+            'Downloads CLAUDE.md from forrestchang/andrej-karpathy-skills (raw GitHub).',
+            'Writes marker-delimited sections into:',
+            '  - agent-instructions.md    (GSD loads into every agent session)',
+            '  - .gsd/KNOWLEDGE.md        (long-term memory, survives context reset)',
+            '  - .claude/CLAUDE.md        (Claude Code runtime, if using claude-code)',
+            'Markers: <!-- KARPATHY:BEGIN --> ... <!-- KARPATHY:END -->',
+            'Re-run replaces section in-place (no duplication).',
+            'Cached at ~/.gsd/cache/karpathy-CLAUDE.md for offline use.',
+            '',
+            'Four principles injected:',
+            '  1. Goal-Driven Execution (success criteria + verification loops)',
+            '  2. Stay on task (no unrelated changes)',
+            '  3. Manage uncertainty (ask, surface tradeoffs, push back)',
+            '  4. Keep code simple (no bloat, clean up dead code)'
+        )
+        example  = '8sync gsd combo karpathy'
+        handler  = { param($Rest) Invoke-GsdComboKarpathy -Rest $Rest }
+    }
 
     # ── META ────────────────────────────────────────────────────────────────
     'list' = @{
@@ -778,4 +800,172 @@ function Invoke-GsdComboPlaybook {
     Write-Host ''
     foreach ($line in $pb.body) { Write-Host $line -ForegroundColor DarkGray }
     Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+# Combo: karpathy -- inject andrej-karpathy-skills CLAUDE.md into project
+# ---------------------------------------------------------------------------
+
+$script:GsdKarpathyUrl = 'https://raw.githubusercontent.com/forrestchang/andrej-karpathy-skills/main/CLAUDE.md'
+$script:GsdKarpathyBeginMarker = '<!-- KARPATHY:BEGIN -->'
+$script:GsdKarpathyEndMarker = '<!-- KARPATHY:END -->'
+
+function Invoke-GsdComboKarpathy {
+    param([string[]]$Rest = @())
+    $dryRun = $Rest -contains '--dry-run'
+    $update = $Rest -contains '--update' -or $Rest -contains '--refresh'
+    $remove = $Rest -contains '--remove' -or $Rest -contains '--uninstall'
+
+    $repoRoot = (Get-Location).Path
+    $cacheDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.gsd/cache'
+    $cachePath = Join-Path $cacheDir 'karpathy-CLAUDE.md'
+
+    $targets = @(
+        [pscustomobject]@{ Path = Join-Path $repoRoot 'agent-instructions.md'; Label = 'agent-instructions.md'; EnsureHeader = $true },
+        [pscustomobject]@{ Path = Join-Path $repoRoot '.gsd/KNOWLEDGE.md';     Label = '.gsd/KNOWLEDGE.md';     EnsureHeader = $true },
+        [pscustomobject]@{ Path = Join-Path $repoRoot '.claude/CLAUDE.md';     Label = '.claude/CLAUDE.md';     EnsureHeader = $true }
+    )
+
+    Write-Host ''
+    Write-HintSection 'Combo karpathy -- inject Karpathy Claude Code guidelines'
+    Write-Host ''
+    Write-Host ("  Repo:     {0}" -f $repoRoot) -ForegroundColor DarkGray
+    Write-Host ("  Source:   {0}" -f $script:GsdKarpathyUrl) -ForegroundColor DarkGray
+    Write-Host ("  Cache:    {0}" -f $cachePath) -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($remove) {
+        Write-Host '  Removing karpathy sections from all targets...' -ForegroundColor Yellow
+        foreach ($t in $targets) {
+            if (-not (Test-Path $t.Path)) { continue }
+            $content = Get-Content $t.Path -Raw -Encoding UTF8
+            $stripped = Remove-GsdKarpathySection -Content $content
+            if ($content -ne $stripped) {
+                if (-not $dryRun) { Set-Content -Path $t.Path -Value $stripped -Encoding UTF8 -Force }
+                Write-Host ("    [{0}] removed from {1}" -f (if ($dryRun) { 'dry-run' } else { 'ok' }), $t.Label) -ForegroundColor Green
+            } else {
+                Write-Host ("    [skip] no karpathy section in {0}" -f $t.Label) -ForegroundColor DarkGray
+            }
+        }
+        Write-Host ''
+        return
+    }
+
+    # Get content (cache first unless --update)
+    $karpathyContent = $null
+    $usedCache = $false
+
+    if (-not $update -and (Test-Path $cachePath)) {
+        Write-Host '  [cache] using cached CLAUDE.md (pass --update to refresh)' -ForegroundColor DarkGray
+        $karpathyContent = Get-Content $cachePath -Raw -Encoding UTF8
+        $usedCache = $true
+    }
+
+    if (-not $karpathyContent) {
+        Write-Host '  [fetch] downloading from GitHub...' -ForegroundColor Cyan
+        try {
+            $karpathyContent = (Invoke-WebRequest -Uri $script:GsdKarpathyUrl -UseBasicParsing -TimeoutSec 15).Content
+            if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null }
+            Set-Content -Path $cachePath -Value $karpathyContent -Encoding UTF8 -Force
+            Write-Host '  [ok]    cached' -ForegroundColor Green
+        } catch {
+            Write-Host ("  [err]   download failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            if (Test-Path $cachePath) {
+                Write-Host '  [fallback] using stale cache' -ForegroundColor Yellow
+                $karpathyContent = Get-Content $cachePath -Raw -Encoding UTF8
+                $usedCache = $true
+            } else {
+                Write-Host '  [fatal] no cache available, aborting' -ForegroundColor Red
+                Write-Host ''
+                return
+            }
+        }
+    }
+
+    $section = Build-GsdKarpathySection -Content $karpathyContent -FromCache:$usedCache
+
+    if ($dryRun) {
+        Write-Host ''
+        Write-Host '  [dry-run] section preview (first 30 lines):' -ForegroundColor Yellow
+        ($section -split "`n" | Select-Object -First 30) | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        Write-Host '    ...' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host '  [dry-run] targets that would be updated:' -ForegroundColor Yellow
+        foreach ($t in $targets) { Write-Host ("    {0}" -f $t.Path) -ForegroundColor DarkGray }
+        Write-Host ''
+        return
+    }
+
+    foreach ($t in $targets) {
+        $dir = Split-Path $t.Path -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+        $existing = if (Test-Path $t.Path) { Get-Content $t.Path -Raw -Encoding UTF8 } else { '' }
+        $newContent = Write-GsdKarpathySection -Existing $existing -Section $section -Header $t.Label
+        Set-Content -Path $t.Path -Value $newContent -Encoding UTF8 -Force
+        $verb = if ($existing -match [regex]::Escape($script:GsdKarpathyBeginMarker)) { 'updated' } else { 'injected' }
+        Write-Host ("  [ok] {0} {1}" -f $verb, $t.Label) -ForegroundColor Green
+    }
+
+    Write-Host ''
+    Write-Host '  Next steps:' -ForegroundColor Cyan
+    Write-Host '    - GSD will auto-load agent-instructions.md into every session.' -ForegroundColor DarkGray
+    Write-Host '    - Claude Code reads .claude/CLAUDE.md on session start.' -ForegroundColor DarkGray
+    Write-Host '    - .gsd/KNOWLEDGE.md survives context reset and /new.' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Commit the files so teammates/CI share the guidelines:' -ForegroundColor Cyan
+    Write-Host '    git add agent-instructions.md .gsd/KNOWLEDGE.md .claude/CLAUDE.md' -ForegroundColor DarkGray
+    Write-Host '    git commit -m "chore(agent): inject karpathy guidelines"' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Flags: --update (re-download)  --remove (strip sections)  --dry-run (preview)' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Build-GsdKarpathySection {
+    param([string]$Content, [switch]$FromCache)
+    $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+    $src = if ($FromCache) { '(cached) ' + $script:GsdKarpathyUrl } else { $script:GsdKarpathyUrl }
+    $header = @"
+$script:GsdKarpathyBeginMarker
+<!-- Source: $src -->
+<!-- Injected: $stamp by 8sync gsd combo karpathy -->
+<!-- Re-run '8sync gsd combo karpathy --update' to refresh -->
+<!-- Re-run '8sync gsd combo karpathy --remove' to strip -->
+
+## Karpathy Guidelines (auto-injected)
+
+> These four principles improve Claude Code / any LLM agent behavior.
+> Based on Andrej Karpathy's observations on LLM coding pitfalls.
+
+"@
+    return $header + $Content.TrimEnd() + "`n`n" + $script:GsdKarpathyEndMarker + "`n"
+}
+
+function Write-GsdKarpathySection {
+    param([string]$Existing, [string]$Section, [string]$Header)
+
+    $beginEsc = [regex]::Escape($script:GsdKarpathyBeginMarker)
+    $endEsc = [regex]::Escape($script:GsdKarpathyEndMarker)
+    $pattern = "(?ms)" + $beginEsc + ".*?" + $endEsc + "\r?\n?"
+
+    if ($Existing -match $pattern) {
+        return [regex]::Replace($Existing, $pattern, $Section)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Existing)) {
+        $titleFile = Split-Path $Header -Leaf
+        $preface = "# $titleFile`n`nProject-specific guidance for AI coding agents.`n`n"
+        return $preface + $Section
+    }
+
+    $sep = if ($Existing.EndsWith("`n")) { "`n" } else { "`n`n" }
+    return $Existing.TrimEnd() + $sep + "`n" + $Section
+}
+
+function Remove-GsdKarpathySection {
+    param([string]$Content)
+    $beginEsc = [regex]::Escape($script:GsdKarpathyBeginMarker)
+    $endEsc = [regex]::Escape($script:GsdKarpathyEndMarker)
+    $pattern = "(?ms)\r?\n?" + $beginEsc + ".*?" + $endEsc + "\r?\n?"
+    return [regex]::Replace($Content, $pattern, "`n")
 }
