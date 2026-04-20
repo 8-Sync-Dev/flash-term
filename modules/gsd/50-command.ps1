@@ -379,6 +379,7 @@ function Invoke-GsdCommand {
         'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force -Refresh:($Rest -contains '--refresh') -AllowGlobal:$allowGlobal }
         'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force -AllowGlobal:$allowGlobal | Out-Null }
         'local'  { Invoke-GsdLocalCommand -Rest ($Rest | Select-Object -Skip 1) }
+        'global' { Invoke-GsdGlobalCommand -Rest ($Rest | Select-Object -Skip 1) }
         'model' {
             $modelSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
             switch ($modelSub) {
