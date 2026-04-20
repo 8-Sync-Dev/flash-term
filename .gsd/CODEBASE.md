@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-04-20T22:05:47Z | Files: 292 | Described: 0/292
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T22:05:47Z","fingerprint":"dda2611e1a35afd7f9b25dc7dbc312e0e9da9a89","fileCount":292,"truncated":false} -->
+Generated: 2026-04-20T22:18:17Z | Files: 293 | Described: 0/293
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T22:18:17Z","fingerprint":"28035a5623cc549c9b9dfc6342a328c59d23659e","fileCount":293,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
@@ -81,6 +81,7 @@ Generated: 2026-04-20T22:05:47Z | Files: 292 | Described: 0/292
 - `modules/gsd/30-status.ps1`
 - `modules/gsd/40-gguf.ps1`
 - `modules/gsd/50-command.ps1`
+- `modules/gsd/60-combo.ps1`
 
 ### modules/gsd/docs/
 - `modules/gsd/docs/gsd-pi-vi.md`
