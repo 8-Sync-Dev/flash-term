@@ -237,11 +237,15 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd fix [--dry-run]' -ForegroundColor White
     Write-Host '        Fast repair: restore ~/.gsd/agent/node_modules and ~/.gsd/resource-loader.js, patch runtime, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --refresh' -ForegroundColor White
-    Write-Host '        Also run npm/bun upgrade for gsd-pi when you explicitly want a slower runtime refresh.' -ForegroundColor DarkGray
+    Write-Host '        Refresh the preferred runtime. Local project runtime is used first; global install stays blocked unless --allow-global is provided.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --stable' -ForegroundColor White
     Write-Host '        Same fix path, but explicitly using the pinned stable profile contract for runtime patching.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --force' -ForegroundColor White
     Write-Host '        Also back up and rebuild gsd.db, completed-units.json, and routing-history.json when the DB is genuinely corrupted.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix --allow-global' -ForegroundColor White
+    Write-Host '        Opt in to global gsd-pi refresh only when you explicitly approve machine-wide changes.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd local' -ForegroundColor White
+    Write-Host '        Inspect project-local .gsd/vendor/gsd-pi/current, baseline-2.69.0, and latest paths.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Model management' -ForegroundColor Cyan
     Write-Host '    8sync gsd model add <model-id>' -ForegroundColor White

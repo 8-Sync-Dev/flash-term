@@ -23,6 +23,87 @@ function Resolve-GsdBundleDir {
     return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\gsd-config'))
 }
 
+function Resolve-GsdProjectRoot {
+    param([string]$StartPath = (Get-Location).Path)
+
+    if ([string]::IsNullOrWhiteSpace($StartPath)) { return $null }
+
+    $current = [System.IO.Path]::GetFullPath($StartPath)
+    while ($current) {
+        if (Test-Path (Join-Path $current '.gsd')) {
+            return $current
+        }
+        $parent = [System.IO.Path]::GetDirectoryName($current)
+        if (-not $parent -or $parent -eq $current) { break }
+        $current = $parent
+    }
+
+    return $null
+}
+
+function Resolve-GsdProjectVendorDir {
+    $projectRoot = Resolve-GsdProjectRoot
+    if (-not $projectRoot) { return $null }
+    return Join-Path $projectRoot '.gsd\vendor\gsd-pi'
+}
+
+function Resolve-GsdLocalBaselineRoot {
+    $vendorDir = Resolve-GsdProjectVendorDir
+    if (-not $vendorDir) { return $null }
+    return Join-Path $vendorDir ("baseline-{0}" -f $script:GsdPinnedVersion)
+}
+
+function Resolve-GsdLocalLatestRoot {
+    $vendorDir = Resolve-GsdProjectVendorDir
+    if (-not $vendorDir) { return $null }
+    return Join-Path $vendorDir 'latest'
+}
+
+function Resolve-GsdLocalCurrentRoot {
+    $vendorDir = Resolve-GsdProjectVendorDir
+    if (-not $vendorDir) { return $null }
+    return Join-Path $vendorDir 'current'
+}
+
+function Resolve-GsdPreferredRuntimeRoot {
+    $candidates = @(
+        (Resolve-GsdLocalCurrentRoot),
+        (Resolve-GsdLocalBaselineRoot),
+        (Resolve-GsdLocalLatestRoot)
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return [System.IO.Path]::GetFullPath($candidate)
+        }
+    }
+
+    return $null
+}
+
+function Get-GsdLocalRuntimeStatus {
+    $projectRoot = Resolve-GsdProjectRoot
+    $vendorDir = Resolve-GsdProjectVendorDir
+    $baselineRoot = Resolve-GsdLocalBaselineRoot
+    $latestRoot = Resolve-GsdLocalLatestRoot
+    $currentRoot = Resolve-GsdLocalCurrentRoot
+    $preferredRoot = Resolve-GsdPreferredRuntimeRoot
+
+    return [pscustomobject]@{
+        ProjectRoot    = $projectRoot
+        VendorDir      = $vendorDir
+        BaselineRoot   = $baselineRoot
+        LatestRoot     = $latestRoot
+        CurrentRoot    = $currentRoot
+        HasProjectRoot = -not [string]::IsNullOrWhiteSpace($projectRoot)
+        HasVendorDir   = $vendorDir -and (Test-Path $vendorDir)
+        HasBaseline    = $baselineRoot -and (Test-Path $baselineRoot)
+        HasLatest      = $latestRoot -and (Test-Path $latestRoot)
+        HasCurrent     = $currentRoot -and (Test-Path $currentRoot)
+        PreferredRoot  = $preferredRoot
+    }
+}
+
 function Get-GsdAnthropicSharedProviderPath {
     $agentDir = Resolve-GsdAgentDir
     return Join-Path $agentDir 'node_modules\@gsd\pi-ai\dist\providers\anthropic-shared.js'
@@ -203,6 +284,17 @@ function Invoke-GsdRuntimePatch {
 }
 
 function Resolve-GsdResourceLoaderTarget {
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot) {
+        $localCandidates = @(
+            (Join-Path $localRoot 'dist\resource-loader.js'),
+            (Join-Path $localRoot 'packages\pi-coding-agent\dist\core\resource-loader.js')
+        )
+        foreach ($candidate in $localCandidates) {
+            if (Test-Path $candidate) { return $candidate }
+        }
+    }
+
     $candidates = @()
 
     $gsdCommand = Get-Command gsd -ErrorAction SilentlyContinue
@@ -230,6 +322,31 @@ function Resolve-GsdResourceLoaderTarget {
 
 function Get-GsdResourceLoaderShimPath {
     return Join-Path (Resolve-GsdHome) 'resource-loader.js'
+}
+
+function Resolve-GsdRuntimeLayout {
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot) {
+        $localNodeModules = Join-Path $localRoot 'node_modules'
+        return [pscustomobject]@{
+            Origin            = 'local-project'
+            Root              = $localRoot
+            NodeModulesTarget = $localNodeModules
+            ScopeTargetPath   = (Join-Path $localRoot 'packages')
+            ExtensionDepsTarget = $localNodeModules
+        }
+    }
+
+    $globalNodeModules = Resolve-GsdNodeModulesTarget
+    if (-not $globalNodeModules) { return $null }
+
+    return [pscustomobject]@{
+        Origin            = 'global'
+        Root              = (Join-Path $globalNodeModules 'gsd-pi')
+        NodeModulesTarget = $globalNodeModules
+        ScopeTargetPath   = (Join-Path $globalNodeModules 'gsd-pi\packages')
+        ExtensionDepsTarget = (Join-Path $globalNodeModules 'gsd-pi\node_modules')
+    }
 }
 
 function Resolve-GsdNodeModulesTarget {
@@ -262,16 +379,23 @@ function Invoke-GsdNodeModulesBridgeFix {
 
     $agentDir = Resolve-GsdAgentDir
     $bridgePath = Join-Path $agentDir 'node_modules'
-    $targetPath = Resolve-GsdNodeModulesTarget
+    $layout = Resolve-GsdRuntimeLayout
 
     Write-Host '  [gsd] Repairing node_modules bridge...' -ForegroundColor Cyan
 
-    if (-not $targetPath) {
-        Write-Host '  [warn]    Could not locate installed node_modules for gsd-pi' -ForegroundColor DarkYellow
+    if (-not $layout) {
+        Write-Host '  [warn]    Could not locate local or installed gsd-pi runtime layout' -ForegroundColor DarkYellow
         return
     }
 
-    $scopeTargetPath = Join-Path $targetPath 'gsd-pi\packages'
+    $targetPath = $layout.NodeModulesTarget
+    $scopeTargetPath = $layout.ScopeTargetPath
+
+    if (-not (Test-Path $targetPath)) {
+        Write-Host ("  [warn]    Missing node_modules target: {0}" -f $targetPath) -ForegroundColor DarkYellow
+        return
+    }
+
     if (-not (Test-Path $scopeTargetPath)) {
         Write-Host ("  [warn]    Missing scoped package source: {0}" -f $scopeTargetPath) -ForegroundColor DarkYellow
     }
@@ -288,11 +412,11 @@ function Invoke-GsdNodeModulesBridgeFix {
 
     if ($DryRun) {
         if (-not $bridgeReady) {
-            Write-Host ("  [dry-run] bridge {0} -> {1}" -f $bridgePath, $targetPath) -ForegroundColor DarkYellow
+            Write-Host ("  [dry-run] [{0}] bridge {1} -> {2}" -f $layout.Origin, $bridgePath, $targetPath) -ForegroundColor DarkYellow
         }
         $scopePath = Join-Path $bridgePath '@gsd'
         if (Test-Path $scopeTargetPath) {
-            Write-Host ("  [dry-run] bridge {0} -> {1}" -f $scopePath, $scopeTargetPath) -ForegroundColor DarkYellow
+            Write-Host ("  [dry-run] [{0}] bridge {1} -> {2}" -f $layout.Origin, $scopePath, $scopeTargetPath) -ForegroundColor DarkYellow
         }
         return
     }
@@ -308,9 +432,9 @@ function Invoke-GsdNodeModulesBridgeFix {
             }
 
             $null = New-Item -Path $bridgePath -ItemType Junction -Target $targetPath -Force
-            Write-Host '  [ok]      Restored ~/.gsd/agent/node_modules bridge' -ForegroundColor Green
+            Write-Host ("  [ok]      Restored ~/.gsd/agent/node_modules bridge ({0})" -f $layout.Origin) -ForegroundColor Green
         } else {
-            Write-Host '  [ok]      ~/.gsd/agent/node_modules bridge already points at installed runtime' -ForegroundColor Green
+            Write-Host ("  [ok]      ~/.gsd/agent/node_modules bridge already points at {0} runtime" -f $layout.Origin) -ForegroundColor Green
         }
 
         if (Test-Path $scopeTargetPath) {
@@ -330,14 +454,14 @@ function Invoke-GsdNodeModulesBridgeFix {
                     Remove-Item -LiteralPath $scopePath -Recurse -Force -ErrorAction Stop
                 }
                 $null = New-Item -Path $scopePath -ItemType Junction -Target $scopeTargetPath -Force
-                Write-Host '  [ok]      Restored ~/.gsd/agent/node_modules/@gsd scope bridge' -ForegroundColor Green
+                Write-Host ("  [ok]      Restored ~/.gsd/agent/node_modules/@gsd scope bridge ({0})" -f $layout.Origin) -ForegroundColor Green
             } else {
-                Write-Host '  [ok]      ~/.gsd/agent/node_modules/@gsd scope bridge already valid' -ForegroundColor Green
+                Write-Host ("  [ok]      ~/.gsd/agent/node_modules/@gsd scope bridge already valid ({0})" -f $layout.Origin) -ForegroundColor Green
             }
         }
 
         $extDir = Join-Path $agentDir 'extensions'
-        $extDepsTarget = Join-Path $targetPath 'gsd-pi\node_modules'
+        $extDepsTarget = $layout.ExtensionDepsTarget
         $extBridgePath = Join-Path $extDir 'node_modules'
         if (Test-Path $extDepsTarget) {
             $extBridgeReady = $false
@@ -358,9 +482,9 @@ function Invoke-GsdNodeModulesBridgeFix {
                     $null = New-Item -Path $extDir -ItemType Directory -Force
                 }
                 $null = New-Item -Path $extBridgePath -ItemType Junction -Target $extDepsTarget -Force
-                Write-Host '  [ok]      Restored ~/.gsd/agent/extensions/node_modules deps bridge' -ForegroundColor Green
+                Write-Host ("  [ok]      Restored ~/.gsd/agent/extensions/node_modules deps bridge ({0})" -f $layout.Origin) -ForegroundColor Green
             } else {
-                Write-Host '  [ok]      ~/.gsd/agent/extensions/node_modules deps bridge already valid' -ForegroundColor Green
+                Write-Host ("  [ok]      ~/.gsd/agent/extensions/node_modules deps bridge already valid ({0})" -f $layout.Origin) -ForegroundColor Green
             }
         }
     } catch {
@@ -548,6 +672,12 @@ function Invoke-GsdModelRegistryPatch {
 }
 
 function Get-GsdPiAiModelsDir {
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot) {
+        $localDir = Join-Path $localRoot 'packages\pi-ai\dist'
+        if (Test-Path $localDir) { return $localDir }
+    }
+
     $gsdPiBase = $null
     if (Test-CommandExists 'gsd') {
         try {
@@ -750,9 +880,60 @@ function Invoke-GsdModelList {
 }
 
 function Invoke-GsdPackageRefresh {
-    param([switch]$DryRun)
+    param(
+        [switch]$DryRun,
+        [switch]$AllowGlobal
+    )
 
     Write-Host '  [gsd] Refreshing gsd-pi runtime...' -ForegroundColor Cyan
+
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot) {
+        Write-Host ("  [local]   preferred runtime: {0}" -f $localRoot) -ForegroundColor Cyan
+        if (-not (Test-Path (Join-Path $localRoot 'package.json'))) {
+            Write-Host '  [warn]    local runtime exists but package.json is missing; skipped refresh' -ForegroundColor DarkYellow
+            return
+        }
+
+        if (Test-CommandExists 'npm') {
+            if ($DryRun) {
+                Write-Host ("  [dry-run] npm install  (cwd={0})" -f $localRoot) -ForegroundColor DarkYellow
+            } else {
+                try {
+                    Push-Location $localRoot
+                    & npm install
+                    Pop-Location
+                    Write-Host '  [ok]      npm install in local project runtime' -ForegroundColor Green
+                } catch {
+                    try { Pop-Location } catch {}
+                    Write-Host ("  [warn]    Failed local npm install: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+                }
+            }
+        } elseif (Test-CommandExists 'bun') {
+            if ($DryRun) {
+                Write-Host ("  [dry-run] bun install  (cwd={0})" -f $localRoot) -ForegroundColor DarkYellow
+            } else {
+                try {
+                    Push-Location $localRoot
+                    & bun install
+                    Pop-Location
+                    Write-Host '  [ok]      bun install in local project runtime' -ForegroundColor Green
+                } catch {
+                    try { Pop-Location } catch {}
+                    Write-Host ("  [warn]    Failed local bun install: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+                }
+            }
+        } else {
+            Write-Host '  [warn]    Neither npm nor bun was found; cannot refresh local gsd-pi runtime automatically' -ForegroundColor DarkYellow
+        }
+        return
+    }
+
+    if (-not $AllowGlobal) {
+        Write-Host '  [warn]    No local project runtime found. Global gsd-pi install is blocked by default.' -ForegroundColor DarkYellow
+        Write-Host '  [hint]    Prepare .gsd/vendor/gsd-pi/current or baseline-2.69.0 first, or rerun with --allow-global after explicit approval.' -ForegroundColor DarkGray
+        return
+    }
 
     $pinnedPkg = "gsd-pi@$script:GsdPinnedVersion"
 
@@ -885,6 +1066,34 @@ function Invoke-GsdDbRepair {
     } else {
         Write-Host '  [ok]      Preserved gsd.db and milestone caches (use --force to rebuild them)' -ForegroundColor Green
     }
+}
+
+function Show-GsdLocalStatus {
+    $status = Get-GsdLocalRuntimeStatus
+
+    Write-Host ''
+    Write-HintSection 'GSD LOCAL RUNTIME -- project-scoped baseline and latest source'
+    Write-Host ''
+    if (-not $status.HasProjectRoot) {
+        Write-Host '  No project-local .gsd/ root found from current directory.' -ForegroundColor DarkYellow
+        Write-Host '  Expected layout lives under: <project>/.gsd/vendor/gsd-pi/' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ("  project   : {0}" -f $status.ProjectRoot) -ForegroundColor White
+    Write-Host ("  vendor    : {0}" -f $status.VendorDir) -ForegroundColor DarkGray
+    Write-Host ("  current   : {0}  [{1}]" -f $status.CurrentRoot,  $(if ($status.HasCurrent) { 'present' } else { 'missing' })) -ForegroundColor DarkGray
+    Write-Host ("  baseline  : {0}  [{1}]" -f $status.BaselineRoot, $(if ($status.HasBaseline) { 'present' } else { 'missing' })) -ForegroundColor DarkGray
+    Write-Host ("  latest    : {0}  [{1}]" -f $status.LatestRoot,   $(if ($status.HasLatest) { 'present' } else { 'missing' })) -ForegroundColor DarkGray
+    Write-Host ("  preferred : {0}" -f $(if ($status.PreferredRoot) { $status.PreferredRoot } else { 'none -- global fallback only' })) -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Intended contract:' -ForegroundColor Yellow
+    Write-Host ("    - baseline-{0} = pinned known-good source snapshot" -f $script:GsdPinnedVersion) -ForegroundColor DarkGray
+    Write-Host '    - latest         = git submodule or manual checkout of newest upstream source' -ForegroundColor DarkGray
+    Write-Host '    - current        = active local runtime path used by bridge fixes and local refresh' -ForegroundColor DarkGray
+    Write-Host '    - global install remains blocked unless --allow-global is provided' -ForegroundColor DarkGray
+    Write-Host ''
 }
 
 $script:GsdPinnedVersion = '2.69.0'

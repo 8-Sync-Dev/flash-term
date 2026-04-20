@@ -345,6 +345,7 @@ function Show-8SyncHint {
     Write-HintRow '8sync gsd-1 status'              'Check .planning/config.json, oc-config.json, ROADMAP.md, STATE.md'
     Write-HintRow '8sync gsd key <api-key>'         'Set Z_CODING_PLAN_API_KEY (current session + persist)'
     Write-HintRow '8sync gsd status'                'Show GSD paths, logged-in providers, API key status'
+    Write-HintRow '8sync gsd local'                 'Show project-local gsd-pi baseline/current/latest layout and preferred runtime'
     Write-HintRow '8sync gsd add gguf'              'Register running llama-server as GSD provider in models.json'
     Write-HintRow '8sync gsd remove gguf'           'Remove gguf-local-* providers from models.json'
     Write-HintRow '8sync remove claude-code'       'Deep uninstall Claude Code CLI (native + npm + bun)'

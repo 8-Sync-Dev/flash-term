@@ -98,20 +98,30 @@ function Invoke-GsdAutoSetup {
 }
 
 function Invoke-GsdVersionCheck {
-    param([switch]$DryRun)
+    param(
+        [switch]$DryRun,
+        [switch]$AllowGlobal
+    )
 
     $pinned = $script:GsdPinnedVersion
     Write-Host ("  [gsd] Checking gsd-pi version (pinned: {0})..." -f $pinned) -ForegroundColor Cyan
 
     $currentVersion = ''
-    if (Get-Command 'gsd' -ErrorAction SilentlyContinue) {
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot -and (Test-Path (Join-Path $localRoot 'package.json'))) {
+        try {
+            $pkg = Get-Content (Join-Path $localRoot 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+            $currentVersion = [string]$pkg.version
+            Write-Host ("  [local]   using project runtime: {0}" -f $localRoot) -ForegroundColor DarkGray
+        } catch {}
+    } elseif (Get-Command 'gsd' -ErrorAction SilentlyContinue) {
         try {
             $currentVersion = (& gsd --version 2>$null).Trim()
         } catch {}
     }
 
     if ([string]::IsNullOrWhiteSpace($currentVersion)) {
-        Write-Host '  [warn]    gsd command not found or --version failed' -ForegroundColor DarkYellow
+        Write-Host '  [warn]    local runtime and gsd --version are both unavailable' -ForegroundColor DarkYellow
         return $false
     }
 
@@ -125,12 +135,12 @@ function Invoke-GsdVersionCheck {
         $pin = [System.Version]::new($pinned)
 
         if ($cur -gt $pin) {
-            Write-Host ("  [warn]    gsd-pi {0} is NEWER than pinned {1} -- downgrading for compatibility" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
-            Invoke-GsdPackageRefresh -DryRun:$DryRun
+            Write-Host ("  [warn]    gsd-pi {0} is NEWER than pinned {1} -- refreshing preferred runtime for compatibility" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
+            Invoke-GsdPackageRefresh -DryRun:$DryRun -AllowGlobal:$AllowGlobal
             return $true
         } elseif ($cur -lt $pin) {
-            Write-Host ("  [warn]    gsd-pi {0} is OLDER than pinned {1} -- upgrading" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
-            Invoke-GsdPackageRefresh -DryRun:$DryRun
+            Write-Host ("  [warn]    gsd-pi {0} is OLDER than pinned {1} -- refreshing preferred runtime" -f $currentVersion, $pinned) -ForegroundColor DarkYellow
+            Invoke-GsdPackageRefresh -DryRun:$DryRun -AllowGlobal:$AllowGlobal
             return $true
         }
     } catch {
@@ -145,7 +155,8 @@ function Invoke-GsdFix {
         [switch]$DryRun,
         [switch]$Stable,
         [switch]$Force,
-        [switch]$Refresh
+        [switch]$Refresh,
+        [switch]$AllowGlobal
     )
 
     Write-Host ''
@@ -155,10 +166,10 @@ function Invoke-GsdFix {
     }
 
     # 1) Version check -- auto sync to pinned version
-    $null = Invoke-GsdVersionCheck -DryRun:$DryRun
+    $null = Invoke-GsdVersionCheck -DryRun:$DryRun -AllowGlobal:$AllowGlobal
 
     if ($Refresh) {
-        Invoke-GsdPackageRefresh -DryRun:$DryRun
+        Invoke-GsdPackageRefresh -DryRun:$DryRun -AllowGlobal:$AllowGlobal
     }
 
     # 2) Bridge repairs
@@ -264,6 +275,7 @@ function Invoke-GsdCommand {
     $stable   = $Rest -contains '--stable'
     $force    = $Rest -contains '--force'
     $balance  = $Rest -contains '--balance'   # alias for --tier=balanced (backward compat)
+    $allowGlobal = $Rest -contains '--allow-global'
 
     $planArg = ''
     $planIdx = [Array]::IndexOf($Rest, '--plan')
@@ -364,8 +376,9 @@ function Invoke-GsdCommand {
             }
         }
         'status' { Invoke-GsdStatus }
-        'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force }
-        'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force | Out-Null }
+        'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force -Refresh:($Rest -contains '--refresh') -AllowGlobal:$allowGlobal }
+        'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force -AllowGlobal:$allowGlobal | Out-Null }
+        'local'  { Invoke-GsdLocalCommand -Rest ($Rest | Select-Object -Skip 1) }
         'model' {
             $modelSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
             switch ($modelSub) {

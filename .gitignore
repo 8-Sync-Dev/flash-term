@@ -55,6 +55,13 @@ __pycache__/
 venv/
 target/
 vendor/
+!.gsd/vendor/
+.gsd/vendor/gsd-pi/*/node_modules/
+.gsd/vendor/agent/node_modules/
+.gsd/vendor/agent/auth.json
+.gsd/vendor/agent/.env
+.gsd/vendor/agent/*.db
+.gsd/vendor/agent/*.db-*
 *.log
 coverage/
 .cache/

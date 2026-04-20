@@ -1,0 +1,15 @@
+# Keep baseline + current source. Exclude build artifacts and submodule internals.
+
+# baseline + current are committed source; do not ignore their .git or code
+# but do ignore transient build outputs
+
+# node_modules inside current/ is regenerated per-machine
+gsd-pi/current/node_modules/
+gsd-pi/baseline-*/node_modules/
+
+# local agent state: auth + db, do not commit secrets
+agent/auth.json
+agent/.env
+agent/*.db
+agent/*.db-*
+agent/extensions/*/node_modules/

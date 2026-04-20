@@ -9,6 +9,7 @@ foreach ($moduleFile in @(
     '05-plans.ps1',
     '10-setup.ps1',
     '20-interactive.ps1',
+    '25-local.ps1',
     '30-status.ps1',
     '40-gguf.ps1',
     '50-command.ps1'
