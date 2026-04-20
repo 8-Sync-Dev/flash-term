@@ -16,8 +16,9 @@ These are the exact files needed to **restore** Anthropic OAuth locally:
 |---|---|
 | `anthropic-oauth.ts` | Full OAuth module deleted by `c2acb1fb4` (extracted from parent commit `9cbda5e29`) |
 | `oauth-index-with-anthropic.ts` | `index.ts` with `anthropicOAuthProvider` re-registered |
+| `anthropic-provider-with-oauth.ts` | `providers/anthropic.ts` with Bearer-auth branch for `sk-ant-oat*` OAuth tokens + `anthropic-beta: oauth-2025-04-20` header. Without this, the OAuth access token is sent via `x-api-key` and the API returns `401 invalid x-api-key`. |
 
-In addition, `packages/pi-ai/src/providers/anthropic.ts` must be patched to re-add the OAuth bearer-auth branch. See `8sync gsd local apply-anthropic-patch` command (TODO).
+All three are applied together by `8sync gsd local apply-anthropic-patch` and compiled into `dist/` by `8sync gsd local build`.
 
 ## When patches apply
 
