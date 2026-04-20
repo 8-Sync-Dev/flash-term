@@ -15,7 +15,38 @@
 #   - rollback restores the backup
 # =============================================================================
 
+# Primary: npm-global location — this is where the `gsd` shim actually resolves
+# (via the bin field of gsd-pi's package.json). Updating this changes what
+# `gsd --version` reports.
 function Resolve-GsdGlobalRuntimeRoot {
+    $npmGlobal = Resolve-GsdNpmGlobalRoot
+    if ($npmGlobal) {
+        return Join-Path $npmGlobal 'gsd-pi'
+    }
+    # Fallback: agent runtime cache (used when gsd is already running)
+    return Join-Path $HOME '.gsd\agent\node_modules\gsd-pi'
+}
+
+function Resolve-GsdNpmGlobalRoot {
+    # `npm root -g` returns the global node_modules dir. Cache result to avoid
+    # repeated shell-outs.
+    if ($script:GsdNpmGlobalRootCache) { return $script:GsdNpmGlobalRootCache }
+    try {
+        $out = & npm root -g 2>$null
+        if ($out) {
+            $p = "$out".Trim()
+            if (Test-Path $p) {
+                $script:GsdNpmGlobalRootCache = $p
+                return $p
+            }
+        }
+    } catch {}
+    return $null
+}
+
+# Agent runtime cache — secondary target. Keep in sync with npm-global so gsd
+# running inside gsd (agent mode) also sees the new version.
+function Resolve-GsdAgentRuntimeRoot {
     return Join-Path $HOME '.gsd\agent\node_modules\gsd-pi'
 }
 
@@ -239,10 +270,81 @@ function Invoke-GsdGlobalPromote {
         [switch]$DryRun,
         [switch]$Force,
         [string]$From = '',
-        [string]$Version = ''
+        [string]$Version = '',
+        [switch]$NoAutoSetup    # opt-out of auto `gsd local setup` when source missing/unbuilt
     )
 
     $source = Resolve-GsdPromoteSource -Explicit $From -Version $Version
+
+    # ------------------------------------------------------------------
+    # AUTO-SETUP: if source not found and caller used --version latest|baseline|X.Y.Z,
+    # automatically run `8sync gsd local setup --version <ver>` to build it,
+    # then re-resolve. This makes `promote --version latest` a one-shot
+    # install + patches + build + promote command.
+    # Disable with --no-auto-setup.
+    # ------------------------------------------------------------------
+    if (-not $source -and -not $NoAutoSetup -and -not [string]::IsNullOrWhiteSpace($Version)) {
+        $namedTarget = $Version.ToLowerInvariant()
+        $canAutoSetup = $false
+        $autoVersionArg = ''
+
+        if ($namedTarget -in @('latest','baseline')) {
+            $canAutoSetup = $true
+            $autoVersionArg = $namedTarget
+        } elseif ($Version -match '^\d+\.\d+\.\d+') {
+            $canAutoSetup = $true
+            $autoVersionArg = $Version
+        }
+
+        if ($canAutoSetup) {
+            Write-Host ''
+            Write-Host ("  [auto]    source for '{0}' not ready." -f $autoVersionArg) -ForegroundColor Cyan
+            Write-Host ("            Running: 8sync gsd local setup --version {0}" -f $autoVersionArg) -ForegroundColor Cyan
+            Write-Host '            (pass --no-auto-setup to disable)' -ForegroundColor DarkGray
+            Write-Host ''
+
+            if (-not (Get-Command Invoke-GsdLocalSetup -ErrorAction SilentlyContinue)) {
+                Write-Host '  [err]     Invoke-GsdLocalSetup not available.' -ForegroundColor Red
+                Write-Host '            Load modules/gsd/25-local.ps1 first (8sync reload).' -ForegroundColor DarkGray
+                return
+            }
+
+            if ($DryRun) {
+                Write-Host ("  [dry-run] would run: Invoke-GsdLocalSetup -Version {0} -SkipEnter" -f $autoVersionArg) -ForegroundColor DarkYellow
+                Write-Host '  [dry-run] then re-resolve source and promote.' -ForegroundColor DarkYellow
+                Write-Host ''
+                return
+            }
+
+            try {
+                Invoke-GsdLocalSetup -Version $autoVersionArg -SkipEnter
+            } catch {
+                Write-Host ''
+                Write-Host ("  [err]     auto-setup failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+                Write-Host '  [hint]    run manually to inspect:' -ForegroundColor DarkGray
+                Write-Host ("            8sync gsd local setup --version {0}" -f $autoVersionArg) -ForegroundColor White
+                return
+            }
+
+            Write-Host ''
+            Write-Host '  [auto]    setup finished. Re-resolving promote source...' -ForegroundColor Cyan
+            $source = Resolve-GsdPromoteSource -Explicit $From -Version $Version
+
+            if (-not $source) {
+                Write-Host ''
+                Write-Host '  [err]     source still not resolvable after auto-setup.' -ForegroundColor Red
+                Write-Host '            Check setup output above for npm/build errors.' -ForegroundColor DarkGray
+                Write-Host '  [retry]   8sync gsd global promote --version ' -NoNewline -ForegroundColor DarkGray
+                Write-Host $Version -ForegroundColor White
+                Write-Host ''
+                return
+            }
+
+            Write-Host ("  [ok]      source resolved: v{0}  ({1})" -f (Get-GsdRuntimeVersion -Path $source.Path), $source.Origin) -ForegroundColor Green
+            Write-Host '            continuing with promote...' -ForegroundColor DarkGray
+        }
+    }
+
     if (-not $source) {
         Write-Host ''
         Write-Host '  [err]     no promote source found.' -ForegroundColor Red
@@ -263,18 +365,10 @@ function Invoke-GsdGlobalPromote {
                 Write-Host ("            test/{0}/  -> {1}" -f $u.Name, $u.Path) -ForegroundColor DarkYellow
             }
             Write-Host ''
-            Write-Host '  [fix]     build the source first:' -ForegroundColor Green
+            Write-Host '  [fix]     auto-setup was disabled (--no-auto-setup). Run manually:' -ForegroundColor Green
             $firstName = $unbuilt[0].Name
-            Write-Host ("            cd test/{0}" -f $firstName) -ForegroundColor White
-            Write-Host '            8sync gsd local install         # npm install' -ForegroundColor White
-            if ($firstName -eq 'latest') {
-                Write-Host '            8sync gsd local apply-anthropic-patch  # restore OAuth (latest only)' -ForegroundColor White
-            }
-            Write-Host '            8sync gsd local build           # npm run build:core' -ForegroundColor White
-            Write-Host '            8sync gsd global promote --version latest' -ForegroundColor White
-            Write-Host ''
-            Write-Host '  [alt]     or do all above in one command:' -ForegroundColor DarkGray
             Write-Host ("            8sync gsd local setup --version {0}" -f $firstName) -ForegroundColor White
+            Write-Host ("            8sync gsd global promote --version {0}" -f $firstName) -ForegroundColor White
             Write-Host ''
         } else {
             Write-Host '  [hint]    options:' -ForegroundColor DarkGray
@@ -363,6 +457,45 @@ function Invoke-GsdGlobalPromote {
         } catch {
             Write-Host ("  [warn]    node_modules bridge failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
             Write-Host '  [hint]    run `npm install` inside global gsd-pi manually' -ForegroundColor DarkGray
+        }
+    }
+
+    # ------------------------------------------------------------------
+    # Sync agent runtime cache (~/.gsd/agent/node_modules/gsd-pi).
+    # gsd loads extensions/plugins from here when running; must match the
+    # CLI-resolved version in npm-global or users see mixed behavior.
+    # ------------------------------------------------------------------
+    $agentRoot = Resolve-GsdAgentRuntimeRoot
+    if ($agentRoot -and $agentRoot -ne $globalRoot) {
+        $agentParent = Split-Path $agentRoot -Parent
+        if (-not (Test-Path $agentParent)) {
+            $null = New-Item -Path $agentParent -ItemType Directory -Force
+        }
+
+        # Backup existing agent runtime alongside npm-global backup
+        if (Test-Path $agentRoot) {
+            $agentBackupName = 'gsd-pi.bak-{0}-{1}-agent' -f (Get-GsdRuntimeVersion -Path $agentRoot), (Get-Date -Format 'yyyyMMdd-HHmmss')
+            $agentBackupPath = Join-Path $agentParent $agentBackupName
+            try {
+                Move-Item -LiteralPath $agentRoot -Destination $agentBackupPath -Force -ErrorAction Stop
+                Write-Host ("  [ok]      agent runtime backed up to {0}" -f $agentBackupName) -ForegroundColor Green
+            } catch {
+                Write-Host ("  [warn]    could not back up agent runtime: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+        }
+
+        # Junction from agent runtime -> npm-global (single source of truth)
+        try {
+            $null = New-Item -Path $agentRoot -ItemType Junction -Target $globalRoot -Force -ErrorAction Stop
+            Write-Host ("  [ok]      agent runtime junctioned -> {0}" -f $globalRoot) -ForegroundColor Green
+        } catch {
+            # Fallback: copy if junction fails (e.g. non-NTFS)
+            try {
+                & robocopy $globalRoot $agentRoot /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+                Write-Host '  [ok]      agent runtime synced via copy (junction failed)' -ForegroundColor Green
+            } catch {
+                Write-Host ("  [warn]    agent runtime sync failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
         }
     }
 
@@ -493,6 +626,8 @@ function Invoke-GsdGlobalCommand {
 
     $dryRun = $Rest -contains '--dry-run'
     $force = $Rest -contains '--force'
+    $noAutoSetup = $Rest -contains '--no-auto-setup'
+    $noAutoSetup = $Rest -contains '--no-auto-setup'
 
     $fromArg = ''
     $fromIdx = [Array]::IndexOf($Rest, '--from')
@@ -516,7 +651,7 @@ function Invoke-GsdGlobalCommand {
         ''          { Invoke-GsdGlobalStatus }
         'status'    { Invoke-GsdGlobalStatus }
         'help'      { Show-GsdGlobalHelp }
-        'promote'   { Invoke-GsdGlobalPromote -DryRun:$dryRun -Force:$force -From $fromArg -Version $versionArg }
+        'promote'   { Invoke-GsdGlobalPromote -DryRun:$dryRun -Force:$force -From $fromArg -Version $versionArg -NoAutoSetup:$noAutoSetup }
         'rollback'  { Invoke-GsdGlobalRollback -DryRun:$dryRun -Backup $backupArg }
         default     {
             Write-Host ("  [err]     unknown subcommand '{0}'" -f $sub) -ForegroundColor Red
