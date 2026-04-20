@@ -695,22 +695,65 @@ function Invoke-GsdLocalInstall {
     Write-Host ''
 }
 
+function Get-GsdWezTermRootLocal {
+    if (-not [string]::IsNullOrWhiteSpace($script:ModulesDir)) {
+        return [System.IO.Path]::GetFullPath((Join-Path $script:ModulesDir '..'))
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+}
+
+function Ensure-GsdSandboxProject {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [switch]$DryRun
+    )
+    $wez = Get-GsdWezTermRootLocal
+    $sandbox = Join-Path $wez ("test\{0}" -f $Name)
+    $gsdDir = Join-Path $sandbox '.gsd'
+    $projectMd = Join-Path $gsdDir 'PROJECT.md'
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] ensure sandbox project: {0}" -f $sandbox) -ForegroundColor DarkYellow
+        return $sandbox
+    }
+
+    if (-not (Test-Path $sandbox)) {
+        $null = New-Item -Path $sandbox -ItemType Directory -Force
+        Write-Host ("  [ok]      created sandbox folder {0}" -f $sandbox) -ForegroundColor Green
+    }
+    if (-not (Test-Path $gsdDir)) {
+        $null = New-Item -Path $gsdDir -ItemType Directory -Force
+    }
+    if (-not (Test-Path $projectMd)) {
+        "# gsd {0} sandbox`n`nCreated by ``8sync gsd local setup --version {0}``." -f $Name |
+            Set-Content -Path $projectMd -Encoding UTF8
+    }
+
+    # Git init so submodule works (safe idempotent)
+    if (-not (Test-Path (Join-Path $sandbox '.git'))) {
+        try {
+            Push-Location $sandbox
+            & git init -q 2>&1 | Out-Null
+            Write-Host ("  [ok]      git init in {0}" -f $sandbox) -ForegroundColor Green
+        } catch {
+            Write-Host ("  [warn]    git init failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        } finally {
+            try { Pop-Location } catch {}
+        }
+    }
+
+    return $sandbox
+}
+
 function Invoke-GsdLocalSetup {
     param(
         [string]$Version = 'baseline',    # 'baseline' | 'latest' | '2.69.0' | '2.76.0' ...
+        [string]$ProjectPath = '',         # explicit project path (skips cwd detect + sandbox)
         [switch]$DryRun,
         [switch]$SkipSubmodule,
-        [switch]$SkipEnter
+        [switch]$SkipEnter,
+        [switch]$Here                      # force use cwd even without .gsd/
     )
-
-    $projectRoot = Resolve-GsdProjectRoot
-    if (-not $projectRoot) {
-        Write-Host ''
-        Write-Host '  [err]     No .gsd/ project root found from current directory.' -ForegroundColor Red
-        Write-Host '  [hint]    Run this from inside a project that already has a .gsd/ folder.' -ForegroundColor DarkGray
-        Write-Host ''
-        return
-    }
 
     $target = 'baseline'
     $explicitVersion = ''
@@ -728,11 +771,86 @@ function Invoke-GsdLocalSetup {
         return
     }
 
+    # Resolve project root:
+    # 1. --project <path>           explicit
+    # 2. --here                     force cwd, create .gsd/ if missing
+    # 3. cwd inside project         use it
+    # 4. default                    auto-create wezterm/test/<target>/ sandbox
+    $projectRoot = $null
+    $sandboxCreated = $false
+
+    if (-not [string]::IsNullOrWhiteSpace($ProjectPath)) {
+        if (-not (Test-Path $ProjectPath)) {
+            if ($DryRun) {
+                Write-Host ("  [dry-run] mkdir {0}" -f $ProjectPath) -ForegroundColor DarkYellow
+            } else {
+                $null = New-Item -Path $ProjectPath -ItemType Directory -Force
+            }
+        }
+        $projectRoot = [System.IO.Path]::GetFullPath($ProjectPath)
+        # Ensure .gsd/ exists so this dir qualifies as a project
+        $gsdDir = Join-Path $projectRoot '.gsd'
+        if (-not (Test-Path $gsdDir) -and -not $DryRun) {
+            $null = New-Item -Path $gsdDir -ItemType Directory -Force
+            "# project created by 8sync gsd local setup" | Set-Content -Path (Join-Path $gsdDir 'PROJECT.md') -Encoding UTF8
+        }
+    } elseif ($Here) {
+        $projectRoot = (Get-Location).Path
+        $gsdDir = Join-Path $projectRoot '.gsd'
+        if (-not (Test-Path $gsdDir) -and -not $DryRun) {
+            $null = New-Item -Path $gsdDir -ItemType Directory -Force
+            "# project created by 8sync gsd local setup --here" | Set-Content -Path (Join-Path $gsdDir 'PROJECT.md') -Encoding UTF8
+        }
+    } else {
+        $detected = Resolve-GsdProjectRoot
+        # Refuse if detected root is:
+        #   - user $HOME (global ~/.gsd/ would pollute home)
+        #   - wezterm config repo itself (we want sandbox under test/, not root)
+        $homeNorm = [System.IO.Path]::GetFullPath($HOME).TrimEnd('\','/').ToLowerInvariant()
+        $wezRootNorm = [System.IO.Path]::GetFullPath((Get-GsdWezTermRootLocal)).TrimEnd('\','/').ToLowerInvariant()
+        $detectedNorm = if ($detected) { [System.IO.Path]::GetFullPath($detected).TrimEnd('\','/').ToLowerInvariant() } else { '' }
+        $isHomeDetect = $detectedNorm -and ($detectedNorm -eq $homeNorm)
+        $isWezDetect  = $detectedNorm -and ($detectedNorm -eq $wezRootNorm)
+
+        if ($detected -and -not $isHomeDetect -and -not $isWezDetect) {
+            $projectRoot = $detected
+        } else {
+            # Auto-create sandbox under wezterm/test/<target>/
+            $sandboxName = $target
+            Write-Host ''
+            if ($isHomeDetect) {
+                Write-Host '  [info]    cwd resolved to $HOME (global ~/.gsd/). Refusing to use as project.' -ForegroundColor DarkYellow
+            } elseif ($isWezDetect) {
+                Write-Host '  [info]    cwd is the wezterm config repo root. Not a valid sandbox target.' -ForegroundColor DarkYellow
+            } else {
+                Write-Host '  [info]    cwd is not a gsd project.' -ForegroundColor DarkYellow
+            }
+            Write-Host ("  [info]    auto-creating sandbox: wezterm/test/{0}/" -f $sandboxName) -ForegroundColor DarkYellow
+            Write-Host '  [hint]    pass --here to use cwd, or --project <path> for explicit path.' -ForegroundColor DarkGray
+            $projectRoot = Ensure-GsdSandboxProject -Name $sandboxName -DryRun:$DryRun
+            $sandboxCreated = $true
+        }
+    }
+
+    if (-not $projectRoot) {
+        Write-Host '  [err]     could not resolve project root.' -ForegroundColor Red
+        return
+    }
+
     Write-Host ''
     Write-Host '  ==================================================================' -ForegroundColor Cyan
     Write-Host ('  GSD LOCAL SETUP   version={0}   project={1}' -f $Version, (Split-Path $projectRoot -Leaf)) -ForegroundColor Cyan
+    Write-Host ('  path: {0}' -f $projectRoot) -ForegroundColor DarkGray
+    if ($sandboxCreated) {
+        Write-Host '  [sandbox] created under wezterm/test/ — gitignored, does not pollute wezterm repo' -ForegroundColor DarkGray
+    }
     Write-Host '  ==================================================================' -ForegroundColor Cyan
     Write-Host ''
+
+    # Save original cwd, push into project so Resolve-GsdProjectRoot returns it
+    $origCwd = (Get-Location).Path
+    try {
+        if (-not $DryRun) { Push-Location $projectRoot }
 
     # --- Step 1: init layout ---------------------------------------------
     Write-Host '  [1/6] init layout' -ForegroundColor Yellow
@@ -820,6 +938,13 @@ function Invoke-GsdLocalSetup {
     Write-Host '  Switch version:             8sync gsd local use baseline|latest' -ForegroundColor DarkGray
     Write-Host '  Exit local scope:           8sync gsd local leave' -ForegroundColor DarkGray
     Write-Host ''
+    } finally {
+        if (-not $DryRun -and $SkipEnter) {
+            # If we entered the project via Push-Location and user did NOT enter local scope,
+            # restore cwd. If user entered local scope, stay in project dir (better UX).
+            try { Pop-Location -ErrorAction SilentlyContinue } catch {}
+        }
+    }
 }
 
 function Show-GsdLocalHelp {
@@ -833,9 +958,17 @@ function Show-GsdLocalHelp {
     Write-Host '    <project>/.gsd/vendor/agent/                   # local ~/.gsd/agent equivalent' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  One-shot (recommended)' -ForegroundColor Yellow
-    Write-Host '    8sync gsd local setup                  Full setup with baseline (2.69.0)' -ForegroundColor White
-    Write-Host '    8sync gsd local setup --version latest Full setup with latest upstream' -ForegroundColor White
-    Write-Host '    8sync gsd local setup --version 2.69.0 Full setup with specific baseline version' -ForegroundColor White
+    Write-Host '    8sync gsd local setup                  Baseline. Auto-creates wezterm/test/baseline/ if cwd is not a project' -ForegroundColor White
+    Write-Host '    8sync gsd local setup --version latest Latest upstream. Auto-creates wezterm/test/latest/' -ForegroundColor White
+    Write-Host '    8sync gsd local setup --version 2.69.0 Specific baseline version' -ForegroundColor White
+    Write-Host '    8sync gsd local setup --here           Use cwd as project (creates .gsd/ if missing)' -ForegroundColor White
+    Write-Host '    8sync gsd local setup --project <path> Use explicit path as project root' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Resolution order for project root' -ForegroundColor Cyan
+    Write-Host '    1. --project <path>                         explicit' -ForegroundColor DarkGray
+    Write-Host '    2. --here                                    force cwd (creates .gsd/ if missing)' -ForegroundColor DarkGray
+    Write-Host '    3. cwd has .gsd/ or ancestor has .gsd/       use that project' -ForegroundColor DarkGray
+    Write-Host '    4. default                                    auto-create wezterm/test/<latest|baseline>/' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Then in that project' -ForegroundColor Yellow
     Write-Host '    gsd                              Start local gsd (already in scope after setup)' -ForegroundColor DarkGray
@@ -895,9 +1028,13 @@ function Invoke-GsdLocalCommand {
             $versionArg = 'baseline'
             $versionIdx = [Array]::IndexOf($Rest, '--version')
             if ($versionIdx -ge 0 -and $versionIdx + 1 -lt $Rest.Count) { $versionArg = $Rest[$versionIdx + 1] }
+            $projectPathArg = ''
+            $projIdx = [Array]::IndexOf($Rest, '--project')
+            if ($projIdx -ge 0 -and $projIdx + 1 -lt $Rest.Count) { $projectPathArg = $Rest[$projIdx + 1] }
+            $here = $Rest -contains '--here'
             $skipSub = $Rest -contains '--skip-submodule'
             $skipEnter = $Rest -contains '--skip-enter'
-            Invoke-GsdLocalSetup -Version $versionArg -DryRun:$dryRun -SkipSubmodule:$skipSub -SkipEnter:$skipEnter
+            Invoke-GsdLocalSetup -Version $versionArg -ProjectPath $projectPathArg -Here:$here -DryRun:$dryRun -SkipSubmodule:$skipSub -SkipEnter:$skipEnter
         }
         'use'            {
             $target = if ($Rest.Count -gt 1 -and $Rest[1] -notlike '--*') { $Rest[1] } else { 'baseline' }
