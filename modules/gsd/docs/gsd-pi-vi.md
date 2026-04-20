@@ -144,6 +144,210 @@ gsd headless query                    # exit 0 done / 1 error / 2 blocked
 
 ---
 
+## 📚 Cookbook 2.76 — dùng từng feature mới ra sao
+
+> **Nguyên tắc chung:** phần lớn tự chạy ngầm. Bạn chỉ cần nhớ vài command để **xem / bật / export**.
+
+### 1. 🧠 Memory System (5 Phase đã ship — AUTO)
+
+**Cái gì tự động:**
+- Agent trong session **tự gọi** `capture_thought` khi gặp decision/pattern/gotcha.
+- Planner **tự gọi** `memory_query` trước khi lập kế hoạch để lấy context cũ.
+- Dispatch **tự chèn** memory liên quan vào prompt task mới.
+- Knowledge graph **tự link** memories theo scope (project / milestone / slice) + tags.
+
+**Bạn làm gì:**
+```powershell
+# Không phải gõ gì trong lúc chạy — agent lo.
+# Nhưng BẠN nên:
+# 1. Commit .gsd/ sau mỗi session → memory không mất
+git add .gsd/ && git commit -m "sync gsd memory"
+
+# 2. Gợi ý agent "hãy lưu lại" khi nó tìm ra pattern hay:
+#    trong chat: "capture this as a memory with tag=routing"
+
+# 3. Query memory thủ công trong chat (agent sẽ gọi memory_query):
+#    "search memory for previous decisions about auth flow"
+
+# 4. Xem health của memory store:
+/gsd doctor                         # sẽ report memory cap + decay
+```
+
+**Export / Import (Phase 5):**
+```powershell
+# Backup memory sang project khác
+gsd memory export > my-memories.json    # (nếu không có subcommand, agent gọi tool)
+gsd memory import my-memories.json
+
+# Hoặc đơn giản: copy thẳng file DB
+cp .gsd/gsd.db ../project-B/.gsd/gsd.db
+```
+
+**Khi nào cần can thiệp:**
+- Memory quá nhiều → `/gsd doctor` báo cap → cascade tự trim theo decay.
+- Muốn **share pattern cross-project** → export rồi import.
+- Agent không nhớ gì sau crash → check `git log .gsd/` xem có commit memory không.
+
+---
+
+### 2. 🪜 Progressive Planning — ADR-011 (AUTO)
+
+**Phase 1 — Sketch-then-refine:** khi bạn gõ `/gsd new-milestone`, GSD giờ **phác sketch nhẹ trước** (2-3 slice outline), xin confirm, rồi mới lock plan chi tiết.
+
+**Phase 2 — Mid-execution escalation:** task đang chạy phát hiện scope to hơn dự kiến → **tự escalate**, rollback file đã write nếu fail.
+
+**Bạn không gõ gì — chỉ cần:**
+```powershell
+/gsd new-milestone      # flow mới tự chạy sketch → refine
+# Khi TUI hỏi "accept sketch?" → Y để refine, N để chỉnh trước
+```
+
+**Chỉnh behavior (preferences):**
+```yaml
+# ~/.gsd/PREFERENCES.md hoặc .gsd/PREFERENCES.md
+planning:
+  sketch_first: true           # default true
+  escalation_rollback: true    # default true
+```
+
+---
+
+### 3. 🔌 Unified Workflow Plugin System
+
+**Giờ có plugin architecture + modes + remote install.**
+
+```powershell
+/gsd workflow list              # xem plugin đã cài
+/gsd workflow info <name>       # chi tiết 1 plugin
+/gsd workflow install <url>     # cài từ remote (git URL / npm)
+/gsd workflow run <name>        # chạy workflow
+/gsd workflow validate <name>   # check plugin hợp lệ
+```
+
+**Use case thực tế:**
+- Team có workflow riêng (ví dụ: "release-checklist") → publish repo → `workflow install`.
+- Chọn "mode" (strict / loose / custom) cho từng project.
+
+---
+
+### 4. 🚪 /gsd onboarding Re-Entry
+
+**Setup lại provider / key / preferences mà không cần restart TUI.**
+
+```powershell
+/gsd onboarding         # mở setup hub từ giữa session
+# - Thêm provider mới
+# - Đổi token_profile
+# - Set git isolation
+# - Tất cả không mất session hiện tại
+```
+
+**Hết double-banner bug** khi re-entry.
+
+---
+
+### 5. 🔍 /gsd scan — Lightweight Codebase Assessment
+
+**Quét nhanh codebase để build context, không cần full milestone flow.**
+
+```powershell
+/gsd scan                       # scan repo → ghi .gsd/codebase/
+/gsd scan --focus src/auth      # scan 1 thư mục
+```
+
+**Output:** `.gsd/codebase/SCAN-YYYYMMDD.md` gồm:
+- File inventory + language breakdown.
+- Symbols chính (export, class, function).
+- Patterns phát hiện được.
+- Dependencies.
+
+**Khi nào dùng:**
+- Trước khi `/gsd new-milestone` trên codebase lạ → agent có context tốt.
+- Khi resume project sau vài tháng → refresh intel.
+- Trước refactor lớn → quét pattern hiện tại.
+
+---
+
+### 6. 📱 Telegram Command Interface (Remote Control)
+
+**Chạy auto-mode từ xa qua Telegram** (bên cạnh Slack/Discord đã có).
+
+**Setup:**
+```yaml
+# ~/.gsd/PREFERENCES.md
+remote:
+  telegram:
+    bot_token: "123456:ABC..."    # tạo bot qua @BotFather
+    chat_id: "YOUR_CHAT_ID"
+```
+
+Hoặc trong TUI:
+```powershell
+/gsd prefs             # chọn Remote → Telegram → paste token
+```
+
+**Dùng:**
+- Trong Telegram, chat với bot: `/status`, `/pause`, `/resume`, `/next`.
+- Khi GSD gặp `ask_user_questions` trong auto-mode → câu hỏi bắn qua Telegram → bạn trả lời trên điện thoại → auto-mode tiếp tục.
+
+**Use case:** chạy milestone dài ở máy server, ra ngoài, vẫn trả lời được quyết định khi agent hỏi.
+
+---
+
+### 7. 🎨 TUI Refresh + Themes mới
+
+```powershell
+/gsd prefs             # → Theme → chọn:
+#   - tui-classic       (phong cách cổ điển 80-col)
+#   - web-classic       (light mode sáng sủa)
+#   - web-vivid         (màu rực, dễ scan)
+#   - default           (bản gốc)
+```
+
+**Welcome screen / footer / chat pane** đều đã refresh. Re-entry onboarding không còn hang.
+
+---
+
+### 8. 💬 Ask User Questions với Markdown Preview
+
+Khi agent dùng `ask_user_questions` trong auto-mode, **mỗi option giờ có thể kèm markdown preview** — hiện side-by-side panel để bạn đọc chi tiết trước khi chọn.
+
+→ Bạn không làm gì — agent tự render. Chỉ cần biết: khi thấy câu hỏi có "preview" bên phải, mũi tên lên/xuống để highlight, ENTER để pick.
+
+---
+
+### 9. 🌲 Branch Isolation cứng hơn
+
+**Với `isolation: branch` mode (không phải worktree):** milestone branch giờ được **tạo ngay khi vào milestone** (không phải lúc commit đầu tiên), và **validate main_branch** trước khi tạo → tránh tạo nhầm branch khi main chưa ready.
+
+```yaml
+# ~/.gsd/PREFERENCES.md
+git:
+  isolation: branch      # hoặc worktree
+  main_branch: main      # validate
+```
+
+---
+
+## 🎯 Tổng kết: Auto vs Manual
+
+| Feature | Tự chạy? | Lệnh cần nhớ |
+|---|---|---|
+| Memory System (Phase 1-5) | ✅ Agent tự | `/gsd doctor` (health), commit `.gsd/` |
+| Sketch-then-Refine Planning | ✅ Auto trong new-milestone | — |
+| Mid-execution Escalation | ✅ Auto | — |
+| Workflow Plugins | 🎛 Opt-in | `/gsd workflow list\|install\|run` |
+| Onboarding Re-entry | 🎛 On-demand | `/gsd onboarding` |
+| Codebase Scan | 🎛 On-demand | `/gsd scan` |
+| Telegram Remote | 🎛 Opt-in | Set bot_token trong `/gsd prefs` |
+| TUI Themes | 🎛 Opt-in | `/gsd prefs` → Theme |
+| Ask User + Preview | ✅ Auto | — |
+| Branch Isolation + main validation | 🎛 Opt-in | `isolation:` trong preferences |
+
+**Tóm lại:** 5/10 feature mới **tự chạy**. 5/10 còn lại **gõ 1 lệnh** là xong.
+
+---
+
 ## 🏗 Workflow cho dự án lớn (bản 2.7x)
 
 ```

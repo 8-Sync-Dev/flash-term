@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-04-20T16:36:29Z | Files: 291 | Described: 0/291
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T16:36:29Z","fingerprint":"643aea3a570307d889df5af49ff0e9e11c960649","fileCount":291,"truncated":false} -->
+Generated: 2026-04-20T21:49:00Z | Files: 292 | Described: 0/292
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T21:49:00Z","fingerprint":"dda2611e1a35afd7f9b25dc7dbc312e0e9da9a89","fileCount":292,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
@@ -30,6 +30,7 @@ Generated: 2026-04-20T16:36:29Z | Files: 291 | Described: 0/291
 - `docs/guides/20260320-keybindings.md`
 - `docs/guides/20260322-8sync-commands.md`
 - `docs/guides/20260322-troubleshooting.md`
+- `docs/guides/20260420-markdown-pretty-render.md`
 - `docs/guides/CLAUDE.md`
 
 ### docs/plans/
