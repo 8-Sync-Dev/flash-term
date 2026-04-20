@@ -695,6 +695,125 @@ function Invoke-GsdLocalInstall {
     Write-Host ''
 }
 
+function Invoke-GsdLocalSetup {
+    param(
+        [string]$Version = 'baseline',    # 'baseline' | 'latest' | '2.69.0' | '2.76.0' ...
+        [switch]$DryRun,
+        [switch]$SkipSubmodule,
+        [switch]$SkipEnter
+    )
+
+    $projectRoot = Resolve-GsdProjectRoot
+    if (-not $projectRoot) {
+        Write-Host ''
+        Write-Host '  [err]     No .gsd/ project root found from current directory.' -ForegroundColor Red
+        Write-Host '  [hint]    Run this from inside a project that already has a .gsd/ folder.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $target = 'baseline'
+    $explicitVersion = ''
+    $lower = $Version.ToLowerInvariant()
+    if ($lower -eq 'latest') {
+        $target = 'latest'
+    } elseif ($lower -eq 'baseline') {
+        $target = 'baseline'
+        $explicitVersion = $script:GsdPinnedVersion
+    } elseif ($Version -match '^\d+\.\d+\.\d+') {
+        $target = 'baseline'
+        $explicitVersion = $Version
+    } else {
+        Write-Host ("  [err]     Unknown --version '{0}'. Use: latest | baseline | 2.69.0" -f $Version) -ForegroundColor Red
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  ==================================================================' -ForegroundColor Cyan
+    Write-Host ('  GSD LOCAL SETUP   version={0}   project={1}' -f $Version, (Split-Path $projectRoot -Leaf)) -ForegroundColor Cyan
+    Write-Host '  ==================================================================' -ForegroundColor Cyan
+    Write-Host ''
+
+    # --- Step 1: init layout ---------------------------------------------
+    Write-Host '  [1/6] init layout' -ForegroundColor Yellow
+    Invoke-GsdLocalInit -DryRun:$DryRun
+
+    # --- Step 2: seed baseline (always, even for latest -- used as fallback) --
+    Write-Host '  [2/6] seed baseline' -ForegroundColor Yellow
+    $baselineVer = if ($explicitVersion) { $explicitVersion } else { $script:GsdPinnedVersion }
+    $baselineDir = Join-Path $projectRoot (".gsd\vendor\gsd-pi\baseline-{0}" -f $baselineVer)
+    if (Test-Path $baselineDir) {
+        $hasFiles = $false
+        try { $hasFiles = [System.IO.Directory]::EnumerateFileSystemEntries($baselineDir) | Select-Object -First 1 } catch {}
+        if ($hasFiles) {
+            Write-Host ("  [skip]    baseline-{0} already seeded" -f $baselineVer) -ForegroundColor DarkGray
+        } else {
+            Invoke-GsdLocalBaseline -DryRun:$DryRun -Source 'auto' -Version $baselineVer
+        }
+    } else {
+        Invoke-GsdLocalBaseline -DryRun:$DryRun -Source 'auto' -Version $baselineVer
+    }
+
+    # --- Step 3: submodule latest ----------------------------------------
+    if ($SkipSubmodule) {
+        Write-Host '  [3/6] submodule skipped (--skip-submodule)' -ForegroundColor DarkGray
+    } else {
+        Write-Host '  [3/6] add submodule latest' -ForegroundColor Yellow
+        $latestDir = Join-Path $projectRoot '.gsd\vendor\gsd-pi\latest'
+        $latestPopulated = $false
+        if (Test-Path $latestDir) {
+            try { $latestPopulated = [System.IO.Directory]::EnumerateFileSystemEntries($latestDir) | Select-Object -First 1 } catch {}
+        }
+        if ($latestPopulated) {
+            Write-Host '  [skip]    latest/ already populated' -ForegroundColor DarkGray
+        } else {
+            # Remove empty dir if init created it, so git submodule add can work
+            if (Test-Path $latestDir) {
+                try { Remove-Item -LiteralPath $latestDir -Force -ErrorAction Stop } catch {}
+            }
+            Invoke-GsdLocalAddSubmodule -DryRun:$DryRun -Ref 'main'
+        }
+    }
+
+    # --- Step 4: use <target> --------------------------------------------
+    Write-Host ('  [4/6] use {0}' -f $target) -ForegroundColor Yellow
+    Invoke-GsdLocalUse -Target $target -Version $explicitVersion -DryRun:$DryRun
+
+    # --- Step 5: install + fix -------------------------------------------
+    Write-Host '  [5/6] install + fix' -ForegroundColor Yellow
+    Invoke-GsdLocalInstall -DryRun:$DryRun
+    Invoke-GsdLocalFix -DryRun:$DryRun -Stable
+
+    # --- Step 6: enter (unless skipped) ----------------------------------
+    if ($SkipEnter) {
+        Write-Host '  [6/6] enter skipped (--skip-enter)' -ForegroundColor DarkGray
+    } else {
+        Write-Host '  [6/6] enter local scope' -ForegroundColor Yellow
+        Invoke-GsdLocalEnter -DryRun:$DryRun
+    }
+
+    Write-Host ''
+    Write-Host '  ==================================================================' -ForegroundColor Green
+    Write-Host '  SETUP COMPLETE' -ForegroundColor Green
+    Write-Host '  ==================================================================' -ForegroundColor Green
+    Write-Host ''
+    Write-Host ("  Active project : {0}" -f $projectRoot) -ForegroundColor White
+    Write-Host ("  Active runtime : {0}" -f $target) -ForegroundColor White
+    Write-Host ''
+    if (-not $SkipEnter) {
+        Write-Host '  Next: gsd                                 # start using local runtime' -ForegroundColor DarkGray
+        Write-Host '        /login anthropic                    # login in interactive' -ForegroundColor DarkGray
+    } else {
+        Write-Host '  Next: 8sync gsd local enter               # activate local scope first' -ForegroundColor DarkGray
+        Write-Host '        gsd                                 # then start' -ForegroundColor DarkGray
+    }
+    Write-Host ''
+    Write-Host '  Check active version later: gsd --version   or   8sync gsd local' -ForegroundColor DarkGray
+    Write-Host '  Switch version:             8sync gsd local use baseline|latest' -ForegroundColor DarkGray
+    Write-Host '  Exit local scope:           8sync gsd local leave' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Show-GsdLocalHelp {
     Write-Host ''
     Write-HintSection 'GSD LOCAL -- project-scoped gsd-pi vendoring (never touches global)'
@@ -705,28 +824,28 @@ function Show-GsdLocalHelp {
     Write-Host '    <project>/.gsd/vendor/gsd-pi/current/          # runtime + patches' -ForegroundColor DarkGray
     Write-Host '    <project>/.gsd/vendor/agent/                   # local ~/.gsd/agent equivalent' -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host '  Commands' -ForegroundColor Cyan
-    Write-Host '    8sync gsd local                  Show layout status' -ForegroundColor White
-    Write-Host '    8sync gsd local help             This help' -ForegroundColor White
+    Write-Host '  One-shot (recommended)' -ForegroundColor Yellow
+    Write-Host '    8sync gsd local setup                  Full setup with baseline (2.69.0)' -ForegroundColor White
+    Write-Host '    8sync gsd local setup --version latest Full setup with latest upstream' -ForegroundColor White
+    Write-Host '    8sync gsd local setup --version 2.69.0 Full setup with specific baseline version' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Then in that project' -ForegroundColor Yellow
+    Write-Host '    gsd                              Start local gsd (already in scope after setup)' -ForegroundColor DarkGray
+    Write-Host '    /login anthropic                 Inside gsd interactive' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Switch runtime version' -ForegroundColor Cyan
+    Write-Host '    8sync gsd local use baseline     Switch current/ -> baseline + install + fix' -ForegroundColor White
+    Write-Host '    8sync gsd local use latest       Switch current/ -> latest + install + fix' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Individual steps (advanced)' -ForegroundColor Cyan
+    Write-Host '    8sync gsd local                  Show layout status (which version active)' -ForegroundColor White
     Write-Host '    8sync gsd local init             Scaffold .gsd/vendor/ layout + docs' -ForegroundColor White
-    Write-Host '    8sync gsd local baseline         Seed baseline-<pinned>/ from global or clone' -ForegroundColor White
-    Write-Host '    8sync gsd local add-submodule    Add upstream gsd-2 at latest/ (git submodule)' -ForegroundColor White
-    Write-Host '    8sync gsd local use baseline     Seed current/ from baseline' -ForegroundColor White
-    Write-Host '    8sync gsd local use latest       Seed current/ from latest (risky)' -ForegroundColor White
+    Write-Host '    8sync gsd local baseline         Seed baseline from global or clone' -ForegroundColor White
+    Write-Host '    8sync gsd local add-submodule    Add upstream gsd-2 at latest/' -ForegroundColor White
     Write-Host '    8sync gsd local install          Run npm install inside current/' -ForegroundColor White
     Write-Host '    8sync gsd local fix [--stable]   Apply stable patches to current/' -ForegroundColor White
     Write-Host '    8sync gsd local enter            Activate local runtime in this shell' -ForegroundColor White
     Write-Host '    8sync gsd local leave            Revert to global runtime' -ForegroundColor White
-    Write-Host ''
-    Write-Host '  Full setup sequence' -ForegroundColor Yellow
-    Write-Host '    8sync gsd local init' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local baseline' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local add-submodule' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local use baseline' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local install' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local fix --stable' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local enter' -ForegroundColor DarkGray
-    Write-Host '    gsd --version    # verify it runs from current/' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Safety' -ForegroundColor Yellow
     Write-Host '    - no npm -g, no bun -g, no scoop changes' -ForegroundColor DarkGray
@@ -762,12 +881,28 @@ function Invoke-GsdLocalCommand {
             if ($refIdx -ge 0 -and $refIdx + 1 -lt $Rest.Count) { $refArg = $Rest[$refIdx + 1] }
             Invoke-GsdLocalAddSubmodule -DryRun:$dryRun -Ref $refArg
         }
+        'setup'          {
+            $versionArg = 'baseline'
+            $versionIdx = [Array]::IndexOf($Rest, '--version')
+            if ($versionIdx -ge 0 -and $versionIdx + 1 -lt $Rest.Count) { $versionArg = $Rest[$versionIdx + 1] }
+            $skipSub = $Rest -contains '--skip-submodule'
+            $skipEnter = $Rest -contains '--skip-enter'
+            Invoke-GsdLocalSetup -Version $versionArg -DryRun:$dryRun -SkipSubmodule:$skipSub -SkipEnter:$skipEnter
+        }
         'use'            {
             $target = if ($Rest.Count -gt 1 -and $Rest[1] -notlike '--*') { $Rest[1] } else { 'baseline' }
             $versionArg = ''
             $versionIdx = [Array]::IndexOf($Rest, '--version')
             if ($versionIdx -ge 0 -and $versionIdx + 1 -lt $Rest.Count) { $versionArg = $Rest[$versionIdx + 1] }
+            $noAuto = $Rest -contains '--no-auto'
             Invoke-GsdLocalUse -Target $target -Version $versionArg -DryRun:$dryRun
+            if (-not $noAuto -and -not $dryRun) {
+                Invoke-GsdLocalInstall -DryRun:$dryRun
+                Invoke-GsdLocalFix -DryRun:$dryRun -Stable
+                Write-Host ''
+                Write-Host ('  [done]    switched to {0}. Run `gsd` to start.' -f $target) -ForegroundColor Green
+                Write-Host ''
+            }
         }
         'install'        { Invoke-GsdLocalInstall -DryRun:$dryRun }
         'fix'            {
