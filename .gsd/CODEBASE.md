@@ -1,12 +1,11 @@
 # Codebase Map
 
-Generated: 2026-04-20T08:43:14Z | Files: 286 | Described: 0/286
-<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T08:43:14Z","fingerprint":"7afbd39a5c5fe1f72cf28a6877a9b52b15465a71","fileCount":286,"truncated":false} -->
+Generated: 2026-04-20T09:31:29Z | Files: 285 | Described: 0/285
+<!-- gsd:codebase-meta {"generatedAt":"2026-04-20T09:31:29Z","fingerprint":"9c57cbe13f461dd02ca4719652bdfc55def8a019","fileCount":285,"truncated":false} -->
 
 ### (root)/
 - `_check.ps1`
 - `.gitignore`
-- `.gitmodules`
 - `AGENTS.md`
 - `CHANGELOG.md`
 - `CLAUDE.md`

@@ -779,9 +779,17 @@ function Invoke-GsdLocalSetup {
     Write-Host ('  [4/6] use {0}' -f $target) -ForegroundColor Yellow
     Invoke-GsdLocalUse -Target $target -Version $explicitVersion -DryRun:$DryRun
 
-    # --- Step 5: install + fix -------------------------------------------
-    Write-Host '  [5/6] install + fix' -ForegroundColor Yellow
+    # --- Step 5: install + build (if latest) + anthropic patch + fix ----
+    Write-Host '  [5/6] install + patches + fix' -ForegroundColor Yellow
     Invoke-GsdLocalInstall -DryRun:$DryRun
+
+    # If using latest, restore Anthropic OAuth (removed upstream) + build
+    if ($target -eq 'latest') {
+        Write-Host '  [latest]  restoring Anthropic OAuth (upstream removed for TOS compliance)' -ForegroundColor Cyan
+        Invoke-GsdLocalApplyAnthropicPatch -DryRun:$DryRun
+        Invoke-GsdLocalBuild -DryRun:$DryRun
+    }
+
     Invoke-GsdLocalFix -DryRun:$DryRun -Stable
 
     # --- Step 6: enter (unless skipped) ----------------------------------
@@ -843,6 +851,8 @@ function Show-GsdLocalHelp {
     Write-Host '    8sync gsd local baseline         Seed baseline from global or clone' -ForegroundColor White
     Write-Host '    8sync gsd local add-submodule    Add upstream gsd-2 at latest/' -ForegroundColor White
     Write-Host '    8sync gsd local install          Run npm install inside current/' -ForegroundColor White
+    Write-Host '    8sync gsd local build            Run npm run build:core inside current/' -ForegroundColor White
+    Write-Host '    8sync gsd local apply-anthropic-patch  Restore Anthropic OAuth (needed for latest)' -ForegroundColor White
     Write-Host '    8sync gsd local fix [--stable]   Apply stable patches to current/' -ForegroundColor White
     Write-Host '    8sync gsd local enter            Activate local runtime in this shell' -ForegroundColor White
     Write-Host '    8sync gsd local leave            Revert to global runtime' -ForegroundColor White
@@ -904,7 +914,9 @@ function Invoke-GsdLocalCommand {
                 Write-Host ''
             }
         }
-        'install'        { Invoke-GsdLocalInstall -DryRun:$dryRun }
+        'install'                { Invoke-GsdLocalInstall -DryRun:$dryRun }
+        'build'                  { Invoke-GsdLocalBuild -DryRun:$dryRun }
+        'apply-anthropic-patch'  { Invoke-GsdLocalApplyAnthropicPatch -DryRun:$dryRun }
         'fix'            {
             $stable = $Rest -contains '--stable'
             Invoke-GsdLocalFix -DryRun:$dryRun -Stable:$stable
