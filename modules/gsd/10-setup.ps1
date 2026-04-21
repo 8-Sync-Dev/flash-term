@@ -400,6 +400,20 @@ function Invoke-GsdSetupFromModel {
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
         Invoke-GsdRuntimePatch
+        $claudeFix = Ensure-GsdClaudeCodeExecutableSetting
+        if ($claudeFix.Status -in @('configured','rewritten','already-correct')) {
+            Write-Host ("  [claude] native binary {0}: {1}" -f $claudeFix.Status, $claudeFix.NativePath) -ForegroundColor Green
+        } elseif ($claudeFix.Status -eq 'native-missing') {
+            Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
+        }
+        $settingsFix = Normalize-GsdSettingsForClaudeCodeOAuth
+        if ($settingsFix.Status -eq 'rewritten') {
+            Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+        }
+        $routeFix = Normalize-GsdPreferencesForClaudeCodeOAuth -Path $destPath
+        if ($routeFix.Status -eq 'rewritten') {
+            Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $routeFix.Replacements) -ForegroundColor Green
+        }
         Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
         Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
         Write-Host ''
@@ -530,6 +544,20 @@ function Invoke-GsdClaudeMaxSetup {
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
         Invoke-GsdRuntimePatch
+        $claudeFix = Ensure-GsdClaudeCodeExecutableSetting
+        if ($claudeFix.Status -in @('configured','rewritten','already-correct')) {
+            Write-Host ("  [claude] native binary {0}: {1}" -f $claudeFix.Status, $claudeFix.NativePath) -ForegroundColor Green
+        } elseif ($claudeFix.Status -eq 'native-missing') {
+            Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
+        }
+        $settingsFix = Normalize-GsdSettingsForClaudeCodeOAuth
+        if ($settingsFix.Status -eq 'rewritten') {
+            Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+        }
+        $routeFix = Normalize-GsdPreferencesForClaudeCodeOAuth -Path $destPath
+        if ($routeFix.Status -eq 'rewritten') {
+            Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $routeFix.Replacements) -ForegroundColor Green
+        }
         Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
         Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
         Write-Host ''
@@ -600,6 +628,20 @@ function Invoke-GsdSetup {
         } catch {}
 
         Invoke-GsdRuntimePatch -DryRun:$DryRun
+        $claudeFix = Ensure-GsdClaudeCodeExecutableSetting
+        if ($claudeFix.Status -in @('configured','rewritten','already-correct')) {
+            Write-Host ("  [claude] native binary {0}: {1}" -f $claudeFix.Status, $claudeFix.NativePath) -ForegroundColor Green
+        } elseif ($claudeFix.Status -eq 'native-missing') {
+            Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
+        }
+        $settingsFix = Normalize-GsdSettingsForClaudeCodeOAuth
+        if ($settingsFix.Status -eq 'rewritten') {
+            Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+        }
+        $routeFix = Normalize-GsdPreferencesForClaudeCodeOAuth -Path $destFile
+        if ($routeFix.Status -eq 'rewritten') {
+            Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $routeFix.Replacements) -ForegroundColor Green
+        }
         Write-Host ("  [ok] {0}" -f $destFile) -ForegroundColor Green
     } catch {
         Write-Host ("  [error] {0} -- {1}" -f $destFile, $_.Exception.Message) -ForegroundColor Red

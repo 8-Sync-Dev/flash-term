@@ -48,6 +48,22 @@ function Invoke-GsdStatus {
     if ($patch.DefaultProvider -or $patch.DefaultModel) {
         Write-Host ("    default model               {0}/{1}" -f $patch.DefaultProvider, $patch.DefaultModel) -ForegroundColor DarkGray
     }
+    $claudePathColor = switch ($patch.ClaudePathStatus) {
+        'native-configured' { 'Green' }
+        'native-found'      { 'Yellow' }
+        'shim-only'         { 'Yellow' }
+        default             { 'DarkYellow' }
+    }
+    Write-Host ("    Claude Code path           {0}" -f $patch.ClaudePathStatus) -ForegroundColor $claudePathColor
+    if ($patch.ConfiguredClaudePath) {
+        Write-Host ("      configured               {0}" -f $patch.ConfiguredClaudePath) -ForegroundColor DarkGray
+    }
+    if ($patch.NativeClaudePath) {
+        Write-Host ("      native                   {0}" -f $patch.NativeClaudePath) -ForegroundColor DarkGray
+    }
+    if ($patch.ShimClaudePath -and $patch.ShimClaudePath -ne $patch.NativeClaudePath) {
+        Write-Host ("      shim                     {0}" -f $patch.ShimClaudePath) -ForegroundColor DarkGray
+    }
     Write-Host ''
 
     $prefPath = Join-Path $gsdHome 'PREFERENCES.md'

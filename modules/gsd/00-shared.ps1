@@ -119,6 +119,266 @@ function Get-GsdSettingsPath {
     return Join-Path $agentDir 'settings.json'
 }
 
+function Read-GsdSettingsJson {
+    $path = Get-GsdSettingsPath
+    if (-not (Test-Path $path)) { return $null }
+    try { Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
+    catch { return $null }
+}
+
+function Write-GsdSettingsJson {
+    param([object]$Data)
+
+    $path = Get-GsdSettingsPath
+    $dir = Split-Path $path -Parent
+    if (-not (Test-Path $dir)) { $null = New-Item -Path $dir -ItemType Directory -Force }
+    $Data | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding UTF8
+}
+
+function Get-GsdClaudeCodeNativeCandidates {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($p in @(
+        $env:CLAUDE_CODE_BIN,
+        $env:CLAUDE_CODE_PATH,
+        (Join-Path $HOME '.local\bin\claude.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\claude\claude.exe')
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($p) -and -not $candidates.Contains($p)) {
+            $candidates.Add($p)
+        }
+    }
+
+    try {
+        $cmdExe = Get-Command 'claude.exe' -ErrorAction SilentlyContinue
+        if ($cmdExe -and -not $candidates.Contains($cmdExe.Source)) {
+            $candidates.Add($cmdExe.Source)
+        }
+    } catch {}
+
+    return @($candidates)
+}
+
+function Test-GsdClaudeCodeNativeBinary {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) { return $false }
+    if ([System.IO.Path]::GetExtension($Path).ToLowerInvariant() -ne '.exe') { return $false }
+
+    try {
+        $fs = [System.IO.File]::OpenRead($Path)
+        try {
+            if ($fs.Length -lt 2) { return $false }
+            $b1 = $fs.ReadByte()
+            $b2 = $fs.ReadByte()
+            return ($b1 -eq 0x4D -and $b2 -eq 0x5A) # MZ
+        } finally {
+            $fs.Dispose()
+        }
+    } catch {
+        return $false
+    }
+}
+
+function Get-GsdClaudeCommandPath {
+    try {
+        $cmd = Get-Command 'claude' -ErrorAction SilentlyContinue
+        if ($cmd) { return [string]$cmd.Source }
+    } catch {}
+    return $null
+}
+
+function Resolve-GsdClaudeCodeNativePath {
+    foreach ($candidate in (Get-GsdClaudeCodeNativeCandidates)) {
+        if (Test-GsdClaudeCodeNativeBinary -Path $candidate) {
+            return [System.IO.Path]::GetFullPath($candidate)
+        }
+    }
+    return $null
+}
+
+function Ensure-GsdClaudeCodeExecutableSetting {
+    param([switch]$DryRun)
+
+    $nativePath = Resolve-GsdClaudeCodeNativePath
+    if ([string]::IsNullOrWhiteSpace($nativePath)) {
+        return [pscustomobject]@{
+            Status = 'native-missing'
+            NativePath = ''
+            ConfiguredPath = ''
+            Changed = $false
+        }
+    }
+
+    $settings = Read-GsdSettingsJson
+    if ($null -eq $settings) { $settings = [pscustomobject]@{} }
+    $configuredPath = [string]$settings.pathToClaudeCodeExecutable
+
+    if ($configuredPath -eq $nativePath) {
+        return [pscustomobject]@{
+            Status = 'already-correct'
+            NativePath = $nativePath
+            ConfiguredPath = $configuredPath
+            Changed = $false
+        }
+    }
+
+    if (-not $DryRun) {
+        $data = [ordered]@{}
+        foreach ($prop in $settings.PSObject.Properties) {
+            $data[$prop.Name] = $prop.Value
+        }
+        $data['pathToClaudeCodeExecutable'] = $nativePath
+        Write-GsdSettingsJson -Data $data
+    }
+
+    return [pscustomobject]@{
+        Status = if ([string]::IsNullOrWhiteSpace($configuredPath)) { 'configured' } else { 'rewritten' }
+        NativePath = $nativePath
+        ConfiguredPath = $configuredPath
+        Changed = $true
+    }
+}
+
+function Test-GsdAnthropicOauthAvailable {
+    $agentDir = Resolve-GsdAgentDir
+    $authPath = Join-Path $agentDir 'auth.json'
+    if (-not (Test-Path $authPath)) { return $false }
+
+    try {
+        $auth = Get-Content $authPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        $entry = $auth.anthropic
+        if (-not $entry) { return $false }
+        if (-not $entry.expires) { return $true }
+        $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        return ([long]$entry.expires -gt $now)
+    } catch {
+        return $false
+    }
+}
+
+function Test-GsdAnthropicApiKeyConfigured {
+    $varName = 'ANTHROPIC_API_KEY'
+    if (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable($varName, 'Process'))) { return $true }
+    if (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable($varName, 'User'))) { return $true }
+
+    $envFile = Join-Path (Resolve-GsdAgentDir) '.env'
+    if (Test-Path $envFile) {
+        try {
+            $line = Get-Content $envFile -Encoding UTF8 | Where-Object { $_ -match ('^' + [regex]::Escape($varName) + '\s*=') } | Select-Object -First 1
+            if ($line) { return $true }
+        } catch {}
+    }
+    return $false
+}
+
+function Normalize-GsdPreferencesForClaudeCodeOAuth {
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [switch]$DryRun
+    )
+
+    if (-not (Test-Path $Path)) {
+        return [pscustomobject]@{ Status='missing'; Changed=$false; Path=$Path; Replacements=0 }
+    }
+
+    $nativePath = Resolve-GsdClaudeCodeNativePath
+    if ([string]::IsNullOrWhiteSpace($nativePath)) {
+        return [pscustomobject]@{ Status='native-missing'; Changed=$false; Path=$Path; Replacements=0 }
+    }
+    if (-not (Test-GsdAnthropicOauthAvailable)) {
+        return [pscustomobject]@{ Status='oauth-missing'; Changed=$false; Path=$Path; Replacements=0 }
+    }
+    if (Test-GsdAnthropicApiKeyConfigured) {
+        return [pscustomobject]@{ Status='api-key-present'; Changed=$false; Path=$Path; Replacements=0 }
+    }
+
+    $raw = Get-Content $Path -Raw -Encoding UTF8
+    $pairs = [ordered]@{
+        'anthropic/claude-opus-4-7'   = 'claude-code/claude-opus-4-7'
+        'anthropic/claude-sonnet-4-7' = 'claude-code/claude-sonnet-4-7'
+        'anthropic/claude-opus-4-6'   = 'claude-code/claude-opus-4-6'
+        'anthropic/claude-sonnet-4-6' = 'claude-code/claude-sonnet-4-6'
+        'anthropic/claude-haiku-4-5'  = 'claude-code/claude-haiku-4-5'
+    }
+
+    $updated = $raw
+    $count = 0
+    foreach ($from in $pairs.Keys) {
+        $to = $pairs[$from]
+        $hits = ([regex]::Matches($updated, [regex]::Escape($from))).Count
+        if ($hits -gt 0) {
+            $count += $hits
+            $updated = $updated.Replace($from, $to)
+        }
+    }
+
+    if ($count -eq 0) {
+        return [pscustomobject]@{ Status='already-clean'; Changed=$false; Path=$Path; Replacements=0 }
+    }
+
+    if (-not $DryRun) {
+        [System.IO.File]::WriteAllText($Path, $updated, [System.Text.UTF8Encoding]::new($false))
+    }
+
+    return [pscustomobject]@{ Status='rewritten'; Changed=$true; Path=$Path; Replacements=$count }
+}
+
+function Normalize-GsdSettingsForClaudeCodeOAuth {
+    param([switch]$DryRun)
+
+    $nativePath = Resolve-GsdClaudeCodeNativePath
+    if ([string]::IsNullOrWhiteSpace($nativePath)) {
+        return [pscustomobject]@{ Status='native-missing'; Changed=$false }
+    }
+    if (-not (Test-GsdAnthropicOauthAvailable)) {
+        return [pscustomobject]@{ Status='oauth-missing'; Changed=$false }
+    }
+    if (Test-GsdAnthropicApiKeyConfigured) {
+        return [pscustomobject]@{ Status='api-key-present'; Changed=$false }
+    }
+
+    $settings = Read-GsdSettingsJson
+    if ($null -eq $settings) {
+        return [pscustomobject]@{ Status='settings-missing'; Changed=$false }
+    }
+
+    $map = @{
+        'anthropic/claude-opus-4-7'   = 'claude-code/claude-opus-4-7'
+        'anthropic/claude-sonnet-4-7' = 'claude-code/claude-sonnet-4-7'
+        'anthropic/claude-opus-4-6'   = 'claude-code/claude-opus-4-6'
+        'anthropic/claude-sonnet-4-6' = 'claude-code/claude-sonnet-4-6'
+        'anthropic/claude-haiku-4-5'  = 'claude-code/claude-haiku-4-5'
+    }
+
+    $changed = $false
+    $data = [ordered]@{}
+    foreach ($prop in $settings.PSObject.Properties) {
+        $data[$prop.Name] = $prop.Value
+    }
+
+    if ($data.Contains('defaultProvider') -and [string]$data['defaultProvider'] -eq 'anthropic') {
+        $data['defaultProvider'] = 'claude-code'
+        $changed = $true
+    }
+    if ($data.Contains('defaultModel')) {
+        $current = [string]$data['defaultModel']
+        if ($map.ContainsKey($current)) {
+            $data['defaultModel'] = $map[$current]
+            $changed = $true
+        }
+    }
+
+    if (-not $changed) {
+        return [pscustomobject]@{ Status='already-clean'; Changed=$false }
+    }
+
+    if (-not $DryRun) {
+        Write-GsdSettingsJson -Data $data
+    }
+    return [pscustomobject]@{ Status='rewritten'; Changed=$true }
+}
+
 function Get-GsdRuntimePatchStatus {
     $providerPath = Get-GsdAnthropicSharedProviderPath
     $labelPath = Get-GsdAnthropicUiLabelPath
@@ -159,16 +419,28 @@ function Get-GsdRuntimePatchStatus {
 
     $defaultProvider = ''
     $defaultModel = ''
+    $configuredClaudePath = ''
     $settingsStatus = 'missing'
     if (Test-Path $settingsPath) {
         try {
             $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
             $defaultProvider = [string]$settings.defaultProvider
             $defaultModel = [string]$settings.defaultModel
+            $configuredClaudePath = [string]$settings.pathToClaudeCodeExecutable
             $settingsStatus = 'ok'
         } catch {
             $settingsStatus = 'error'
         }
+    }
+
+    $nativeClaudePath = Resolve-GsdClaudeCodeNativePath
+    $shimClaudePath = Get-GsdClaudeCommandPath
+    $claudePathStatus = if (-not [string]::IsNullOrWhiteSpace($nativeClaudePath)) {
+        if ($configuredClaudePath -eq $nativeClaudePath) { 'native-configured' } else { 'native-found' }
+    } elseif (-not [string]::IsNullOrWhiteSpace($shimClaudePath)) {
+        'shim-only'
+    } else {
+        'missing'
     }
 
     return [pscustomobject]@{
@@ -177,6 +449,10 @@ function Get-GsdRuntimePatchStatus {
         Settings      = $settingsStatus
         DefaultProvider = $defaultProvider
         DefaultModel    = $defaultModel
+        ConfiguredClaudePath = $configuredClaudePath
+        NativeClaudePath = $nativeClaudePath
+        ShimClaudePath = $shimClaudePath
+        ClaudePathStatus = $claudePathStatus
         ProviderPath  = $providerPath
         UiLabelPath   = $labelPath
         SettingsPath  = $settingsPath
