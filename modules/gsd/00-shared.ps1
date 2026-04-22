@@ -1682,10 +1682,77 @@ function Save-ForgeClaudeCodeTokens {
     }
 }
 
+function Sync-ForgeTokenToGsdAuthJson {
+    <#
+    .SYNOPSIS
+    Writes the Forge OAuth token into ~/.gsd/agent/auth.json as the 'anthropic' credential.
+    GSD reads auth.json BEFORE env vars for OAuth providers, so this is critical.
+    The auth.json format uses Unix epoch milliseconds for 'expires'.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$AccessToken,
+        [Parameter(Mandatory)] [string]$RefreshToken,
+        [Parameter(Mandatory)] [string]$ExpiresAtIso,
+        [switch]$Quiet
+    )
+
+    $authJsonPath = Join-Path $HOME '.gsd\agent\auth.json'
+    if (-not (Test-Path $authJsonPath)) {
+        # auth.json doesn't exist yet -- create it with the anthropic credential
+        $parentDir = Split-Path $authJsonPath -Parent
+        if (-not (Test-Path $parentDir)) {
+            $null = New-Item -Path $parentDir -ItemType Directory -Force
+        }
+    }
+
+    try {
+        # Convert ISO expires_at to Unix epoch milliseconds (GSD's format)
+        $expiryMs = [DateTimeOffset]::Parse($ExpiresAtIso).ToUnixTimeMilliseconds()
+
+        # Read existing auth.json or start fresh
+        $authData = @{}
+        if (Test-Path $authJsonPath) {
+            try {
+                $raw = [System.IO.File]::ReadAllText($authJsonPath)
+                $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+                # Convert PSObject to hashtable for easier manipulation
+                foreach ($prop in $parsed.PSObject.Properties) {
+                    $authData[$prop.Name] = $prop.Value
+                }
+            } catch {
+                # Malformed auth.json -- start fresh but preserve non-anthropic keys
+                $authData = @{}
+            }
+        }
+
+        # Update the anthropic entry with Forge's OAuth token
+        $authData['anthropic'] = [pscustomobject]@{
+            type    = 'oauth'
+            refresh = $RefreshToken
+            access  = $AccessToken
+            expires = $expiryMs
+        }
+
+        # Write back with UTF-8 (no BOM) -- same format GSD uses
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $json = $authData | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($authJsonPath, $json, $utf8NoBom)
+
+        return $true
+    } catch {
+        if (-not $Quiet) {
+            Write-Host ("  [forge-sync] auth.json write failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+        return $false
+    }
+}
+
 function Sync-ForgeClaudeCodeToken {
     <#
     .SYNOPSIS
-    Reads Forge's Claude Code OAuth token and exports as ANTHROPIC_API_KEY.
+    Reads Forge's Claude Code OAuth token and syncs it to:
+      1. $env:ANTHROPIC_API_KEY (for env-var based auth)
+      2. ~/.gsd/agent/auth.json  (for GSD's internal OAuth credential store)
     Refreshes the token automatically if expired. Returns status object.
     #>
     param([switch]$Quiet)
@@ -1699,6 +1766,8 @@ function Sync-ForgeClaudeCodeToken {
     }
 
     $token = $cred.AccessToken
+    $refreshToken = $cred.RefreshToken
+    $expiresAtIso = $cred.ExpiresAt
     $refreshed = $false
 
     # Check expiry and refresh if needed
@@ -1714,6 +1783,8 @@ function Sync-ForgeClaudeCodeToken {
 
         if ($refreshResult) {
             $token = $refreshResult.AccessToken
+            $refreshToken = $refreshResult.RefreshToken
+            $expiresAtIso = [DateTimeOffset]::UtcNow.AddSeconds($refreshResult.ExpiresIn).ToString('o')
             $refreshed = $true
 
             # Persist refreshed tokens back to Forge's credential store
@@ -1732,13 +1803,24 @@ function Sync-ForgeClaudeCodeToken {
         }
     }
 
-    # Export to environment for gsd-pi and claude CLI
+    # 1. Export to environment for gsd-pi env-var fallback and claude CLI
     [System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $token, 'Process')
+
+    # 2. Sync into ~/.gsd/agent/auth.json so GSD's internal OAuth store uses the fresh token.
+    #    GSD reads auth.json BEFORE env vars for OAuth providers, so this is the primary path.
+    $authJsonSynced = Sync-ForgeTokenToGsdAuthJson `
+        -AccessToken $token `
+        -RefreshToken $refreshToken `
+        -ExpiresAtIso $expiresAtIso `
+        -Quiet:$Quiet
 
     if (-not $Quiet) {
         $statusLabel = if ($refreshed) { 'refreshed+synced' } else { 'synced' }
         Write-Host ("  [forge-sync] ANTHROPIC_API_KEY set from Forge Claude Code OAuth ({0})" -f $statusLabel) -ForegroundColor Green
+        if ($authJsonSynced) {
+            Write-Host '  [forge-sync] ~/.gsd/agent/auth.json anthropic credential updated' -ForegroundColor Green
+        }
     }
 
-    return [pscustomobject]@{ Status=if ($refreshed) { 'refreshed' } else { 'synced' }; Synced=$true }
+    return [pscustomobject]@{ Status=if ($refreshed) { 'refreshed' } else { 'synced' }; Synced=$true; AuthJsonSynced=$authJsonSynced }
 }
