@@ -685,38 +685,99 @@ function Invoke-GsdRuntimePatch {
         }
     }
 
-    $sdkPath = Join-Path (Resolve-GsdAgentDir) 'node_modules\@gsd\pi-coding-agent\dist\core\sdk.js'
-    if (Test-Path $sdkPath) {
+    # --- Claude Code provider options: pathToClaudeCodeExecutable ---
+    # Rewrite the whole getProviderOptions function body so that:
+    #   1. pathToClaudeCodeExecutable is ALWAYS passed when provider is
+    #      claude-code (the previous shape early-returned undefined when
+    #      runner.hasUI() was false, so the SDK fell back to PATH lookup
+    #      which on Windows picked up the scoop bash-script shim).
+    #   2. A hardcoded resolved native path is used as a final fallback
+    #      after env vars — so a gsd process started before CLAUDE_CODE_PATH
+    #      was populated still finds the right binary.
+    # Apply to every discoverable sdk.js (agent-dir bridge, local vendor,
+    # scoop/npm global install) to stay resilient against reinstalls.
+    $nativeClaudePath = Resolve-GsdClaudeCodeNativePath
+    $escapedNativePath = if ($nativeClaudePath) { $nativeClaudePath.Replace('\','\\').Replace('"','\"') } else { '' }
+    $patchMarker = '/*__GSD_CLAUDE_PATH_PATCHED__*/'
+
+    $sdkCandidates = [System.Collections.Generic.List[string]]::new()
+    $sdkCandidates.Add((Join-Path (Resolve-GsdAgentDir) 'node_modules\@gsd\pi-coding-agent\dist\core\sdk.js'))
+    $sdkLocalRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($sdkLocalRoot) {
+        $sdkCandidates.Add((Join-Path $sdkLocalRoot 'packages\pi-coding-agent\dist\core\sdk.js'))
+    }
+    try {
+        $gsdCmdForSdk = Get-Command gsd -ErrorAction SilentlyContinue
+        if ($gsdCmdForSdk -and $gsdCmdForSdk.Source) {
+            $gsdBinForSdk = Split-Path $gsdCmdForSdk.Source -Parent
+            # Direct packages/ copy (the source of truth in global install)
+            $sdkCandidates.Add((Join-Path $gsdBinForSdk 'node_modules\gsd-pi\packages\pi-coding-agent\dist\core\sdk.js'))
+            # Nested node_modules symlink — Node.js resolves @gsd/pi-coding-agent
+            # from loader.js through this path first. On scoop it happens to
+            # point at a test/latest/ directory; we need to patch THAT file too,
+            # since it's what actually gets imported at runtime.
+            $sdkCandidates.Add((Join-Path $gsdBinForSdk 'node_modules\gsd-pi\node_modules\@gsd\pi-coding-agent\dist\core\sdk.js'))
+        }
+    } catch {}
+
+    $sdkDesiredBody = @"
+        getProviderOptions: async (currentModel) => { $patchMarker
+            if (currentModel.provider !== "claude-code")
+                return undefined;
+            const runner = extensionRunnerRef.current;
+            const __claudePath = process.env.CLAUDE_CODE_PATH || process.env.CLAUDE_CODE_NATIVE_PATH || "$escapedNativePath";
+            const __base = __claudePath ? { pathToClaudeCodeExecutable: __claudePath } : {};
+            if (!runner?.hasUI())
+                return Object.keys(__base).length ? __base : undefined;
+            return Object.assign({ extensionUIContext: runner.getUIContext() }, __base);
+        },
+"@ -replace "`r`n", "`n"
+    $sdkDesiredBody = $sdkDesiredBody.TrimEnd("`n")
+
+    $sdkSeen = @{}
+    $sdkPatchedAny = $false
+    $sdkOkAny = $false
+    $sdkFoundAny = $false
+    foreach ($sdkPath in $sdkCandidates) {
+        if (-not (Test-Path $sdkPath)) { continue }
+        $sdkFull = [System.IO.Path]::GetFullPath($sdkPath)
+        if ($sdkSeen.ContainsKey($sdkFull)) { continue }
+        $sdkSeen[$sdkFull] = $true
+
         try {
-            $raw = (Get-Content $sdkPath -Raw -Encoding UTF8) -replace "`r`n", "`n"
-            $oldSnippet = @"
-            return {
-                extensionUIContext: runner.getUIContext(),
-            };
-"@ -replace "`r`n", "`n"
-            $newSnippet = @"
-            return {
-                extensionUIContext: runner.getUIContext(),
-                pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || process.env.CLAUDE_CODE_NATIVE_PATH,
-            };
-"@ -replace "`r`n", "`n"
-            if ($raw.Contains($newSnippet)) {
-                Write-Host '  [ok]      Claude Code provider options patch already applied' -ForegroundColor Green
-            } elseif ($raw.Contains($oldSnippet)) {
+            $raw = (Get-Content $sdkFull -Raw -Encoding UTF8) -replace "`r`n", "`n"
+
+            if ($raw.Contains($patchMarker)) {
+                Write-Host ("  [ok]      Claude path patch already applied  {0}" -f $sdkFull) -ForegroundColor Green
+                $sdkOkAny = $true
+                $sdkFoundAny = $true
+                continue
+            }
+
+            # Match the whole getProviderOptions function body up to the
+            # method-level `        },` (8-space indent). Lazy quantifier
+            # prevents greedy overrun into the next method.
+            $pattern = [regex]'(?s)getProviderOptions: async \(currentModel\) => \{.*?\n        \},'
+            if ($pattern.IsMatch($raw)) {
+                $sdkFoundAny = $true
                 if ($DryRun) {
-                    Write-Host ("  [dry-run] patch {0}" -f $sdkPath) -ForegroundColor DarkYellow
+                    Write-Host ("  [dry-run] patch Claude provider options {0}" -f $sdkFull) -ForegroundColor DarkYellow
                 } else {
-                    $updated = $raw.Replace($oldSnippet, $newSnippet)
+                    $updated = $pattern.Replace($raw, { param($m) $sdkDesiredBody }, 1)
                     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-                    [System.IO.File]::WriteAllText($sdkPath, $updated, $utf8NoBom)
-                    Write-Host '  [ok]      Patched Claude Code provider to pass pathToClaudeCodeExecutable' -ForegroundColor Green
+                    [System.IO.File]::WriteAllText($sdkFull, $updated, $utf8NoBom)
+                    Write-Host ("  [ok]      Patched Claude provider options  {0}" -f $sdkFull) -ForegroundColor Green
+                    $sdkPatchedAny = $true
                 }
             } else {
-                Write-Host '  [warn]    sdk.js has unexpected getProviderOptions shape; skipped Claude path patch' -ForegroundColor DarkYellow
+                Write-Host ("  [warn]    sdk.js: getProviderOptions shape not recognized  {0}" -f $sdkFull) -ForegroundColor DarkYellow
             }
         } catch {
-            Write-Host ("  [warn]    Failed to patch sdk.js Claude provider options: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            Write-Host ("  [warn]    Failed to patch {0}: {1}" -f $sdkFull, $_.Exception.Message) -ForegroundColor DarkYellow
         }
+    }
+    if (-not $sdkFoundAny) {
+        Write-Host '  [warn]    No sdk.js with getProviderOptions found to patch' -ForegroundColor DarkYellow
     }
 
     # --- Anthropic OAuth scope + endpoint patch ---
@@ -724,16 +785,41 @@ function Invoke-GsdRuntimePatch {
     # and uses platform.claude.com instead of console.anthropic.com.
     # Without this scope, tokens get routed to "extra usage" billing instead
     # of the Claude Max subscription quota (same client_id, different scope).
-    $oauthPath = Join-Path (Resolve-GsdAgentDir) 'node_modules\gsd-pi\packages\pi-ai\dist\utils\oauth\anthropic.js'
-    # Also check local-project layout
+    #
+    # Patch ALL discoverable copies: (1) agent-dir bridge, (2) local-project vendor,
+    # (3) the globally-installed gsd-pi that `gsd` CLI actually loads from
+    # (scoop/npm/nvm — resolved via `Get-Command gsd`). Earlier versions only
+    # touched (1) and (2), which left the active runtime unpatched.
+    $oauthCandidates = [System.Collections.Generic.List[string]]::new()
+    $oauthCandidates.Add((Join-Path (Resolve-GsdAgentDir) 'node_modules\gsd-pi\packages\pi-ai\dist\utils\oauth\anthropic.js'))
+
     $localRoot = Resolve-GsdPreferredRuntimeRoot
     if ($localRoot) {
-        $localOauth = Join-Path $localRoot 'packages\pi-ai\dist\utils\oauth\anthropic.js'
-        if (Test-Path $localOauth) { $oauthPath = $localOauth }
+        $oauthCandidates.Add((Join-Path $localRoot 'packages\pi-ai\dist\utils\oauth\anthropic.js'))
     }
-    if (Test-Path $oauthPath) {
+
+    # Resolve global gsd-pi via the gsd launcher (scoop/npm/nvm shim)
+    try {
+        $gsdCmd = Get-Command gsd -ErrorAction SilentlyContinue
+        if ($gsdCmd -and $gsdCmd.Source) {
+            $gsdBin = Split-Path $gsdCmd.Source -Parent
+            $globalOauth = Join-Path $gsdBin 'node_modules\gsd-pi\packages\pi-ai\dist\utils\oauth\anthropic.js'
+            $oauthCandidates.Add($globalOauth)
+        }
+    } catch {}
+
+    # Dedupe (by fully-resolved path) and patch each existing file
+    $seen = @{}
+    $patchedAny = $false
+    $okAny = $false
+    foreach ($oauthPath in $oauthCandidates) {
+        if (-not (Test-Path $oauthPath)) { continue }
+        $full = [System.IO.Path]::GetFullPath($oauthPath)
+        if ($seen.ContainsKey($full)) { continue }
+        $seen[$full] = $true
+
         try {
-            $oauthRaw = (Get-Content $oauthPath -Raw -Encoding UTF8) -replace "`r`n", "`n"
+            $oauthRaw = (Get-Content $full -Raw -Encoding UTF8) -replace "`r`n", "`n"
             $needsPatch = $false
             $updated = $oauthRaw
 
@@ -754,17 +840,22 @@ function Invoke-GsdRuntimePatch {
             }
 
             if (-not $needsPatch) {
-                Write-Host '  [ok]      Anthropic OAuth scope + endpoint already patched' -ForegroundColor Green
+                Write-Host ("  [ok]      OAuth already patched  {0}" -f $full) -ForegroundColor Green
+                $okAny = $true
             } elseif ($DryRun) {
-                Write-Host ("  [dry-run] patch OAuth scope/endpoint {0}" -f $oauthPath) -ForegroundColor DarkYellow
+                Write-Host ("  [dry-run] patch OAuth scope/endpoint {0}" -f $full) -ForegroundColor DarkYellow
             } else {
                 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-                [System.IO.File]::WriteAllText($oauthPath, $updated, $utf8NoBom)
-                Write-Host '  [ok]      Patched Anthropic OAuth (scope + endpoint -> console.anthropic.com)' -ForegroundColor Green
+                [System.IO.File]::WriteAllText($full, $updated, $utf8NoBom)
+                Write-Host ("  [ok]      Patched OAuth (scope+endpoint) {0}" -f $full) -ForegroundColor Green
+                $patchedAny = $true
             }
         } catch {
-            Write-Host ("  [warn]    Failed to patch Anthropic OAuth scope: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            Write-Host ("  [warn]    Failed to patch {0}: {1}" -f $full, $_.Exception.Message) -ForegroundColor DarkYellow
         }
+    }
+    if (-not $patchedAny -and -not $okAny) {
+        Write-Host '  [warn]    No Anthropic OAuth file found to patch (agent/vendor/global all missing)' -ForegroundColor DarkYellow
     }
 
     Write-Host ''

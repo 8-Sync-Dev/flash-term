@@ -27,6 +27,10 @@ current-gpu.lua
 .gsd/gsd.db-shm
 .gsd/metrics.json
 .gsd/state-manifest.json
+.gsd/notifications.jsonl
+.gsd/last-snapshot.md
+.gsd/CODEBASE.md
+.gsd/exec/
 .gsd.migrating/
 
 # ── bg-shell runtime state ────────────────────────────────────────────────

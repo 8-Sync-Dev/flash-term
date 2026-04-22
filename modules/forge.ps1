@@ -228,6 +228,51 @@ function Invoke-ForgeStatus {
         Write-Host ("  {0,-20} {1}" -f 'config dir:', $cfgDir) -ForegroundColor DarkGray
     }
 
+    # GSD OAuth sync state
+    Write-Host ''
+    Write-Host '  GSD sync (Anthropic OAuth):' -ForegroundColor DarkGray
+    $creds = Read-ForgeAnthropicCreds
+    if ($creds -and $creds.AccessToken) {
+        $remaining = if ($creds.ExpiresAt) { $creds.ExpiresAt - [datetime]::UtcNow } else { $null }
+        $humans = if (-not $remaining) { '(no expiry)' }
+                  elseif ($remaining.TotalMinutes -lt 0) { 'EXPIRED' }
+                  elseif ($remaining.TotalHours -ge 1) { ('{0:F1}h left' -f $remaining.TotalHours) }
+                  else { ('{0:F0}min left' -f $remaining.TotalMinutes) }
+        $tokColor = if (-not $remaining -or $remaining.TotalMinutes -gt 60) { 'Green' }
+                    elseif ($remaining.TotalMinutes -gt 10) { 'DarkYellow' } else { 'Red' }
+        Write-Host ("    {0,-8} {1}" -f 'forge:', ('OAuth token present -- ' + $humans)) -ForegroundColor $tokColor
+
+        $envTok = [System.Environment]::GetEnvironmentVariable('FORGE_ANTHROPIC_OAUTH_TOKEN', 'User')
+        $envMatch = ($envTok -eq $creds.AccessToken)
+        $envLabel = if (-not $envTok) { 'not set' } elseif ($envMatch) { 'synced' } else { 'STALE (rerun: 8sync forge sync-to-gsd)' }
+        $envColor = if (-not $envTok) { 'DarkYellow' } elseif ($envMatch) { 'Green' } else { 'DarkYellow' }
+        Write-Host ("    {0,-8} {1}" -f 'env:', $envLabel) -ForegroundColor $envColor
+
+        $modelsPath = Get-GsdModelsJsonPath
+        if (Test-Path $modelsPath) {
+            try {
+                $m = (Get-Content $modelsPath -Raw -Encoding UTF8) | ConvertFrom-Json -ErrorAction Stop
+                $hasForgeProvider = $false
+                if ($m.providers) {
+                    foreach ($prop in $m.providers.PSObject.Properties) {
+                        if ($prop.Value.apiKey -eq 'FORGE_ANTHROPIC_OAUTH_TOKEN') { $hasForgeProvider = $true; break }
+                    }
+                }
+                if ($hasForgeProvider) {
+                    Write-Host ("    {0,-8} {1}" -f 'models:', 'anthropic-forge provider present') -ForegroundColor Green
+                } else {
+                    Write-Host ("    {0,-8} {1}" -f 'models:', 'present but no forge provider (run: 8sync forge sync-to-gsd)') -ForegroundColor DarkYellow
+                }
+            } catch {
+                Write-Host ("    {0,-8} {1}" -f 'models:', 'parse error') -ForegroundColor DarkYellow
+            }
+        } else {
+            Write-Host ("    {0,-8} {1}" -f 'models:', 'not created (run: 8sync forge sync-to-gsd)') -ForegroundColor DarkYellow
+        }
+    } else {
+        Write-Host '    no Forge Anthropic OAuth creds (run: forge provider login)' -ForegroundColor DarkGray
+    }
+
     Write-Host ''
 }
 
@@ -299,14 +344,818 @@ function Invoke-ForgeUninstall {
     Write-Host ''
 }
 
+# ---------------------------------------------------------------------------
+#  zsh on Windows -- MSYS2 + zsh + oh-my-zsh bootstrap
+#  Reference: https://ohmyz.sh/#install
+#  Strategy:
+#    1. scoop install msys2   (only Windows-native zsh package manager we trust)
+#    2. inside msys2: pacman -S --noconfirm zsh git curl
+#    3. run oh-my-zsh installer non-interactively via msys2 bash
+# ---------------------------------------------------------------------------
+
+function Get-MsysBashPath {
+    # Prefer scoop-installed msys2; fall back to system install
+    $candidates = @(
+        (Join-Path $env:USERPROFILE 'scoop\apps\msys2\current\usr\bin\bash.exe'),
+        'C:\msys64\usr\bin\bash.exe',
+        'C:\tools\msys64\usr\bin\bash.exe'
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path $p) { return $p }
+    }
+    $fromPath = Get-Command bash -ErrorAction SilentlyContinue |
+                Where-Object { $_.Source -match 'msys' } |
+                Select-Object -First 1
+    if ($fromPath) { return $fromPath.Source }
+    return $null
+}
+
+function Install-MSYS2ViaScoop {
+    [OutputType([string])]
+    param([switch]$DryRun)
+
+    $existing = Get-MsysBashPath
+    if ($existing) {
+        Write-Host ("  [ok] msys2 already present: {0}" -f $existing) -ForegroundColor Green
+        return [string]$existing
+    }
+
+    $scoop = Get-Command scoop -ErrorAction SilentlyContinue
+    if (-not $scoop) {
+        Write-Host '  [error] scoop not found. Install scoop first:' -ForegroundColor Red
+        Write-Host '    irm get.scoop.sh | iex' -ForegroundColor White
+        return $null
+    }
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] would run: scoop install msys2' -ForegroundColor DarkYellow
+        return $null
+    }
+
+    Write-Host '  Running: scoop install msys2  (~400 MB, ~2 min)' -ForegroundColor Yellow
+    try {
+        # Pipe scoop output directly to the host so it streams visibly to the
+        # user WITHOUT polluting this function's return pipeline. Without
+        # Out-Host the objects scoop emits would be collected as part of the
+        # returned value, turning $bash into an array on the calling side.
+        & scoop install msys2 2>&1 | Out-Host
+    } catch {
+        Write-Host ("  [error] scoop install msys2 failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $null
+    }
+
+    # msys2 post-install: first `bash -lc true` initializes the filesystem.
+    # scoop post_install hook normally does this; invoke once to be safe.
+    $bash = Get-MsysBashPath
+    if ($bash) {
+        try { & $bash -lc 'true' 2>&1 | Out-Null } catch {}
+        Write-Host ("  [ok] msys2 installed: {0}" -f $bash) -ForegroundColor Green
+        return [string]$bash
+    }
+    return $null
+}
+
+function Install-ZshPackage {
+    param(
+        [Parameter(Mandatory)][string]$BashPath,
+        [switch]$DryRun
+    )
+
+    # Check if zsh already installed inside msys2
+    $existing = $null
+    try {
+        $existing = & $BashPath -lc 'command -v zsh 2>/dev/null' 2>$null
+    } catch {}
+    if ($existing) {
+        $existing = "$existing".Trim()
+        if ($existing) {
+            Write-Host ("  [ok] zsh already installed in msys2: {0}" -f $existing) -ForegroundColor Green
+            return $true
+        }
+    }
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] would run: pacman -S --noconfirm --needed zsh git curl' -ForegroundColor DarkYellow
+        return $false
+    }
+
+    Write-Host '  Running: pacman -S --noconfirm --needed zsh git curl' -ForegroundColor Yellow
+    try {
+        # -Sy refreshes db; --needed skips if already installed; --noconfirm for unattended.
+        & $BashPath -lc 'pacman -Sy --noconfirm && pacman -S --noconfirm --needed zsh git curl'
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host '  [error] pacman failed.' -ForegroundColor Red
+            return $false
+        }
+    } catch {
+        Write-Host ("  [error] {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
+    Write-Host '  [ok] zsh + git + curl installed in msys2.' -ForegroundColor Green
+    return $true
+}
+
+function ConvertTo-MsysPath {
+    # Convert a Windows path "C:\Users\Admin" -> MSYS/Cygwin path "/c/Users/Admin".
+    # Required when passing $env:HOME through to msys2 bash.
+    param([Parameter(Mandatory)][string]$WindowsPath)
+    $p = $WindowsPath -replace '\\','/'
+    if ($p -match '^([A-Za-z]):(/.*)?$') {
+        $drive  = $matches[1].ToLower()
+        $rest   = if ($matches[2]) { $matches[2] } else { '' }
+        return "/$drive$rest"
+    }
+    return $p
+}
+
+function Ensure-EditorEnv {
+    # Make forge zsh doctor happy by setting EDITOR/FORGE_EDITOR.
+    # Prefer existing value; else pick hx (helix), nvim, vim, nano in that order.
+    [OutputType([string])]
+    param()
+
+    $existing = $env:EDITOR
+    if (-not $existing) {
+        $existing = [System.Environment]::GetEnvironmentVariable('EDITOR', 'User')
+    }
+    if ($existing) {
+        if (-not $env:EDITOR) { $env:EDITOR = $existing }
+        if (-not $env:FORGE_EDITOR) { $env:FORGE_EDITOR = $existing }
+        return $existing
+    }
+
+    foreach ($cand in @('hx','nvim','vim','nano')) {
+        if (Get-Command $cand -ErrorAction SilentlyContinue) {
+            $env:EDITOR       = $cand
+            $env:FORGE_EDITOR = $cand
+            try {
+                [System.Environment]::SetEnvironmentVariable('EDITOR',       $cand, 'User')
+                [System.Environment]::SetEnvironmentVariable('FORGE_EDITOR', $cand, 'User')
+            } catch {}
+            return $cand
+        }
+    }
+    return $null
+}
+
+function Ensure-ZshrcSourcesOmz {
+    # Ensure $HOME/.zshrc contains a block that sources oh-my-zsh.
+    # This is required because oh-my-zsh installer with KEEP_ZSHRC=yes does NOT
+    # touch an existing .zshrc -- Forge's own installer creates .zshrc first,
+    # so the omz installer sees one already and leaves it alone.
+    #
+    # We inject a managed block BEFORE any existing content so the omz prompt +
+    # plugins load before Forge's own plugin/theme initialization.
+    [OutputType([bool])]
+    param()
+
+    $zshrc = Join-Path $env:USERPROFILE '.zshrc'
+    $winOmzDir = Join-Path $env:USERPROFILE '.oh-my-zsh'
+    if (-not (Test-Path $winOmzDir)) { return $false }
+
+    $existing = ''
+    if (Test-Path $zshrc) {
+        try { $existing = Get-Content $zshrc -Raw -Encoding UTF8 } catch {}
+    }
+    if ($existing -match '# --- Oh My Zsh \(managed by 8sync forge zsh\) ---') {
+        Write-Host '  [ok] .zshrc already sources oh-my-zsh (managed block present)' -ForegroundColor Green
+        return $true
+    }
+    # If user already has a custom `source $ZSH/oh-my-zsh.sh`, leave it alone.
+    if ($existing -match 'source\s+"?\$ZSH/oh-my-zsh\.sh"?') {
+        Write-Host '  [ok] .zshrc already has custom omz source line' -ForegroundColor Green
+        return $true
+    }
+
+    $block = @(
+        '# --- Oh My Zsh (managed by 8sync forge zsh) ---'
+        '# Load before Forge plugins so the prompt + omz plugins initialize first.'
+        'export ZSH="$HOME/.oh-my-zsh"'
+        'ZSH_THEME="robbyrussell"'
+        'plugins=(git)'
+        'source $ZSH/oh-my-zsh.sh'
+        '# --- end Oh My Zsh ---'
+        ''
+    ) -join "`n"
+
+    $combined = $block + $existing
+    # Normalize line endings + ensure trailing newline; write UTF-8 no-BOM.
+    $combined = ($combined -replace "`r`n", "`n").TrimEnd() + "`n"
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    try {
+        # Backup first
+        if (Test-Path $zshrc) {
+            $backup = $zshrc + '.bak-8sync-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+            Copy-Item $zshrc $backup -Force
+            Write-Host ("  [ok] backed up .zshrc -> {0}" -f $backup) -ForegroundColor DarkGray
+        }
+        [System.IO.File]::WriteAllText($zshrc, $combined, $utf8)
+        Write-Host ("  [ok] prepended oh-my-zsh source block to {0}" -f $zshrc) -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host ("  [error] could not write .zshrc: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
+}
+
+function Install-OhMyZsh {
+    param(
+        [Parameter(Mandatory)][string]$BashPath,
+        [switch]$DryRun,
+        [switch]$Force
+    )
+
+    # Install oh-my-zsh at WINDOWS $HOME (C:\Users\<user>\.oh-my-zsh) so that both
+    # msys2 zsh sessions AND Windows binaries (like forge.exe) can find it.
+    # Forge runs as a native Windows process and inspects Windows-side $HOME.
+    $winHome      = $env:USERPROFILE
+    $winOmzDir    = Join-Path $winHome '.oh-my-zsh'
+    $msysHome     = ConvertTo-MsysPath $winHome               # e.g. /c/Users/Admin
+    $msysOmzDir   = "$msysHome/.oh-my-zsh"
+
+    if ((Test-Path $winOmzDir) -and -not $Force) {
+        Write-Host ("  [ok] oh-my-zsh already installed at {0}" -f $winOmzDir) -ForegroundColor Green
+        Write-Host '       Use --force to reinstall.' -ForegroundColor DarkGray
+        return $true
+    }
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] would run (inside msys2 bash, with HOME=Windows profile):' -ForegroundColor DarkYellow
+        Write-Host ('    HOME="{0}" RUNZSH=no KEEP_ZSHRC=yes CHSH=no sh -c "$(curl -fsSL https://install.ohmyz.sh/)"' -f $msysHome) -ForegroundColor White
+        Write-Host ("    -> installs to: {0}" -f $winOmzDir) -ForegroundColor DarkGray
+        return $false
+    }
+
+    if ((Test-Path $winOmzDir) -and $Force) {
+        Write-Host ("  [info] Removing existing {0} (--force)" -f $winOmzDir) -ForegroundColor DarkYellow
+        try { Remove-Item $winOmzDir -Recurse -Force -ErrorAction Stop } catch {
+            Write-Host ("  [warn] could not remove: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    Write-Host '  Running: oh-my-zsh installer' -ForegroundColor Yellow
+    Write-Host ("    HOME={0}  (so forge.exe finds it at {1})" -f $msysHome, $winOmzDir) -ForegroundColor DarkGray
+    try {
+        # RUNZSH=no       -> do not exec into zsh after install (we're in pwsh)
+        # KEEP_ZSHRC=yes  -> do not overwrite a user-managed ~/.zshrc
+        # CHSH=no         -> do not try chsh (not meaningful on Windows)
+        # HOME=<winpath>  -> place the install where Forge native binary looks
+        $cmd = 'HOME="' + $msysHome + '" RUNZSH=no KEEP_ZSHRC=yes CHSH=no sh -c "$(curl -fsSL https://install.ohmyz.sh/)"'
+        & $BashPath -lc $cmd
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host '  [error] oh-my-zsh installer exited non-zero.' -ForegroundColor Red
+            return $false
+        }
+    } catch {
+        Write-Host ("  [error] {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
+
+    if (Test-Path $winOmzDir) {
+        Write-Host ("  [ok] oh-my-zsh installed at {0}" -f $winOmzDir) -ForegroundColor Green
+    } else {
+        Write-Host '  [warn] installer finished but install dir not detected.' -ForegroundColor DarkYellow
+    }
+
+    # Also mirror via junction into msys2 /home/<user>/.oh-my-zsh so bare
+    # `zsh` sessions launched from msys2 shell (with HOME=/home/Admin) see it too.
+    try {
+        $msysRoot     = Split-Path $BashPath -Parent | Split-Path -Parent | Split-Path -Parent  # ...\msys2\current
+        $msysUserHome = Join-Path $msysRoot ('home\' + $env:USERNAME)
+        $msysUserOmz  = Join-Path $msysUserHome '.oh-my-zsh'
+        if ((Test-Path $msysUserHome) -and -not (Test-Path $msysUserOmz) -and (Test-Path $winOmzDir)) {
+            & cmd.exe /c ('mklink /J "' + $msysUserOmz + '" "' + $winOmzDir + '"') 2>&1 | Out-Null
+            if (Test-Path $msysUserOmz) {
+                Write-Host ("  [ok] junction: {0} -> {1}" -f $msysUserOmz, $winOmzDir) -ForegroundColor DarkGray
+            }
+        }
+    } catch {}
+
+    return $true
+}
+
+function Add-MsysBinToPath {
+    # Expose msys2's usr\bin to PATH so `zsh.exe` is discoverable by Forge etc.
+    # APPEND (not prepend) so Windows-native tools (find/sort/etc.) keep
+    # precedence -- msys2 only fills gaps for tools that don't exist on Windows.
+    [OutputType([bool])]
+    param([Parameter(Mandatory)][string]$BashPath)
+
+    $binDir = Split-Path $BashPath -Parent   # ...\msys2\current\usr\bin
+    if (-not (Test-Path $binDir)) { return $false }
+
+    $changed = $false
+
+    # Current process PATH (so `forge zsh setup` finds zsh in THIS shell)
+    $processPath = $env:PATH
+    if ($processPath -notmatch [regex]::Escape($binDir)) {
+        $env:PATH = $processPath.TrimEnd(';') + ';' + $binDir
+        $changed = $true
+    }
+
+    # User PATH (so future shells + freshly-launched `forge` processes find zsh)
+    try {
+        $userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+        if ($userPath -notmatch [regex]::Escape($binDir)) {
+            $newUserPath = if ($userPath) { $userPath.TrimEnd(';') + ';' + $binDir } else { $binDir }
+            [System.Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
+            Write-Host ("  [ok] Appended to Windows User PATH: {0}" -f $binDir) -ForegroundColor DarkGray
+            $changed = $true
+        }
+    } catch {
+        Write-Host ("  [warn] could not persist User PATH: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+
+    if (-not $changed) {
+        Write-Host ("  [ok] msys2 bin already in PATH: {0}" -f $binDir) -ForegroundColor Green
+    }
+    return $true
+}
+
+function Get-MsysZshPath {
+    # Returns path to msys2 zsh.exe, or $null if not installed.
+    $bash = Get-MsysBashPath
+    if (-not $bash) { return $null }
+    $zshExe = $bash -replace 'bash\.exe$','zsh.exe'
+    if (Test-Path $zshExe) { return [string]$zshExe }
+    return $null
+}
+
+function Invoke-ForgeEnterZsh {
+    # Launch msys2 zsh as an interactive login shell from PowerShell.
+    # Windows has no `exec` -- this function is the "enter zsh" equivalent.
+    # When the user types `exit` inside zsh they return to the calling pwsh.
+    param([switch]$NoLogin)
+
+    $zshExe = Get-MsysZshPath
+    if (-not $zshExe) {
+        Write-Host ''
+        Write-Host '  [error] zsh not installed. Run: 8sync forge zsh' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # Make sure Windows HOME is visible to zsh (so ~/.zshrc resolves to the
+    # Windows profile where oh-my-zsh + forge-initialize block live).
+    Ensure-ForgeHomeEnv
+    Ensure-ForgeConsoleUtf8
+    Ensure-EditorEnv | Out-Null
+    Ensure-ZshInPath
+
+    # Clear a few env vars that can confuse msys2's tty detection
+    # (only affects the zsh subprocess we spawn, not the parent pwsh).
+    $prev = @{
+        MSYSTEM      = $env:MSYSTEM
+        CHERE_INVOKING = $env:CHERE_INVOKING
+    }
+    $env:MSYSTEM = 'MSYS'              # correct subsystem for generic usr/bin
+    $env:CHERE_INVOKING = '1'          # preserve current working directory
+
+    Write-Host ''
+    Write-Host ('  Entering zsh -- {0}' -f $zshExe) -ForegroundColor Cyan
+    Write-Host '  Type `exit` to return to PowerShell.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    try {
+        if ($NoLogin) {
+            & $zshExe --interactive
+        } else {
+            # --login: source /etc/zprofile + ~/.zprofile (mirrors `exec zsh -l`)
+            # --interactive: enable prompt, history, keybindings
+            & $zshExe --login --interactive
+        }
+    } finally {
+        # Restore parent env
+        $env:MSYSTEM = $prev.MSYSTEM
+        $env:CHERE_INVOKING = $prev.CHERE_INVOKING
+    }
+}
+
+function Show-ForgeZshUsage {
+    Write-Host ''
+    Write-HintSection 'FORGE ZSH -- how to use zsh on Windows after `forge zsh setup`'
+    Write-Host ''
+    Write-Host '  There is no `exec zsh` on Windows -- you SPAWN a zsh subprocess.' -ForegroundColor DarkGray
+    Write-Host '  When you `exit` the zsh session, you return to pwsh.' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Three ways to enter zsh:' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  1) Via 8sync (recommended -- ensures HOME/PATH/UTF-8 set up right):' -ForegroundColor White
+    Write-Host '       8sync forge enter' -ForegroundColor Green
+    Write-Host ''
+    Write-Host '  2) Direct (zsh is in PATH -- just type it):' -ForegroundColor White
+    Write-Host '       zsh -l -i        # -l = login, -i = interactive' -ForegroundColor Green
+    Write-Host ''
+    Write-Host '  3) One-shot command from pwsh (no interactive session):' -ForegroundColor White
+    Write-Host '       zsh -c "<command>"' -ForegroundColor Green
+    Write-Host ''
+    Write-Host '  Inside zsh you get:' -ForegroundColor Cyan
+    Write-Host '    - Forge prompt + right-side AI context theme' -ForegroundColor DarkGray
+    Write-Host '    - Forge `:` keybinding to invoke the AI' -ForegroundColor DarkGray
+    Write-Host '    - zsh-autosuggestions (grey inline hint)' -ForegroundColor DarkGray
+    Write-Host '    - zsh-syntax-highlighting' -ForegroundColor DarkGray
+    Write-Host '    - Oh My Zsh: git plugin, robbyrussell theme (customize in ~/.zshrc)' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  To make zsh your *default* shell in WezTerm tabs (optional):' -ForegroundColor Cyan
+    Write-Host '    Edit wezterm.lua and set:' -ForegroundColor DarkGray
+    $zshExePath = Get-MsysZshPath
+    if (-not $zshExePath) { $zshExePath = 'C:\Users\Admin\scoop\apps\msys2\current\usr\bin\zsh.exe' }
+    $zshLuaPath = $zshExePath -replace '\\','\\'
+    Write-Host ("      config.default_prog = {{ '{0}', '--login', '-i' }}" -f $zshLuaPath) -ForegroundColor White
+    Write-Host '    (You will lose the pwsh 8sync bootstrap -- only do this if you want zsh as your primary shell.)' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Tip: keep pwsh as default shell and use `8sync forge enter` on-demand.' -ForegroundColor DarkYellow
+    Write-Host '       This way you keep 8sync commands AND can pop into zsh whenever needed.' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Invoke-ForgeZshInstall {
+    param(
+        [switch]$DryRun,
+        [switch]$Force,
+        [switch]$SkipOmz
+    )
+
+    Write-Host ''
+    Write-Host '  FORGE -- install zsh on Windows (via MSYS2)' -ForegroundColor Cyan
+    Write-Host '  Reference: https://ohmyz.sh/#install' -ForegroundColor DarkGray
+    Write-Host ''
+
+    # Step 1: MSYS2
+    Write-Host '  [1/4] MSYS2 (Windows-native POSIX env)' -ForegroundColor Cyan
+    $bashRaw = Install-MSYS2ViaScoop -DryRun:$DryRun
+    # Defensive: if a future edit accidentally pollutes the pipeline, pick the .exe entry.
+    $bash = if ($bashRaw -is [array]) {
+        @($bashRaw | Where-Object { $_ -is [string] -and $_ -match '\.exe$' } | Select-Object -First 1)[0]
+    } else {
+        [string]$bashRaw
+    }
+    if (-not $bash -and -not $DryRun) {
+        Write-Host ''
+        Write-Host '  [fatal] cannot proceed without msys2.' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # Step 2: zsh package
+    Write-Host ''
+    Write-Host '  [2/4] zsh package (pacman)' -ForegroundColor Cyan
+    if ($DryRun) {
+        Write-Host '  [dry-run] would run: pacman -S --noconfirm --needed zsh git curl' -ForegroundColor DarkYellow
+    } else {
+        $zshOk = Install-ZshPackage -BashPath $bash
+        if (-not $zshOk) {
+            Write-Host ''
+            Write-Host '  [fatal] zsh install failed.' -ForegroundColor Red
+            Write-Host ''
+            return
+        }
+    }
+
+    # Step 3: PATH wiring -- make `zsh.exe` findable by forge/other callers
+    Write-Host ''
+    Write-Host '  [3/4] PATH wiring (expose zsh.exe to forge + Windows)' -ForegroundColor Cyan
+    if ($DryRun) {
+        Write-Host '  [dry-run] would append msys2\usr\bin to User PATH + current process PATH' -ForegroundColor DarkYellow
+    } elseif ($bash) {
+        Add-MsysBinToPath -BashPath $bash | Out-Null
+    }
+
+    # Step 4: oh-my-zsh
+    Write-Host ''
+    Write-Host '  [4/4] oh-my-zsh framework' -ForegroundColor Cyan
+    if ($SkipOmz) {
+        Write-Host '  [skip] --skip-omz specified; oh-my-zsh not installed.' -ForegroundColor DarkGray
+    } elseif ($DryRun) {
+        Write-Host '  [dry-run] would run oh-my-zsh installer via msys2 bash' -ForegroundColor DarkYellow
+        Write-Host '  [dry-run] would ensure .zshrc sources oh-my-zsh (prepend managed block)' -ForegroundColor DarkYellow
+    } else {
+        Install-OhMyZsh -BashPath $bash -Force:$Force | Out-Null
+        # Critical: ensure .zshrc actually sources oh-my-zsh. Without this, omz is
+        # installed on disk but zsh sessions never load it, and `forge zsh doctor`
+        # reports "Oh My Zsh not found" despite the directory existing.
+        Ensure-ZshrcSourcesOmz | Out-Null
+        # Also resolve forge doctor's "No editor configured" warning if possible.
+        $ed = Ensure-EditorEnv
+        if ($ed) {
+            Write-Host ("  [ok] EDITOR/FORGE_EDITOR -> {0}" -f $ed) -ForegroundColor Green
+        }
+    }
+
+    Write-Host ''
+    Write-Host '  Done.' -ForegroundColor Green
+    Write-Host '  Next steps (on Windows there is no `exec zsh` -- you spawn a subshell):' -ForegroundColor Cyan
+    Write-Host '    forge zsh setup       # interactive -- answer Y when asked about icons' -ForegroundColor White
+    Write-Host '    8sync forge enter     # jump into zsh now  (exit to return to pwsh)' -ForegroundColor White
+    Write-Host '    8sync forge zsh-usage # full guide for daily use' -ForegroundColor White
+    Write-Host ''
+}
+
+# ---------------------------------------------------------------------------
+#  Forge -> GSD OAuth sync
+#  Forge's ~/.forge/.credentials.json holds a working Anthropic OAuth token.
+#  We expose it to GSD via:
+#    1. $env:FORGE_ANTHROPIC_OAUTH_TOKEN (refreshed every shell startup)
+#    2. ~/.gsd/agent/models.json custom provider "anthropic-forge" with
+#         api:           anthropic-messages
+#         authHeader:    true   -> Authorization: Bearer <token>
+#         apiKey:        FORGE_ANTHROPIC_OAUTH_TOKEN  (env var reference)
+#         headers:       anthropic-beta + anthropic-version (match Forge/CC)
+#  Ref: https://github.com/gsd-build/gsd-2/blob/main/docs/user-docs/custom-models.md
+# ---------------------------------------------------------------------------
+
+function Get-ForgeCredentialsPath {
+    $p = Join-Path $HOME '.forge\.credentials.json'
+    if (Test-Path $p) { return $p }
+    return $null
+}
+
+function Read-ForgeAnthropicCreds {
+    $path = Get-ForgeCredentialsPath
+    if (-not $path) { return $null }
+    try {
+        $raw = Get-Content $path -Raw -Encoding UTF8
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Host ("  [warn] could not parse {0}: {1}" -f $path, $_.Exception.Message) -ForegroundColor DarkYellow
+        return $null
+    }
+
+    # Forge stores credentials as an array keyed by id. "claude_code" = Anthropic OAuth.
+    $entry = $parsed | Where-Object { $_.id -eq 'claude_code' } | Select-Object -First 1
+    if (-not $entry) { return $null }
+
+    $oauth = $entry.auth_details.o_auth
+    if (-not $oauth -or -not $oauth.tokens) { return $null }
+
+    $expiresAt = $null
+    if ($oauth.tokens.expires_at) {
+        try { $expiresAt = [datetime]::Parse($oauth.tokens.expires_at).ToUniversalTime() } catch {}
+    }
+
+    return [pscustomobject]@{
+        AccessToken  = $oauth.tokens.access_token
+        RefreshToken = $oauth.tokens.refresh_token
+        ExpiresAt    = $expiresAt
+        ClientId     = $oauth.config.client_id
+        Scopes       = @($oauth.config.scopes)
+        SourcePath   = $path
+    }
+}
+
+function Sync-ForgeAnthropicEnv {
+    # Silently propagate Forge's current Anthropic OAuth token to $env for GSD.
+    # Safe to call on every shell startup.
+    param([switch]$Quiet)
+
+    $creds = Read-ForgeAnthropicCreds
+    if (-not $creds -or -not $creds.AccessToken) {
+        if (-not $Quiet) {
+            Write-Host '  [info] no Forge Anthropic OAuth token found; run: forge provider login' -ForegroundColor DarkGray
+        }
+        return $null
+    }
+
+    # Current process
+    $env:FORGE_ANTHROPIC_OAUTH_TOKEN = $creds.AccessToken
+    # Persist to User scope so fresh `gsd` processes pick it up without needing the bootstrap
+    try {
+        $existing = [System.Environment]::GetEnvironmentVariable('FORGE_ANTHROPIC_OAUTH_TOKEN', 'User')
+        if ($existing -ne $creds.AccessToken) {
+            [System.Environment]::SetEnvironmentVariable('FORGE_ANTHROPIC_OAUTH_TOKEN', $creds.AccessToken, 'User')
+        }
+    } catch {}
+
+    return $creds
+}
+
+function Get-GsdModelsJsonPath {
+    # Respect GSD_CONFIG_DIR if set; default is ~/.gsd/agent
+    $root = $env:GSD_CONFIG_DIR
+    if (-not $root) { $root = Join-Path $HOME '.gsd\agent' }
+    if (-not (Test-Path $root)) {
+        try { New-Item -ItemType Directory -Path $root -Force | Out-Null } catch {}
+    }
+    return (Join-Path $root 'models.json')
+}
+
+function Write-JsonUtf8NoBom {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)]$Object
+    )
+    $json = $Object | ConvertTo-Json -Depth 12
+    # Normalize line endings + ensure trailing newline
+    $json = ($json -replace "`r`n", "`n").TrimEnd() + "`n"
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($Path, $json, $utf8)
+}
+
+function New-ForgeAnthropicProviderObject {
+    # Returns a PSCustomObject that serializes to the provider shape GSD expects.
+    # Headers match what Forge/Claude Code send to Anthropic Messages API.
+    # Model IDs + capabilities per docs.anthropic.com/en/docs/about-claude/models/overview
+    # as of 2026-04 (Opus 4.7 / Sonnet 4.6 / Haiku 4.5 are current).
+    $models = @(
+        [ordered]@{
+            id            = 'claude-opus-4-7'
+            name          = 'Claude Opus 4.7 (Forge OAuth)'
+            reasoning     = $true                  # adaptive + extended thinking
+            input         = @('text','image')
+            contextWindow = 1000000                # 1M tokens
+            maxTokens     = 128000                 # 128k output
+            cost          = [ordered]@{ input = 5.0; output = 25.0; cacheRead = 0.5; cacheWrite = 6.25 }
+        },
+        [ordered]@{
+            id            = 'claude-sonnet-4-6'
+            name          = 'Claude Sonnet 4.6 (Forge OAuth)'
+            reasoning     = $true
+            input         = @('text','image')
+            contextWindow = 1000000                # 1M tokens
+            maxTokens     = 64000
+            cost          = [ordered]@{ input = 3.0; output = 15.0; cacheRead = 0.3; cacheWrite = 3.75 }
+        },
+        [ordered]@{
+            id            = 'claude-haiku-4-5'
+            name          = 'Claude Haiku 4.5 (Forge OAuth)'
+            reasoning     = $true
+            input         = @('text','image')
+            contextWindow = 200000
+            maxTokens     = 64000
+            cost          = [ordered]@{ input = 1.0; output = 5.0; cacheRead = 0.1; cacheWrite = 1.25 }
+        },
+        # Older snapshots kept for compatibility with existing sessions/scripts.
+        [ordered]@{
+            id            = 'claude-opus-4-6'
+            name          = 'Claude Opus 4.6 (Forge OAuth)'
+            reasoning     = $true
+            input         = @('text','image')
+            contextWindow = 200000
+            maxTokens     = 32000
+            cost          = [ordered]@{ input = 5.0; output = 25.0; cacheRead = 0.5; cacheWrite = 6.25 }
+        },
+        [ordered]@{
+            id            = 'claude-sonnet-4-5'
+            name          = 'Claude Sonnet 4.5 (Forge OAuth)'
+            reasoning     = $true
+            input         = @('text','image')
+            contextWindow = 200000
+            maxTokens     = 64000
+            cost          = [ordered]@{ input = 3.0; output = 15.0; cacheRead = 0.3; cacheWrite = 3.75 }
+        }
+    )
+
+    return [ordered]@{
+        baseUrl    = 'https://api.anthropic.com/v1'
+        api        = 'anthropic-messages'
+        apiKey     = 'FORGE_ANTHROPIC_OAUTH_TOKEN'   # env var reference -- GSD resolves at runtime
+        authHeader = $true                            # -> Authorization: Bearer <token>
+        headers    = [ordered]@{
+            'anthropic-beta'    = 'oauth-2025-04-20,claude-code-20250219'
+            'anthropic-version' = '2023-06-01'
+        }
+        models     = $models
+    }
+}
+
+function Invoke-ForgeSyncToGsd {
+    param(
+        [switch]$DryRun,
+        [string]$Name = 'anthropic-forge'
+    )
+
+    Write-Host ''
+    Write-Host '  FORGE -> GSD -- sync Anthropic OAuth as custom provider' -ForegroundColor Cyan
+    Write-Host '  Ref: gsd-build/gsd-2/docs/user-docs/custom-models.md' -ForegroundColor DarkGray
+    Write-Host ''
+
+    # 1. Read Forge credentials
+    $creds = Read-ForgeAnthropicCreds
+    if (-not $creds -or -not $creds.AccessToken) {
+        Write-Host '  [error] no Forge Anthropic OAuth token found.' -ForegroundColor Red
+        Write-Host '  Run: forge provider login   (select Claude)' -ForegroundColor White
+        Write-Host ''
+        return
+    }
+
+    $token = $creds.AccessToken
+    $preview = if ($token.Length -gt 24) { $token.Substring(0,12) + '...' + $token.Substring($token.Length-8) } else { '***' }
+    Write-Host ("  [ok] Forge token:   {0}" -f $preview) -ForegroundColor Green
+    Write-Host ("       client_id:    {0}" -f $creds.ClientId) -ForegroundColor DarkGray
+    Write-Host ("       scopes:       {0}" -f ($creds.Scopes -join ' ')) -ForegroundColor DarkGray
+    if ($creds.ExpiresAt) {
+        $now = [datetime]::UtcNow
+        $remaining = $creds.ExpiresAt - $now
+        $color = if ($remaining.TotalMinutes -lt 10) { 'Red' } elseif ($remaining.TotalMinutes -lt 60) { 'DarkYellow' } else { 'Green' }
+        $humans = if ($remaining.TotalMinutes -lt 0) { 'EXPIRED' }
+                  elseif ($remaining.TotalHours -ge 1) { ('{0:F1}h left' -f $remaining.TotalHours) }
+                  else { ('{0:F0}min left' -f $remaining.TotalMinutes) }
+        Write-Host ("       expires:      {0} UTC ({1})" -f $creds.ExpiresAt.ToString('yyyy-MM-dd HH:mm:ss'), $humans) -ForegroundColor $color
+    }
+
+    # 2. Propagate to env
+    Write-Host ''
+    Write-Host '  [1/2] Environment variable' -ForegroundColor Cyan
+    if ($DryRun) {
+        Write-Host '  [dry-run] would set $env:FORGE_ANTHROPIC_OAUTH_TOKEN (Process + User scope)' -ForegroundColor DarkYellow
+    } else {
+        $env:FORGE_ANTHROPIC_OAUTH_TOKEN = $token
+        try {
+            [System.Environment]::SetEnvironmentVariable('FORGE_ANTHROPIC_OAUTH_TOKEN', $token, 'User')
+            Write-Host '  [ok] FORGE_ANTHROPIC_OAUTH_TOKEN set (Process + User)' -ForegroundColor Green
+        } catch {
+            Write-Host ("  [warn] could not persist to User scope: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            Write-Host '        (Process scope still set; ok for this session)' -ForegroundColor DarkGray
+        }
+    }
+
+    # 3. Merge into models.json
+    Write-Host ''
+    Write-Host '  [2/2] ~/.gsd/agent/models.json' -ForegroundColor Cyan
+    $path = Get-GsdModelsJsonPath
+
+    $root = $null
+    if (Test-Path $path) {
+        try {
+            $raw = Get-Content $path -Raw -Encoding UTF8
+            if ($raw.Trim()) {
+                $root = $raw | ConvertFrom-Json -ErrorAction Stop
+            }
+        } catch {
+            Write-Host ("  [warn] existing models.json failed to parse: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            Write-Host '        A backup will be created before overwrite.' -ForegroundColor DarkGray
+            if (-not $DryRun) {
+                $backup = $path + '.bak-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+                try { Copy-Item $path $backup -Force } catch {}
+                Write-Host ("       backup: {0}" -f $backup) -ForegroundColor DarkGray
+            }
+            $root = $null
+        }
+    }
+
+    # Convert parsed JSON to an ordered hashtable tree so we can merge cleanly
+    # PSCustomObject -> hashtable so we can add/replace keys
+    $providersHash = [ordered]@{}
+    if ($root -and $root.providers) {
+        foreach ($prop in $root.providers.PSObject.Properties) {
+            $providersHash[$prop.Name] = $prop.Value
+        }
+    }
+
+    $providerObj = New-ForgeAnthropicProviderObject
+    $providersHash[$Name] = $providerObj
+
+    # Preserve any other top-level keys (future-proof)
+    $out = [ordered]@{}
+    if ($root) {
+        foreach ($prop in $root.PSObject.Properties) {
+            if ($prop.Name -ne 'providers') { $out[$prop.Name] = $prop.Value }
+        }
+    }
+    $out['providers'] = $providersHash
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] would write: {0}" -f $path) -ForegroundColor DarkYellow
+        Write-Host '  [dry-run] provider block preview:' -ForegroundColor DarkYellow
+        $preview = [ordered]@{ providers = [ordered]@{ $Name = $providerObj } } | ConvertTo-Json -Depth 10
+        $preview -split "`n" | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor DarkGray }
+    } else {
+        try {
+            Write-JsonUtf8NoBom -Path $path -Object $out
+            Write-Host ("  [ok] wrote {0}" -f $path) -ForegroundColor Green
+            Write-Host ("       provider key: {0}" -f $Name) -ForegroundColor DarkGray
+        } catch {
+            Write-Host ("  [error] write failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            return
+        }
+    }
+
+    Write-Host ''
+    Write-Host '  Use in GSD:' -ForegroundColor DarkGray
+    Write-Host ('    /model {0}/claude-opus-4-7'   -f $Name) -ForegroundColor White
+    Write-Host ('    /model {0}/claude-sonnet-4-6' -f $Name) -ForegroundColor White
+    Write-Host ('    /model {0}/claude-haiku-4-5'  -f $Name) -ForegroundColor White
+    Write-Host '  Token auto-refreshes every new shell (bootstrap re-reads Forge creds).' -ForegroundColor DarkGray
+    Write-Host '  Re-run `8sync forge sync-to-gsd` after `forge provider login` to refresh now.' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Show-ForgeHelp {
     Write-Host ''
     Write-HintSection 'FORGE -- ForgeCode AI pair programmer (tailcallhq/forgecode)'
     Write-HintRow '8sync forge install'           'Download + install forge binary via forgecode.dev/cli'
+    Write-HintRow '8sync forge install --with-zsh' 'Install forge + auto-install MSYS2 zsh + oh-my-zsh'
     Write-HintRow '8sync forge install --force'   'Reinstall even if already present (update)'
     Write-HintRow '8sync forge install --dry-run' 'Preview what the installer would do'
+    Write-HintRow '8sync forge zsh'               'Install MSYS2 + zsh + oh-my-zsh (Windows zsh prerequisite)'
+    Write-HintRow '8sync forge zsh --skip-omz'    'Install zsh only, skip oh-my-zsh'
+    Write-HintRow '8sync forge zsh --dry-run'     'Preview zsh install steps'
+    Write-HintRow '8sync forge enter'             'Spawn an interactive zsh login subshell (exit to return)'
+    Write-HintRow '8sync forge zsh-usage'         'How to use zsh on Windows (no exec zsh -- spawn subshell)'
     Write-HintRow '8sync forge status'            'Show installed version, binary path, dependency check'
     Write-HintRow '8sync forge login'             'Run: forge provider login (configure AI provider)'
+    Write-HintRow '8sync forge sync-to-gsd'      'Sync Forge Anthropic OAuth -> GSD custom provider (models.json)'
+    Write-HintRow '8sync forge sync-to-gsd --dry-run' 'Preview models.json changes without writing'
     Write-HintRow '8sync forge uninstall'         'Remove the forge binary'
     Write-HintRow '8sync forge uninstall --dry-run' 'Preview removal'
     Write-Host ''
@@ -335,8 +1184,10 @@ function Invoke-ForgeCommand {
         [string[]]$Rest
     )
 
-    $dryRun = $Rest -contains '--dry-run'
-    $force  = $Rest -contains '--force'
+    $dryRun   = $Rest -contains '--dry-run'
+    $force    = $Rest -contains '--force'
+    $withZsh  = $Rest -contains '--with-zsh'
+    $skipOmz  = $Rest -contains '--skip-omz'
 
     $sub = 'help'
     if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') {
@@ -344,8 +1195,29 @@ function Invoke-ForgeCommand {
     }
 
     switch ($sub) {
-        'install'   { Invoke-ForgeInstall -DryRun:$dryRun -Force:$force }
+        'install'   {
+            Invoke-ForgeInstall -DryRun:$dryRun -Force:$force
+            if ($withZsh) {
+                Write-Host '  --with-zsh: chaining zsh bootstrap...' -ForegroundColor Cyan
+                Invoke-ForgeZshInstall -DryRun:$dryRun -Force:$force -SkipOmz:$skipOmz
+            }
+        }
         'update'    { Invoke-ForgeInstall -DryRun:$dryRun -Force }
+        'zsh'       { Invoke-ForgeZshInstall -DryRun:$dryRun -Force:$force -SkipOmz:$skipOmz }
+        'enter'       { Invoke-ForgeEnterZsh }
+        'zsh-enter'   { Invoke-ForgeEnterZsh }
+        'zsh-usage'   { Show-ForgeZshUsage }
+        'usage'       { Show-ForgeZshUsage }
+        'sync-to-gsd' {
+            $nameIdx = [Array]::IndexOf($Rest, '--name')
+            $customName = if ($nameIdx -ge 0 -and $nameIdx + 1 -lt $Rest.Count) { $Rest[$nameIdx + 1] } else { 'anthropic-forge' }
+            Invoke-ForgeSyncToGsd -DryRun:$dryRun -Name $customName
+        }
+        'sync'        {
+            $nameIdx = [Array]::IndexOf($Rest, '--name')
+            $customName = if ($nameIdx -ge 0 -and $nameIdx + 1 -lt $Rest.Count) { $Rest[$nameIdx + 1] } else { 'anthropic-forge' }
+            Invoke-ForgeSyncToGsd -DryRun:$dryRun -Name $customName
+        }
         'status'    { Invoke-ForgeStatus }
         'login'     { Invoke-ForgeProvider -Rest ($Rest | Select-Object -Skip 1) }
         'provider'  { Invoke-ForgeProvider -Rest ($Rest | Select-Object -Skip 1) }
@@ -359,3 +1231,26 @@ function Invoke-ForgeCommand {
 # Auto-ensure HOME + UTF-8 console on module load so forge works immediately
 Ensure-ForgeHomeEnv
 Ensure-ForgeConsoleUtf8
+# Auto-wire msys2\usr\bin into process PATH if zsh is installed but not findable.
+# This handles the case where User PATH was updated in a previous session but
+# the current shell inherited a stale PATH from its parent.
+function Ensure-ZshInPath {
+    # Fast path: zsh already on PATH
+    if (Get-Command zsh -ErrorAction SilentlyContinue) { return }
+    # Check if msys2 has a zsh we can reach
+    $bash = Get-MsysBashPath
+    if (-not $bash) { return }
+    $binDir = Split-Path $bash -Parent
+    $zshExe = Join-Path $binDir 'zsh.exe'
+    if (-not (Test-Path $zshExe)) { return }
+    # Append to process PATH so `forge zsh setup`, `where zsh`, etc. find it.
+    if ($env:PATH -notmatch [regex]::Escape($binDir)) {
+        $env:PATH = $env:PATH.TrimEnd(';') + ';' + $binDir
+    }
+}
+Ensure-ZshInPath
+# Auto-set EDITOR/FORGE_EDITOR for forge zsh doctor (quiet; picks hx > nvim > vim > nano)
+try { Ensure-EditorEnv | Out-Null } catch {}
+# Auto-refresh Forge Anthropic OAuth token into $env for GSD custom provider
+# Quiet mode: silent if no Forge creds present (nothing to sync).
+try { Sync-ForgeAnthropicEnv -Quiet | Out-Null } catch {}
