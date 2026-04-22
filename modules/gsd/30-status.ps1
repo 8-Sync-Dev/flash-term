@@ -40,9 +40,17 @@ function Invoke-GsdStatus {
         default         { 'Red' }
     }
     $settingsColor = if ($patch.Settings -eq 'ok') { 'Green' } elseif ($patch.Settings -eq 'missing') { 'DarkYellow' } else { 'Red' }
+    $oauthScopeColor = switch ($patch.OAuthScope) {
+        'patched'     { 'Green' }
+        'scope-only'  { 'Yellow' }
+        'needs-patch' { 'Red' }
+        'missing'     { 'DarkYellow' }
+        default       { 'DarkYellow' }
+    }
 
     Write-Host '  Runtime patch status:' -ForegroundColor Cyan
     Write-Host ("    Anthropic OAuth prompt fix   {0}" -f $patch.ProviderPatch) -ForegroundColor $providerPatchColor
+    Write-Host ("    Anthropic OAuth scope        {0}" -f $patch.OAuthScope) -ForegroundColor $oauthScopeColor
     Write-Host ("    Anthropic UI label          {0}" -f $patch.UiLabel) -ForegroundColor $labelColor
     Write-Host ("    settings.json               {0}" -f $patch.Settings) -ForegroundColor $settingsColor
     if ($patch.DefaultProvider -or $patch.DefaultModel) {

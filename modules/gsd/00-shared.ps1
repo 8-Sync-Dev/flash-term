@@ -534,6 +534,33 @@ function Get-GsdRuntimePatchStatus {
         }
     }
 
+    # Check OAuth scope/endpoint patch status
+    $oauthScopeStatus = 'unknown'
+    $oauthPath = Join-Path (Resolve-GsdAgentDir) 'node_modules\gsd-pi\packages\pi-ai\dist\utils\oauth\anthropic.js'
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot) {
+        $localOauth = Join-Path $localRoot 'packages\pi-ai\dist\utils\oauth\anthropic.js'
+        if (Test-Path $localOauth) { $oauthPath = $localOauth }
+    }
+    if (Test-Path $oauthPath) {
+        try {
+            $oauthRaw = Get-Content $oauthPath -Raw -Encoding UTF8
+            $hasScope = $oauthRaw -match 'user:sessions:claude_code'
+            $hasEndpoint = $oauthRaw -match 'console\.anthropic\.com/v1/oauth/token'
+            if ($hasScope -and $hasEndpoint) {
+                $oauthScopeStatus = 'patched'
+            } elseif ($hasScope) {
+                $oauthScopeStatus = 'scope-only'
+            } else {
+                $oauthScopeStatus = 'needs-patch'
+            }
+        } catch {
+            $oauthScopeStatus = 'error'
+        }
+    } else {
+        $oauthScopeStatus = 'missing'
+    }
+
     $nativeClaudePath = Resolve-GsdClaudeCodeNativePath
     $shimClaudePath = Get-GsdClaudeCommandPath
     $claudePathStatus = if (-not [string]::IsNullOrWhiteSpace($nativeClaudePath)) {
@@ -546,6 +573,7 @@ function Get-GsdRuntimePatchStatus {
 
     return [pscustomobject]@{
         ProviderPatch = $providerStatus
+        OAuthScope    = $oauthScopeStatus
         UiLabel       = $labelStatus
         Settings      = $settingsStatus
         DefaultProvider = $defaultProvider
@@ -688,6 +716,54 @@ function Invoke-GsdRuntimePatch {
             }
         } catch {
             Write-Host ("  [warn]    Failed to patch sdk.js Claude provider options: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    # --- Anthropic OAuth scope + endpoint patch ---
+    # GSD's default OAuth config is missing the user:sessions:claude_code scope
+    # and uses platform.claude.com instead of console.anthropic.com.
+    # Without this scope, tokens get routed to "extra usage" billing instead
+    # of the Claude Max subscription quota (same client_id, different scope).
+    $oauthPath = Join-Path (Resolve-GsdAgentDir) 'node_modules\gsd-pi\packages\pi-ai\dist\utils\oauth\anthropic.js'
+    # Also check local-project layout
+    $localRoot = Resolve-GsdPreferredRuntimeRoot
+    if ($localRoot) {
+        $localOauth = Join-Path $localRoot 'packages\pi-ai\dist\utils\oauth\anthropic.js'
+        if (Test-Path $localOauth) { $oauthPath = $localOauth }
+    }
+    if (Test-Path $oauthPath) {
+        try {
+            $oauthRaw = (Get-Content $oauthPath -Raw -Encoding UTF8) -replace "`r`n", "`n"
+            $needsPatch = $false
+            $updated = $oauthRaw
+
+            # Fix TOKEN_URL
+            if ($updated -match 'platform\.claude\.com/v1/oauth/token') {
+                $updated = $updated -replace 'platform\.claude\.com/v1/oauth/token', 'console.anthropic.com/v1/oauth/token'
+                $needsPatch = $true
+            }
+            # Fix REDIRECT_URI
+            if ($updated -match 'platform\.claude\.com/oauth/code/callback') {
+                $updated = $updated -replace 'platform\.claude\.com/oauth/code/callback', 'console.anthropic.com/oauth/code/callback'
+                $needsPatch = $true
+            }
+            # Fix SCOPES - add user:sessions:claude_code if missing
+            if ($updated -match 'user:inference"' -and $updated -notmatch 'user:sessions:claude_code') {
+                $updated = $updated -replace 'user:inference"', 'user:inference user:sessions:claude_code"'
+                $needsPatch = $true
+            }
+
+            if (-not $needsPatch) {
+                Write-Host '  [ok]      Anthropic OAuth scope + endpoint already patched' -ForegroundColor Green
+            } elseif ($DryRun) {
+                Write-Host ("  [dry-run] patch OAuth scope/endpoint {0}" -f $oauthPath) -ForegroundColor DarkYellow
+            } else {
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                [System.IO.File]::WriteAllText($oauthPath, $updated, $utf8NoBom)
+                Write-Host '  [ok]      Patched Anthropic OAuth (scope + endpoint -> console.anthropic.com)' -ForegroundColor Green
+            }
+        } catch {
+            Write-Host ("  [warn]    Failed to patch Anthropic OAuth scope: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
         }
     }
 
