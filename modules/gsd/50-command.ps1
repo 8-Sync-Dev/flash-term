@@ -178,6 +178,23 @@ function Invoke-GsdFix {
     Invoke-GsdAutoExtensionLoaderPatch -DryRun:$DryRun
     Invoke-GsdRuntimePatch -DryRun:$DryRun -Stable:$Stable
 
+    # 2.5) Claude Code native path + OAuth routing + global Claude settings
+    $claudeBundle = Invoke-GsdClaudeFix -DryRun:$DryRun
+    if ($claudeBundle.ClaudePath.Status -in @('configured','rewritten','already-correct')) {
+        Write-Host ("  [claude] native binary {0}: {1}" -f $claudeBundle.ClaudePath.Status, $claudeBundle.ClaudePath.NativePath) -ForegroundColor Green
+    } elseif ($claudeBundle.ClaudePath.Status -eq 'native-missing') {
+        Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
+    }
+    if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
+        Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+    }
+    if ($claudeBundle.GlobalClaude -and $claudeBundle.GlobalClaude.Status -eq 'written') {
+        Write-Host ("  [claude] wrote global settings: {0}" -f $claudeBundle.GlobalClaude.Path) -ForegroundColor Green
+    }
+    if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
+        Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+    }
+
     # 3) Model registry patch (add new models without upgrading gsd-pi)
     Invoke-GsdModelRegistryPatch -DryRun:$DryRun
 
@@ -376,6 +393,27 @@ function Invoke-GsdCommand {
             }
         }
         'status' { Invoke-GsdStatus }
+        'claude-fix' {
+            $prefsPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
+            $claudeBundle = Invoke-GsdClaudeFix -DryRun:$dryRun -PreferencesPath $prefsPath
+            Write-Host ''
+            Write-Host '  [gsd] Claude fix' -ForegroundColor Cyan
+            if ($claudeBundle.ClaudePath.Status -in @('configured','rewritten','already-correct')) {
+                Write-Host ("  [claude] native binary {0}: {1}" -f $claudeBundle.ClaudePath.Status, $claudeBundle.ClaudePath.NativePath) -ForegroundColor Green
+            } elseif ($claudeBundle.ClaudePath.Status -eq 'native-missing') {
+                Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
+            }
+            if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
+                Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+            }
+            if ($claudeBundle.GlobalClaude -and $claudeBundle.GlobalClaude.Status -eq 'written') {
+                Write-Host ("  [claude] wrote global settings: {0}" -f $claudeBundle.GlobalClaude.Path) -ForegroundColor Green
+            }
+            if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
+                Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+            }
+            Write-Host ''
+        }
         'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force -Refresh:($Rest -contains '--refresh') -AllowGlobal:$allowGlobal }
         'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force -AllowGlobal:$allowGlobal | Out-Null }
         'local'  { Invoke-GsdLocalCommand -Rest ($Rest | Select-Object -Skip 1) }

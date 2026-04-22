@@ -379,6 +379,105 @@ function Normalize-GsdSettingsForClaudeCodeOAuth {
     return [pscustomobject]@{ Status='rewritten'; Changed=$true }
 }
 
+function Get-GsdClaudeGlobalSettingsPath {
+    return Join-Path $HOME '.claude\settings.json'
+}
+
+function Read-GsdClaudeGlobalSettingsJson {
+    $path = Get-GsdClaudeGlobalSettingsPath
+    if (-not (Test-Path $path)) { return $null }
+    try { Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
+    catch { return $null }
+}
+
+function Write-GsdClaudeGlobalSettingsJson {
+    param([object]$Data)
+    $path = Get-GsdClaudeGlobalSettingsPath
+    $dir = Split-Path $path -Parent
+    if (-not (Test-Path $dir)) { $null = New-Item -Path $dir -ItemType Directory -Force }
+    $Data | ConvertTo-Json -Depth 20 | Set-Content $path -Encoding UTF8
+}
+
+function Ensure-GsdClaudeGlobalSettings {
+    param([switch]$DryRun)
+
+    $settings = Read-GsdClaudeGlobalSettingsJson
+    if ($null -eq $settings) { $settings = [pscustomobject]@{} }
+    $data = [ordered]@{}
+    foreach ($prop in $settings.PSObject.Properties) { $data[$prop.Name] = $prop.Value }
+
+    if (-not $data.Contains('env') -or $null -eq $data['env']) {
+        $data['env'] = [ordered]@{}
+    }
+
+    $envMap = [ordered]@{}
+    if ($data['env'] -is [System.Collections.IDictionary]) {
+        foreach ($k in $data['env'].Keys) { $envMap[$k] = $data['env'][$k] }
+    } else {
+        foreach ($prop in $data['env'].PSObject.Properties) { $envMap[$prop.Name] = $prop.Value }
+    }
+
+    $desiredEnv = [ordered]@{
+        'CLAUDE_CODE_DISABLE_1M_CONTEXT' = '1'
+        'DISABLE_TELEMETRY' = '1'
+        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' = '1'
+        'CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING' = '1'
+    }
+
+    $changed = $false
+    foreach ($k in $desiredEnv.Keys) {
+        if (-not $envMap.Contains($k) -or [string]$envMap[$k] -ne $desiredEnv[$k]) {
+            $envMap[$k] = $desiredEnv[$k]
+            $changed = $true
+        }
+    }
+
+    if (-not $data.Contains('autoCompact') -or $data['autoCompact'] -ne $true) {
+        $data['autoCompact'] = $true
+        $changed = $true
+    }
+
+    $data['env'] = $envMap
+
+    if (-not $changed) {
+        return [pscustomobject]@{ Status='already-correct'; Changed=$false; Path=(Get-GsdClaudeGlobalSettingsPath) }
+    }
+
+    if (-not $DryRun) {
+        Write-GsdClaudeGlobalSettingsJson -Data $data
+    }
+
+    return [pscustomobject]@{ Status='written'; Changed=$true; Path=(Get-GsdClaudeGlobalSettingsPath) }
+}
+
+function Invoke-GsdClaudeFix {
+    param(
+        [switch]$DryRun,
+        [string]$PreferencesPath = ''
+    )
+
+    $claudeFix = Ensure-GsdClaudeCodeExecutableSetting -DryRun:$DryRun
+    $settingsFix = Normalize-GsdSettingsForClaudeCodeOAuth -DryRun:$DryRun
+    $globalClaudeFix = Ensure-GsdClaudeGlobalSettings -DryRun:$DryRun
+
+    $routeFix = $null
+    if (-not [string]::IsNullOrWhiteSpace($PreferencesPath)) {
+        $routeFix = Normalize-GsdPreferencesForClaudeCodeOAuth -Path $PreferencesPath -DryRun:$DryRun
+    } else {
+        $defaultPrefs = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
+        if (Test-Path $defaultPrefs) {
+            $routeFix = Normalize-GsdPreferencesForClaudeCodeOAuth -Path $defaultPrefs -DryRun:$DryRun
+        }
+    }
+
+    return [pscustomobject]@{
+        ClaudePath = $claudeFix
+        Settings   = $settingsFix
+        GlobalClaude = $globalClaudeFix
+        Preferences = $routeFix
+    }
+}
+
 function Get-GsdRuntimePatchStatus {
     $providerPath = Get-GsdAnthropicSharedProviderPath
     $labelPath = Get-GsdAnthropicUiLabelPath

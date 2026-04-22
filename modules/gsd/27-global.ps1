@@ -499,6 +499,20 @@ function Invoke-GsdGlobalPromote {
         }
     }
 
+    $claudeBundle = Invoke-GsdClaudeFix
+    if ($claudeBundle.ClaudePath.Status -in @('configured','rewritten','already-correct')) {
+        Write-Host ("  [claude]  native binary {0}: {1}" -f $claudeBundle.ClaudePath.Status, $claudeBundle.ClaudePath.NativePath) -ForegroundColor Green
+    }
+    if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
+        Write-Host '  [claude]  rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+    }
+    if ($claudeBundle.GlobalClaude -and $claudeBundle.GlobalClaude.Status -eq 'written') {
+        Write-Host ("  [claude]  wrote global settings: {0}" -f $claudeBundle.GlobalClaude.Path) -ForegroundColor Green
+    }
+    if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
+        Write-Host ("  [claude]  rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+    }
+
     Write-Host ''
     Write-Host '  Verify' -ForegroundColor Yellow
     Write-Host '    gsd --version     # should show new version' -ForegroundColor DarkGray
@@ -584,7 +598,7 @@ function Show-GsdGlobalHelp {
     Write-Host '    8sync gsd global                     Status: current version + backups + sources' -ForegroundColor White
     Write-Host '    8sync gsd global status              Same as above' -ForegroundColor White
     Write-Host '    8sync gsd global promote             Auto-detect source, back up, promote' -ForegroundColor White
-    Write-Host '    8sync gsd global promote --version latest     Use wezterm/test/latest' -ForegroundColor White
+    Write-Host '    8sync gsd global promote --version latest     Use wezterm/test/latest + auto-fix Claude Code path/settings' -ForegroundColor White
     Write-Host '    8sync gsd global promote --version baseline   Use wezterm/test/baseline' -ForegroundColor White
     Write-Host '    8sync gsd global promote --version 2.69.0     Specific baseline-X.Y.Z' -ForegroundColor White
     Write-Host '    8sync gsd global promote --from <path>        Explicit source path' -ForegroundColor White

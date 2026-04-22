@@ -234,8 +234,10 @@ function Show-GsdHelp {
     Write-Host '        List all providers grouped by type and show current status.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd status' -ForegroundColor White
     Write-Host '        Show active files, auth providers, key status, and missing setup.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd claude-fix [--dry-run]' -ForegroundColor White
+    Write-Host '        Repair Claude Code integration: set native binary path, route Anthropic OAuth to claude-code, and write ~/.claude/settings.json toggles.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix [--dry-run]' -ForegroundColor White
-    Write-Host '        Fast repair: restore ~/.gsd/agent/node_modules and ~/.gsd/resource-loader.js, patch runtime, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
+    Write-Host '        Fast repair: restore ~/.gsd/agent/node_modules and ~/.gsd/resource-loader.js, patch runtime, run Claude Code fix, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --refresh' -ForegroundColor White
     Write-Host '        Refresh the preferred runtime. Local project runtime is used first; global install stays blocked unless --allow-global is provided.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd fix --stable' -ForegroundColor White
