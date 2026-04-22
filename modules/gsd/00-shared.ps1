@@ -296,24 +296,16 @@ function Normalize-GsdPreferencesForClaudeCodeOAuth {
         return [pscustomobject]@{ Status='missing'; Changed=$false; Path=$Path; Replacements=0 }
     }
 
-    $nativePath = Resolve-GsdClaudeCodeNativePath
-    if ([string]::IsNullOrWhiteSpace($nativePath)) {
-        return [pscustomobject]@{ Status='native-missing'; Changed=$false; Path=$Path; Replacements=0 }
-    }
-    if (-not (Test-GsdAnthropicOauthAvailable)) {
-        return [pscustomobject]@{ Status='oauth-missing'; Changed=$false; Path=$Path; Replacements=0 }
-    }
-    if (Test-GsdAnthropicApiKeyConfigured) {
-        return [pscustomobject]@{ Status='api-key-present'; Changed=$false; Path=$Path; Replacements=0 }
-    }
-
+    # Historical cleanup: older wrapper revisions rewrote anthropic/* -> claude-code/*.
+    # GSD 2.76 does not require claude-code as the provider identity, so keep
+    # Anthropic routing and only use Claude Code as a native bridge executable.
     $raw = Get-Content $Path -Raw -Encoding UTF8
     $pairs = [ordered]@{
-        'anthropic/claude-opus-4-7'   = 'claude-code/claude-opus-4-7'
-        'anthropic/claude-sonnet-4-7' = 'claude-code/claude-sonnet-4-7'
-        'anthropic/claude-opus-4-6'   = 'claude-code/claude-opus-4-6'
-        'anthropic/claude-sonnet-4-6' = 'claude-code/claude-sonnet-4-6'
-        'anthropic/claude-haiku-4-5'  = 'claude-code/claude-haiku-4-5'
+        'claude-code/claude-opus-4-7'   = 'anthropic/claude-opus-4-7'
+        'claude-code/claude-sonnet-4-7' = 'anthropic/claude-sonnet-4-7'
+        'claude-code/claude-opus-4-6'   = 'anthropic/claude-opus-4-6'
+        'claude-code/claude-sonnet-4-6' = 'anthropic/claude-sonnet-4-6'
+        'claude-code/claude-haiku-4-5'  = 'anthropic/claude-haiku-4-5'
     }
 
     $updated = $raw
@@ -341,28 +333,17 @@ function Normalize-GsdPreferencesForClaudeCodeOAuth {
 function Normalize-GsdSettingsForClaudeCodeOAuth {
     param([switch]$DryRun)
 
-    $nativePath = Resolve-GsdClaudeCodeNativePath
-    if ([string]::IsNullOrWhiteSpace($nativePath)) {
-        return [pscustomobject]@{ Status='native-missing'; Changed=$false }
-    }
-    if (-not (Test-GsdAnthropicOauthAvailable)) {
-        return [pscustomobject]@{ Status='oauth-missing'; Changed=$false }
-    }
-    if (Test-GsdAnthropicApiKeyConfigured) {
-        return [pscustomobject]@{ Status='api-key-present'; Changed=$false }
-    }
-
     $settings = Read-GsdSettingsJson
     if ($null -eq $settings) {
         return [pscustomobject]@{ Status='settings-missing'; Changed=$false }
     }
 
     $map = @{
-        'anthropic/claude-opus-4-7'   = 'claude-code/claude-opus-4-7'
-        'anthropic/claude-sonnet-4-7' = 'claude-code/claude-sonnet-4-7'
-        'anthropic/claude-opus-4-6'   = 'claude-code/claude-opus-4-6'
-        'anthropic/claude-sonnet-4-6' = 'claude-code/claude-sonnet-4-6'
-        'anthropic/claude-haiku-4-5'  = 'claude-code/claude-haiku-4-5'
+        'claude-code/claude-opus-4-7'   = 'anthropic/claude-opus-4-7'
+        'claude-code/claude-sonnet-4-7' = 'anthropic/claude-sonnet-4-7'
+        'claude-code/claude-opus-4-6'   = 'anthropic/claude-opus-4-6'
+        'claude-code/claude-sonnet-4-6' = 'anthropic/claude-sonnet-4-6'
+        'claude-code/claude-haiku-4-5'  = 'anthropic/claude-haiku-4-5'
     }
 
     $changed = $false
@@ -371,8 +352,8 @@ function Normalize-GsdSettingsForClaudeCodeOAuth {
         $data[$prop.Name] = $prop.Value
     }
 
-    if ($data.Contains('defaultProvider') -and [string]$data['defaultProvider'] -eq 'anthropic') {
-        $data['defaultProvider'] = 'claude-code'
+    if ($data.Contains('defaultProvider') -and [string]$data['defaultProvider'] -eq 'claude-code') {
+        $data['defaultProvider'] = 'anthropic'
         $changed = $true
     }
     if ($data.Contains('defaultModel')) {
@@ -474,6 +455,12 @@ function Invoke-GsdClaudeFix {
     $settingsFix = Normalize-GsdSettingsForClaudeCodeOAuth -DryRun:$DryRun
     $globalClaudeFix = Ensure-GsdClaudeGlobalSettings -DryRun:$DryRun
 
+    # Sync Forge's Claude Code OAuth token to ANTHROPIC_API_KEY if no key is set
+    $forgeSync = $null
+    if (-not $DryRun -and -not (Test-GsdAnthropicApiKeyConfigured)) {
+        $forgeSync = Sync-ForgeClaudeCodeToken -Quiet
+    }
+
     $routeFix = $null
     if (-not [string]::IsNullOrWhiteSpace($PreferencesPath)) {
         $routeFix = Normalize-GsdPreferencesForClaudeCodeOAuth -Path $PreferencesPath -DryRun:$DryRun
@@ -488,6 +475,7 @@ function Invoke-GsdClaudeFix {
         ClaudePath = $claudeFix
         Settings   = $settingsFix
         GlobalClaude = $globalClaudeFix
+        ForgeSync  = $forgeSync
         Preferences = $routeFix
     }
 }
@@ -1582,4 +1570,175 @@ function Write-GsdModelsJson {
 
     $path = Get-GsdModelsJsonPath
     $Data | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding UTF8
+}
+
+# =============================================================================
+# Forge Claude Code OAuth token sync
+# Reads the OAuth access_token from Forge's credentials and exports it as
+# ANTHROPIC_API_KEY so gsd-pi's anthropic provider (and claude-code-cli
+# readiness check) can authenticate without a separate Anthropic API key.
+# =============================================================================
+
+function Get-ForgeCredentialsPath {
+    return Join-Path $HOME '.forge\.credentials.json'
+}
+
+function Read-ForgeClaudeCodeCredentials {
+    $path = Get-ForgeCredentialsPath
+    if (-not (Test-Path $path)) { return $null }
+
+    try {
+        $creds = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        $entry = $creds | Where-Object { $_.id -eq 'claude_code' } | Select-Object -First 1
+        if (-not $entry -or -not $entry.auth_details -or -not $entry.auth_details.o_auth) {
+            return $null
+        }
+
+        $oauth = $entry.auth_details.o_auth
+        return [pscustomobject]@{
+            AccessToken  = [string]$oauth.tokens.access_token
+            RefreshToken = [string]$oauth.tokens.refresh_token
+            ExpiresAt    = [string]$oauth.tokens.expires_at
+            TokenUrl     = [string]$oauth.config.token_url
+            ClientId     = [string]$oauth.config.client_id
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Test-ForgeClaudeCodeTokenExpired {
+    param([Parameter(Mandatory)] [string]$ExpiresAt)
+
+    try {
+        $expiry = [DateTimeOffset]::Parse($ExpiresAt)
+        $now = [DateTimeOffset]::UtcNow
+        # Consider expired if less than 5 minutes remaining
+        return ($expiry.AddMinutes(-5) -le $now)
+    } catch {
+        return $true
+    }
+}
+
+function Invoke-ForgeClaudeCodeTokenRefresh {
+    param(
+        [Parameter(Mandatory)] [string]$RefreshToken,
+        [Parameter(Mandatory)] [string]$TokenUrl,
+        [Parameter(Mandatory)] [string]$ClientId
+    )
+
+    try {
+        $body = @{
+            grant_type    = 'refresh_token'
+            refresh_token = $RefreshToken
+            client_id     = $ClientId
+        }
+
+        $response = Invoke-RestMethod -Uri $TokenUrl -Method Post -Body $body -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop
+
+        if (-not $response.access_token) {
+            return $null
+        }
+
+        return [pscustomobject]@{
+            AccessToken  = [string]$response.access_token
+            RefreshToken = if ($response.refresh_token) { [string]$response.refresh_token } else { $RefreshToken }
+            ExpiresIn    = [int]$response.expires_in
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Save-ForgeClaudeCodeTokens {
+    param(
+        [Parameter(Mandatory)] [string]$AccessToken,
+        [Parameter(Mandatory)] [string]$RefreshToken,
+        [Parameter(Mandatory)] [int]$ExpiresIn
+    )
+
+    $path = Get-ForgeCredentialsPath
+    if (-not (Test-Path $path)) { return }
+
+    try {
+        $raw = Get-Content $path -Raw -Encoding UTF8
+        $creds = $raw | ConvertFrom-Json -ErrorAction Stop
+
+        $expiresAt = [DateTimeOffset]::UtcNow.AddSeconds($ExpiresIn).ToString('o')
+
+        for ($i = 0; $i -lt $creds.Count; $i++) {
+            if ($creds[$i].id -eq 'claude_code') {
+                $creds[$i].auth_details.o_auth.tokens.access_token = $AccessToken
+                $creds[$i].auth_details.o_auth.tokens.refresh_token = $RefreshToken
+                $creds[$i].auth_details.o_auth.tokens.expires_at = $expiresAt
+                break
+            }
+        }
+
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($path, ($creds | ConvertTo-Json -Depth 10), $utf8NoBom)
+    } catch {
+        # Silently fail -- credential write is best-effort
+    }
+}
+
+function Sync-ForgeClaudeCodeToken {
+    <#
+    .SYNOPSIS
+    Reads Forge's Claude Code OAuth token and exports as ANTHROPIC_API_KEY.
+    Refreshes the token automatically if expired. Returns status object.
+    #>
+    param([switch]$Quiet)
+
+    $cred = Read-ForgeClaudeCodeCredentials
+    if (-not $cred -or [string]::IsNullOrWhiteSpace($cred.AccessToken)) {
+        if (-not $Quiet) {
+            Write-Host '  [forge-sync] No Claude Code OAuth credentials found in ~/.forge/.credentials.json' -ForegroundColor DarkYellow
+        }
+        return [pscustomobject]@{ Status='no-credentials'; Synced=$false }
+    }
+
+    $token = $cred.AccessToken
+    $refreshed = $false
+
+    # Check expiry and refresh if needed
+    if (-not [string]::IsNullOrWhiteSpace($cred.ExpiresAt) -and (Test-ForgeClaudeCodeTokenExpired -ExpiresAt $cred.ExpiresAt)) {
+        if (-not $Quiet) {
+            Write-Host '  [forge-sync] Token expired, refreshing...' -ForegroundColor Yellow
+        }
+
+        $refreshResult = Invoke-ForgeClaudeCodeTokenRefresh `
+            -RefreshToken $cred.RefreshToken `
+            -TokenUrl $cred.TokenUrl `
+            -ClientId $cred.ClientId
+
+        if ($refreshResult) {
+            $token = $refreshResult.AccessToken
+            $refreshed = $true
+
+            # Persist refreshed tokens back to Forge's credential store
+            Save-ForgeClaudeCodeTokens `
+                -AccessToken $refreshResult.AccessToken `
+                -RefreshToken $refreshResult.RefreshToken `
+                -ExpiresIn $refreshResult.ExpiresIn
+
+            if (-not $Quiet) {
+                Write-Host '  [forge-sync] Token refreshed successfully' -ForegroundColor Green
+            }
+        } else {
+            if (-not $Quiet) {
+                Write-Host '  [forge-sync] Token refresh failed; using existing (possibly expired) token' -ForegroundColor DarkYellow
+            }
+        }
+    }
+
+    # Export to environment for gsd-pi and claude CLI
+    [System.Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $token, 'Process')
+
+    if (-not $Quiet) {
+        $statusLabel = if ($refreshed) { 'refreshed+synced' } else { 'synced' }
+        Write-Host ("  [forge-sync] ANTHROPIC_API_KEY set from Forge Claude Code OAuth ({0})" -f $statusLabel) -ForegroundColor Green
+    }
+
+    return [pscustomobject]@{ Status=if ($refreshed) { 'refreshed' } else { 'synced' }; Synced=$true }
 }

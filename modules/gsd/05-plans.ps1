@@ -27,6 +27,7 @@ function Show-GsdPlans {
     Write-HintRow 'pro'                 'Sonnet plan/completion + kimi+codex planning + groq free'
     Write-HintRow 'normal'              'No Claude cost: gemini plan + glm-5.1 exec + groq'
     Write-HintRow 'claude-max'          '100% Claude: Opus plan + Sonnet exec + Haiku workers'
+    Write-HintRow 'claude-code'         '100% Claude via Forge OAuth: same as claude-max but $0 API cost (subscription)'
     Write-HintRow '  --use-model=opus+sonnet'    'Claude Max without Haiku: Sonnet handles simple tasks too'
     Write-HintRow '  --use-model=sonnet+haiku'   'Claude Max without Opus: budget-friendly, Sonnet plans'
     Write-HintRow '  --use-model=sonnet'          'Sonnet only: single model, simplest behavior'

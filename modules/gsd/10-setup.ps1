@@ -56,10 +56,10 @@ function Build-GsdModelsYaml {
     # Opus NEVER appears by default -- only via --planning=opus or --exec=opus
     $anthropicPlanPrimary = switch ($Tier) {
         'light'  { $null }                              # anthropic skipped as primary
-        default  { 'claude-code/claude-sonnet-4-6' }    # balanced & heavy both use sonnet
+        default  { 'anthropic/claude-sonnet-4-6' }      # balanced & heavy both use sonnet
     }
     $anthropicExecFallback = switch ($Tier) {
-        'heavy'  { 'claude-code/claude-sonnet-4-6' }    # sonnet as exec fallback for heavy
+        'heavy'  { 'anthropic/claude-sonnet-4-6' }      # sonnet as exec fallback for heavy
         'light'  { $null }                              # no anthropic in exec for light
         default  { 'anthropic/claude-haiku-4-5' }       # balanced: haiku as cheap fallback
     }
@@ -408,10 +408,10 @@ function Invoke-GsdSetupFromModel {
             Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
         }
         if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
-            Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+            Write-Host '  [claude] restored settings.json default provider/model back to anthropic' -ForegroundColor Green
         }
         if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
-            Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+            Write-Host ("  [claude] restored {0} route(s) from claude-code/* back to anthropic/* in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
         }
         Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
         Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
@@ -551,10 +551,10 @@ function Invoke-GsdClaudeMaxSetup {
             Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
         }
         if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
-            Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+            Write-Host '  [claude] restored settings.json default provider/model back to anthropic' -ForegroundColor Green
         }
         if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
-            Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+            Write-Host ("  [claude] restored {0} route(s) from claude-code/* back to anthropic/* in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
         }
         Write-Host ("  [ok] {0}" -f $destPath) -ForegroundColor Green
         Write-Host '  Next: 8sync gsd status   /gsd prefs   /model' -ForegroundColor DarkGray
@@ -570,13 +570,13 @@ function Invoke-GsdSetup {
 
     $bundleDir = Resolve-GsdBundleDir
     $gsdHome = Resolve-GsdHome
-    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'claude-codex-review', 'codex-max', 'gemini-max', 'claude-codex-gemini', 'glm-max')
+    $validPlans = @('max', 'pro', 'normal', 'claude-max', 'claude-code', 'claude-codex-review', 'codex-max', 'gemini-max', 'claude-codex-gemini', 'glm-max')
     $planLower = $Plan.ToLowerInvariant().Trim()
 
     if ($planLower -ne '' -and $validPlans -notcontains $planLower) {
         Write-Host ''
         Write-Host ("  [error] Unknown plan '{0}'." -f $Plan) -ForegroundColor Red
-        Write-Host '  Valid: max | pro | normal | claude-max | codex-max | gemini-max | claude-codex-gemini | glm-max' -ForegroundColor DarkGray
+        Write-Host '  Valid: max | pro | normal | claude-max | claude-code | codex-max | gemini-max | claude-codex-gemini | glm-max' -ForegroundColor DarkGray
         Write-Host '  Run "8sync gsd setup --plan" (no value) for full descriptions.' -ForegroundColor DarkGray
         Write-Host ''
         return
@@ -634,10 +634,10 @@ function Invoke-GsdSetup {
             Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
         }
         if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
-            Write-Host '  [claude] rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+            Write-Host '  [claude] restored settings.json default provider/model back to anthropic' -ForegroundColor Green
         }
         if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
-            Write-Host ("  [claude] rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+            Write-Host ("  [claude] restored {0} route(s) from claude-code/* back to anthropic/* in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
         }
         Write-Host ("  [ok] {0}" -f $destFile) -ForegroundColor Green
     } catch {
@@ -705,6 +705,11 @@ function Invoke-GsdSetup {
             Write-Host '  /login -> anthropic  openai-codex' -ForegroundColor Yellow
             Write-Host '  Models : Opus plan/research -> Sonnet exec -> Codex validation/completion/subagent' -ForegroundColor DarkGray
             Write-Host '  Claude codes, Codex reviews -- cross-model peer review at $0 (Codex OAuth free)' -ForegroundColor Cyan
+        }
+        'claude-code' {
+            Write-Host '  8sync gsd forge-sync  (auto-syncs Forge OAuth token)' -ForegroundColor Yellow
+            Write-Host '  Models : Opus 4.7 plan/research -> Sonnet 4.6 exec -> Haiku 4.5 simple' -ForegroundColor DarkGray
+            Write-Host '  100% Claude via Forge subscription -- $0 API cost (Pro/Max covers all)' -ForegroundColor Cyan
         }
     }
 

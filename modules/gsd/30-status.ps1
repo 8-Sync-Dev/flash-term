@@ -71,7 +71,7 @@ function Invoke-GsdStatus {
     if (Test-Path $prefPath) {
         $bundleDir = Resolve-GsdBundleDir
         $detectedPlan = 'unknown/custom'
-        foreach ($plan in @('max','pro','normal','claude-max','codex-max','gemini-max','claude-codex-gemini','glm-max')) {
+        foreach ($plan in @('max','pro','normal','claude-max','claude-code','codex-max','gemini-max','claude-codex-gemini','glm-max')) {
             $planFile = Join-Path $bundleDir ("PREFERENCES-{0}.md" -f $plan)
             if (-not (Test-Path $planFile)) { continue }
             $prefHash = (Get-FileHash $prefPath -Algorithm MD5).Hash

@@ -504,13 +504,13 @@ function Invoke-GsdGlobalPromote {
         Write-Host ("  [claude]  native binary {0}: {1}" -f $claudeBundle.ClaudePath.Status, $claudeBundle.ClaudePath.NativePath) -ForegroundColor Green
     }
     if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
-        Write-Host '  [claude]  rewrote settings.json default provider/model -> claude-code' -ForegroundColor Green
+        Write-Host '  [claude]  restored settings.json default provider/model back to anthropic' -ForegroundColor Green
     }
     if ($claudeBundle.GlobalClaude -and $claudeBundle.GlobalClaude.Status -eq 'written') {
         Write-Host ("  [claude]  wrote global settings: {0}" -f $claudeBundle.GlobalClaude.Path) -ForegroundColor Green
     }
     if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
-        Write-Host ("  [claude]  rewrote {0} Anthropic route(s) -> claude-code in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
+        Write-Host ("  [claude]  restored {0} route(s) from claude-code/* back to anthropic/* in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
     }
 
     Write-Host ''
