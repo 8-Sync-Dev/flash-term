@@ -213,13 +213,27 @@ function Ensure-GsdClaudeCodeExecutableSetting {
     $settings = Read-GsdSettingsJson
     if ($null -eq $settings) { $settings = [pscustomobject]@{} }
     $configuredPath = [string]$settings.pathToClaudeCodeExecutable
+    $envChanged = $false
+
+    if (-not $DryRun) {
+        $procEnv = [System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_PATH', 'Process')
+        $userEnv = [System.Environment]::GetEnvironmentVariable('CLAUDE_CODE_PATH', 'User')
+        if ($procEnv -ne $nativePath) {
+            [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_PATH', $nativePath, 'Process')
+            $envChanged = $true
+        }
+        if ($userEnv -ne $nativePath) {
+            [System.Environment]::SetEnvironmentVariable('CLAUDE_CODE_PATH', $nativePath, 'User')
+            $envChanged = $true
+        }
+    }
 
     if ($configuredPath -eq $nativePath) {
         return [pscustomobject]@{
-            Status = 'already-correct'
+            Status = if ($envChanged) { 'already-correct+env' } else { 'already-correct' }
             NativePath = $nativePath
             ConfiguredPath = $configuredPath
-            Changed = $false
+            Changed = $envChanged
         }
     }
 
@@ -652,6 +666,40 @@ function Invoke-GsdRuntimePatch {
             }
         } catch {
             Write-Host ("  [warn]    Failed to patch provider label: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    $sdkPath = Join-Path (Resolve-GsdAgentDir) 'node_modules\@gsd\pi-coding-agent\dist\core\sdk.js'
+    if (Test-Path $sdkPath) {
+        try {
+            $raw = (Get-Content $sdkPath -Raw -Encoding UTF8) -replace "`r`n", "`n"
+            $oldSnippet = @"
+            return {
+                extensionUIContext: runner.getUIContext(),
+            };
+"@ -replace "`r`n", "`n"
+            $newSnippet = @"
+            return {
+                extensionUIContext: runner.getUIContext(),
+                pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || process.env.CLAUDE_CODE_NATIVE_PATH,
+            };
+"@ -replace "`r`n", "`n"
+            if ($raw.Contains($newSnippet)) {
+                Write-Host '  [ok]      Claude Code provider options patch already applied' -ForegroundColor Green
+            } elseif ($raw.Contains($oldSnippet)) {
+                if ($DryRun) {
+                    Write-Host ("  [dry-run] patch {0}" -f $sdkPath) -ForegroundColor DarkYellow
+                } else {
+                    $updated = $raw.Replace($oldSnippet, $newSnippet)
+                    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                    [System.IO.File]::WriteAllText($sdkPath, $updated, $utf8NoBom)
+                    Write-Host '  [ok]      Patched Claude Code provider to pass pathToClaudeCodeExecutable' -ForegroundColor Green
+                }
+            } else {
+                Write-Host '  [warn]    sdk.js has unexpected getProviderOptions shape; skipped Claude path patch' -ForegroundColor DarkYellow
+            }
+        } catch {
+            Write-Host ("  [warn]    Failed to patch sdk.js Claude provider options: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
         }
     }
 

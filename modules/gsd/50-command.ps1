@@ -395,6 +395,7 @@ function Invoke-GsdCommand {
         'status' { Invoke-GsdStatus }
         'claude-fix' {
             $prefsPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
+            Invoke-GsdRuntimePatch -DryRun:$dryRun
             $claudeBundle = Invoke-GsdClaudeFix -DryRun:$dryRun -PreferencesPath $prefsPath
             Write-Host ''
             Write-Host '  [gsd] Claude fix' -ForegroundColor Cyan
