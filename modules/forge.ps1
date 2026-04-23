@@ -498,6 +498,53 @@ function Ensure-EditorEnv {
     return $null
 }
 
+function Get-ForgeManagedOmzBlock {
+    # v2 managed block. Adds a FORGE_LIGHT_ZSH=1 branch that:
+    #   * disables oh-my-zsh theme (robbyrussell runs `git status` every render)
+    #   * disables the `git` omz plugin
+    #   * caps zsh-syntax-highlighting to first 60 chars of buffer
+    #     (the plugin re-parses the WHOLE buffer on every keystroke -- after
+    #      Forge streams a long AI response, this turns every `:` keypress
+    #      from the 2nd message onward into a multi-hundred-ms stall).
+    #   * caps zsh-autosuggestions to buffers <= 20 chars + disables auto-rebind
+    #   * sets a bare prompt after omz loads.
+    #
+    # These env vars are read by Forge's own plugin block (sourced later in
+    # the same .zshrc) at init time, so our caps apply even though we do not
+    # own that block.
+    [OutputType([string])]
+    param()
+
+    return @(
+        '# --- Oh My Zsh (managed by 8sync forge zsh v2) ---'
+        '# Load before Forge plugins so the prompt + omz plugins initialize first.'
+        '# FORGE_LIGHT_ZSH=1 (set by `8sync forge enter`) switches to a light'
+        '# profile that keeps AI chat responsive from message 2 onward.'
+        'export ZSH="$HOME/.oh-my-zsh"'
+        ''
+        'if [[ -n "$FORGE_LIGHT_ZSH" ]]; then'
+        '    ZSH_THEME=""'
+        '    plugins=()'
+        '    DISABLE_UNTRACKED_FILES_DIRTY="true"'
+        '    ZSH_HIGHLIGHT_MAXLENGTH=60'
+        '    ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20'
+        '    ZSH_AUTOSUGGEST_MANUAL_REBIND=1'
+        'else'
+        '    ZSH_THEME="robbyrussell"'
+        '    plugins=(git)'
+        'fi'
+        ''
+        'source $ZSH/oh-my-zsh.sh'
+        ''
+        'if [[ -n "$FORGE_LIGHT_ZSH" ]]; then'
+        "    PROMPT='%n %1~ %# '"
+        "    RPROMPT=''"
+        'fi'
+        '# --- end Oh My Zsh ---'
+        ''
+    ) -join "`n"
+}
+
 function Ensure-ZshrcSourcesOmz {
     # Ensure $HOME/.zshrc contains a block that sources oh-my-zsh.
     # This is required because oh-my-zsh installer with KEEP_ZSHRC=yes does NOT
@@ -506,6 +553,10 @@ function Ensure-ZshrcSourcesOmz {
     #
     # We inject a managed block BEFORE any existing content so the omz prompt +
     # plugins load before Forge's own plugin/theme initialization.
+    #
+    # v2 migration: if a v1 block is present (no FORGE_LIGHT_ZSH branch), it is
+    # stripped and replaced with v2 so the light-mode caps become available
+    # without the user having to rerun `8sync forge zsh`.
     [OutputType([bool])]
     param()
 
@@ -517,28 +568,34 @@ function Ensure-ZshrcSourcesOmz {
     if (Test-Path $zshrc) {
         try { $existing = Get-Content $zshrc -Raw -Encoding UTF8 } catch {}
     }
-    if ($existing -match '# --- Oh My Zsh \(managed by 8sync forge zsh\) ---') {
-        Write-Host '  [ok] .zshrc already sources oh-my-zsh (managed block present)' -ForegroundColor Green
-        return $true
-    }
-    # If user already has a custom `source $ZSH/oh-my-zsh.sh`, leave it alone.
-    if ($existing -match 'source\s+"?\$ZSH/oh-my-zsh\.sh"?') {
-        Write-Host '  [ok] .zshrc already has custom omz source line' -ForegroundColor Green
+
+    $hasV2 = $existing -match '# --- Oh My Zsh \(managed by 8sync forge zsh v2\) ---'
+    $hasV1 = (-not $hasV2) -and ($existing -match '# --- Oh My Zsh \(managed by 8sync forge zsh\) ---')
+
+    if ($hasV2) {
+        Write-Host '  [ok] .zshrc already has v2 managed block (FORGE_LIGHT_ZSH aware)' -ForegroundColor Green
         return $true
     }
 
-    $block = @(
-        '# --- Oh My Zsh (managed by 8sync forge zsh) ---'
-        '# Load before Forge plugins so the prompt + omz plugins initialize first.'
-        'export ZSH="$HOME/.oh-my-zsh"'
-        'ZSH_THEME="robbyrussell"'
-        'plugins=(git)'
-        'source $ZSH/oh-my-zsh.sh'
-        '# --- end Oh My Zsh ---'
-        ''
-    ) -join "`n"
+    # If user already has a custom `source $ZSH/oh-my-zsh.sh` and no managed
+    # block at all, leave it alone -- user is driving.
+    if (-not $hasV1 -and $existing -match 'source\s+"?\$ZSH/oh-my-zsh\.sh"?') {
+        Write-Host '  [ok] .zshrc has custom omz source line (not managed by 8sync -- not touching)' -ForegroundColor Green
+        return $true
+    }
 
-    $combined = $block + $existing
+    # If v1 block present, strip it. The v1 block spans from its begin marker
+    # through its `# --- end Oh My Zsh ---` terminator, single-line regex ok
+    # because both markers are on their own lines.
+    $stripped = $existing
+    if ($hasV1) {
+        $v1Pattern = '(?s)# --- Oh My Zsh \(managed by 8sync forge zsh\) ---.*?# --- end Oh My Zsh ---\r?\n?'
+        $stripped = [regex]::Replace($existing, $v1Pattern, '')
+        Write-Host '  [info] v1 managed block detected -- migrating to v2.' -ForegroundColor DarkYellow
+    }
+
+    $block    = Get-ForgeManagedOmzBlock
+    $combined = $block + $stripped
     # Normalize line endings + ensure trailing newline; write UTF-8 no-BOM.
     $combined = ($combined -replace "`r`n", "`n").TrimEnd() + "`n"
     $utf8 = [System.Text.UTF8Encoding]::new($false)
@@ -550,12 +607,45 @@ function Ensure-ZshrcSourcesOmz {
             Write-Host ("  [ok] backed up .zshrc -> {0}" -f $backup) -ForegroundColor DarkGray
         }
         [System.IO.File]::WriteAllText($zshrc, $combined, $utf8)
-        Write-Host ("  [ok] prepended oh-my-zsh source block to {0}" -f $zshrc) -ForegroundColor Green
+        if ($hasV1) {
+            Write-Host ("  [ok] migrated .zshrc managed block v1 -> v2: {0}" -f $zshrc) -ForegroundColor Green
+        } else {
+            Write-Host ("  [ok] prepended v2 oh-my-zsh source block to {0}" -f $zshrc) -ForegroundColor Green
+        }
         return $true
     } catch {
         Write-Host ("  [error] could not write .zshrc: {0}" -f $_.Exception.Message) -ForegroundColor Red
         return $false
     }
+}
+
+function Invoke-ForgeLightMode {
+    # Upgrade an existing .zshrc to the v2 managed block without rerunning the
+    # full `8sync forge zsh` install. Safe to call repeatedly (idempotent).
+    Write-Host ''
+    Write-Host '  FORGE -- enable light-zsh mode (fix lag from AI chat message 2+)' -ForegroundColor Cyan
+    Write-Host ''
+
+    $winOmzDir = Join-Path $env:USERPROFILE '.oh-my-zsh'
+    if (-not (Test-Path $winOmzDir)) {
+        Write-Host ('  [error] oh-my-zsh not found at {0}' -f $winOmzDir) -ForegroundColor Red
+        Write-Host '  Run first: 8sync forge zsh' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $ok = Ensure-ZshrcSourcesOmz
+    Write-Host ''
+    if ($ok) {
+        Write-Host '  Next step:' -ForegroundColor Cyan
+        Write-Host '    8sync forge enter     # zsh auto-applies light mode (FORGE_LIGHT_ZSH=1)' -ForegroundColor White
+        Write-Host ''
+        Write-Host '  To opt out of light mode for a session:' -ForegroundColor DarkGray
+        Write-Host '    unset FORGE_LIGHT_ZSH && exec zsh' -ForegroundColor DarkGray
+    } else {
+        Write-Host '  [warn] no changes made.' -ForegroundColor DarkYellow
+    }
+    Write-Host ''
 }
 
 function Install-OhMyZsh {
@@ -704,12 +794,21 @@ function Invoke-ForgeEnterZsh {
 
     # Clear a few env vars that can confuse msys2's tty detection
     # (only affects the zsh subprocess we spawn, not the parent pwsh).
+    #
+    # FORGE_LIGHT_ZSH=1 tells the v2 managed block in ~/.zshrc to use a
+    # lightweight profile (no robbyrussell git calls, capped syntax highlight,
+    # capped autosuggestions). This keeps Forge AI chat responsive from the
+    # 2nd message onward when the scrollback buffer contains long AI output.
     $prev = @{
-        MSYSTEM      = $env:MSYSTEM
-        CHERE_INVOKING = $env:CHERE_INVOKING
+        MSYSTEM         = $env:MSYSTEM
+        CHERE_INVOKING  = $env:CHERE_INVOKING
+        FORGE_LIGHT_ZSH = $env:FORGE_LIGHT_ZSH
     }
     $env:MSYSTEM = 'MSYS'              # correct subsystem for generic usr/bin
     $env:CHERE_INVOKING = '1'          # preserve current working directory
+    if (-not $env:FORGE_LIGHT_ZSH) {
+        $env:FORGE_LIGHT_ZSH = '1'
+    }
 
     Write-Host ''
     Write-Host ('  Entering zsh -- {0}' -f $zshExe) -ForegroundColor Cyan
@@ -728,6 +827,7 @@ function Invoke-ForgeEnterZsh {
         # Restore parent env
         $env:MSYSTEM = $prev.MSYSTEM
         $env:CHERE_INVOKING = $prev.CHERE_INVOKING
+        $env:FORGE_LIGHT_ZSH = $prev.FORGE_LIGHT_ZSH
     }
 }
 
@@ -1151,6 +1251,7 @@ function Show-ForgeHelp {
     Write-HintRow '8sync forge zsh --skip-omz'    'Install zsh only, skip oh-my-zsh'
     Write-HintRow '8sync forge zsh --dry-run'     'Preview zsh install steps'
     Write-HintRow '8sync forge enter'             'Spawn an interactive zsh login subshell (exit to return)'
+    Write-HintRow '8sync forge lightmode'         'Upgrade ~/.zshrc to v2 block (fix AI chat lag from msg 2+)'
     Write-HintRow '8sync forge zsh-usage'         'How to use zsh on Windows (no exec zsh -- spawn subshell)'
     Write-HintRow '8sync forge status'            'Show installed version, binary path, dependency check'
     Write-HintRow '8sync forge login'             'Run: forge provider login (configure AI provider)'
@@ -1208,6 +1309,9 @@ function Invoke-ForgeCommand {
         'zsh-enter'   { Invoke-ForgeEnterZsh }
         'zsh-usage'   { Show-ForgeZshUsage }
         'usage'       { Show-ForgeZshUsage }
+        'lightmode'   { Invoke-ForgeLightMode }
+        'light-mode'  { Invoke-ForgeLightMode }
+        'light'       { Invoke-ForgeLightMode }
         'sync-to-gsd' {
             $nameIdx = [Array]::IndexOf($Rest, '--name')
             $customName = if ($nameIdx -ge 0 -and $nameIdx + 1 -lt $Rest.Count) { $Rest[$nameIdx + 1] } else { 'anthropic-forge' }
