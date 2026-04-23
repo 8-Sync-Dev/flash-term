@@ -648,6 +648,821 @@ function Invoke-ForgeLightMode {
     Write-Host ''
 }
 
+function Invoke-ForgeThinking {
+    # Set the [reasoning] effort + enabled fields in ~/.forge/.forge.toml globally.
+    # Usage:
+    #   8sync forge thinking            -- show current value
+    #   8sync forge thinking low        -- effort = "low",  enabled = true
+    #   8sync forge thinking medium     -- effort = "medium", enabled = true
+    #   8sync forge thinking high       -- effort = "high",  enabled = true  (default)
+    #   8sync forge thinking off        -- enabled = false  (thinking disabled)
+    #   8sync forge thinking on         -- effort = "high",  enabled = true  (re-enable)
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    $tomlPath = Join-Path $HOME '.forge\.forge.toml'
+
+    Write-Host ''
+    Write-Host '  FORGE -- thinking (reasoning) setting' -ForegroundColor Cyan
+    Write-Host ''
+
+    if (-not (Test-Path $tomlPath)) {
+        Write-Host ('  [error] .forge.toml not found at {0}' -f $tomlPath) -ForegroundColor Red
+        Write-Host '  Make sure Forge is installed: 8sync forge install' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # Read current values for display
+    $content = Get-Content $tomlPath -Raw -Encoding UTF8
+    $curEffort  = if ($content -match 'effort\s*=\s*"([^"]+)"') { $Matches[1] } else { '?' }
+    $curEnabled = if ($content -match 'enabled\s*=\s*(true|false)') { $Matches[1] } else { '?' }
+
+    $level = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
+
+    # Show current state only
+    if ($level -in @('status', '')) {
+        Write-Host '  Current [reasoning] in .forge.toml:' -ForegroundColor DarkGray
+        Write-Host ("    effort  = `"{0}`"" -f $curEffort)  -ForegroundColor White
+        Write-Host ("    enabled = {0}" -f $curEnabled) -ForegroundColor White
+        Write-Host ''
+        Write-Host '  Usage: 8sync forge thinking [low|medium|high|off|on]' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # Resolve target effort + enabled
+    $newEffort  = $null
+    $newEnabled = $null
+
+    switch ($level) {
+        'off'    { $newEffort = $curEffort; $newEnabled = 'false' }
+        'on'     { $newEffort = 'high';     $newEnabled = 'true'  }
+        'low'    { $newEffort = 'low';      $newEnabled = 'true'  }
+        'medium' { $newEffort = 'medium';   $newEnabled = 'true'  }
+        'med'    { $newEffort = 'medium';   $newEnabled = 'true'  }
+        'high'   { $newEffort = 'high';     $newEnabled = 'true'  }
+        default  {
+            Write-Host ("  [error] unknown level '{0}'. Valid: low | medium | high | off | on" -f $level) -ForegroundColor Red
+            Write-Host ''
+            return
+        }
+    }
+
+    # Show before → after
+    Write-Host ("  before: effort = `"{0}`"  enabled = {1}" -f $curEffort, $curEnabled) -ForegroundColor DarkGray
+    Write-Host ("  after:  effort = `"{0}`"  enabled = {1}" -f $newEffort, $newEnabled) -ForegroundColor Yellow
+    Write-Host ''
+
+    # Write changes: replace inline in the [reasoning] section
+    try {
+        $updated = $content
+        $updated = $updated -replace '(?m)^effort\s*=\s*"[^"]+"',  ("effort = `"{0}`"" -f $newEffort)
+        $updated = $updated -replace '(?m)^enabled\s*=\s*(true|false)', ("enabled = {0}" -f $newEnabled)
+
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($tomlPath, $updated, $utf8)
+        Write-Host '  [ok] .forge.toml updated' -ForegroundColor Green
+    } catch {
+        Write-Host ('  [error] could not write .forge.toml: {0}' -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host '  Takes effect for the next Forge session.' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Get-KarpathySkillContent {
+    # Latest Karpathy guidelines skill content, embedded for offline use.
+    # Source: https://github.com/forrestchang/andrej-karpathy-skills
+    #         skills/karpathy-guidelines/SKILL.md
+    # The YAML frontmatter + markdown body are exactly what Forge's SKILL.md
+    # loader expects (https://forgecode.dev/docs/skills/).
+    [OutputType([string])]
+    param()
+
+    return @'
+---
+name: karpathy-guidelines
+description: MANDATORY — read before any coding task. Behavioral guidelines to reduce common LLM coding mistakes. Apply when writing, reviewing, or refactoring code to avoid overcomplication, make surgical changes, surface assumptions, and define verifiable success criteria.
+license: MIT
+priority: highest
+load_order: 1
+---
+
+# Karpathy Guidelines (MANDATORY — READ FIRST)
+
+Behavioral guidelines to reduce common LLM coding mistakes, derived from Andrej Karpathy's observations on LLM coding pitfalls. **This skill MUST be consulted before any non-trivial coding task.**
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks (typo fixes, obvious one-liners), use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them — don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it — don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+'@
+}
+
+function Get-ForgeProjectScanReport {
+    # Scan a project root for existing agent-config artifacts so the generated
+    # AGENTS.md can reference them. Returns a PSCustomObject with arrays of
+    # discovered paths (relative to root).
+    #
+    # Priority order of source-of-truth references in the output:
+    #   1. .gsd/   (GSD workspace: knowledge base, milestones, STATE/DECISIONS/...)
+    #   2. .claude/ (memory, rules, skills, commands)
+    #   3. .cursor/rules/*.mdc
+    #   4. .agents/ (oh-my-agent SSOT: skills, workflows, rules)
+    #   5. AGENTS.md / CLAUDE.md at root (existing content preserved)
+    param(
+        [Parameter(Mandatory)][string]$Root
+    )
+
+    $report = [pscustomobject]@{
+        Root             = $Root
+        # ---- GSD ----
+        GsdRootDocs      = @()   # .gsd/*.md at root (PROJECT, STATE, DECISIONS, KNOWLEDGE, CODEBASE, REQUIREMENTS)
+        GsdKnowledge     = @()   # .gsd/knowledge/*.md (the real "rules/lessons" dir in GSD)
+        GsdMilestones    = @()   # .gsd/milestones/M*/  (dir names only)
+        GsdSkills        = @()   # .gsd/skills/<name>/SKILL.md   (rare; kept for compat)
+        GsdRules         = @()   # .gsd/rules/*.md              (rare; kept for compat)
+        GsdMemory        = @()   # .gsd/memory/*.md or .gsd/MEMORY.md (rare; kept for compat)
+        # ---- Claude Code ----
+        ClaudeSkills     = @()   # .claude/skills/<name>/ SKILL.md or *.md
+        ClaudeMemory     = @()   # .claude/memory/*.md
+        ClaudeRules      = @()   # .claude/rules/**/*.md (recursive -- has core/, tech-stack/, ...)
+        ClaudeCommands   = @()   # .claude/commands/*.md
+        ClaudeMd         = $null # .claude/CLAUDE.md or CLAUDE.md at root
+        # ---- Cursor ----
+        CursorRules      = @()   # .cursor/rules/*.mdc  (recursive)
+        # ---- Oh-my-agent ----
+        AgentsDir        = $null # .agents/ dir marker
+        AgentsSkills     = @()   # .agents/skills/**/*.md
+        AgentsWorkflows  = @()   # .agents/workflows/*.md
+        AgentsRules      = @()   # .agents/rules/*.md
+        # ---- root ----
+        RootAgentsMd     = $null # AGENTS.md at root
+    }
+
+    function _RelPath($full) {
+        return $full.Substring($Root.Length).TrimStart('\','/')
+    }
+
+    # ---- .gsd/ (priority 1) ----
+    $gsdDir = Join-Path $Root '.gsd'
+    if (Test-Path $gsdDir) {
+        # Root-level .gsd/*.md (PROJECT.md, STATE.md, DECISIONS.md, KNOWLEDGE.md,
+        # CODEBASE.md, REQUIREMENTS.md, and any others the user added)
+        $report.GsdRootDocs = @(Get-ChildItem $gsdDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+            ForEach-Object { _RelPath $_.FullName })
+
+        # The real "knowledge/rules" living doc dir
+        $gsdKnowledgeDir = Join-Path $gsdDir 'knowledge'
+        if (Test-Path $gsdKnowledgeDir) {
+            $report.GsdKnowledge = @(Get-ChildItem $gsdKnowledgeDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+
+        # Milestones: list dir names only (M001, M002, ...)
+        $gsdMilestonesDir = Join-Path $gsdDir 'milestones'
+        if (Test-Path $gsdMilestonesDir) {
+            $report.GsdMilestones = @(Get-ChildItem $gsdMilestonesDir -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+
+        # Compat: scan legacy skills/rules/memory dirs if they exist
+        $gsdSkillsDir = Join-Path $gsdDir 'skills'
+        if (Test-Path $gsdSkillsDir) {
+            $report.GsdSkills = @(Get-ChildItem $gsdSkillsDir -Recurse -Filter 'SKILL.md' -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+        $gsdRulesDir = Join-Path $gsdDir 'rules'
+        if (Test-Path $gsdRulesDir) {
+            $report.GsdRules = @(Get-ChildItem $gsdRulesDir -Filter '*.md' -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+        $gsdMemoryDir = Join-Path $gsdDir 'memory'
+        if (Test-Path $gsdMemoryDir) {
+            $report.GsdMemory = @(Get-ChildItem $gsdMemoryDir -Filter '*.md' -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+        $gsdMemoryFile = Join-Path $gsdDir 'MEMORY.md'
+        if (Test-Path $gsdMemoryFile) {
+            $report.GsdMemory += '.gsd\MEMORY.md'
+        }
+    }
+
+    # ---- .claude/ (priority 2) ----
+    $claudeDir = Join-Path $Root '.claude'
+    if (Test-Path $claudeDir) {
+        # Skills: both `skills/<name>/SKILL.md` and `skills/<name>/*.md` forms
+        $claudeSkillsDir = Join-Path $claudeDir 'skills'
+        if (Test-Path $claudeSkillsDir) {
+            $skillMds = @(Get-ChildItem $claudeSkillsDir -Recurse -Filter 'SKILL.md' -File -ErrorAction SilentlyContinue)
+            if ($skillMds.Count -gt 0) {
+                $report.ClaudeSkills = @($skillMds | ForEach-Object { _RelPath $_.FullName })
+            } else {
+                # Fallback: each subdir is a skill, use its top-level .md
+                $report.ClaudeSkills = @(Get-ChildItem $claudeSkillsDir -Directory -ErrorAction SilentlyContinue |
+                    ForEach-Object { _RelPath $_.FullName })
+            }
+        }
+
+        # Memory
+        $claudeMemoryDir = Join-Path $claudeDir 'memory'
+        if (Test-Path $claudeMemoryDir) {
+            $report.ClaudeMemory = @(Get-ChildItem $claudeMemoryDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+
+        # Rules (recursive -- .claude/rules/core/, tech-stack/ etc.)
+        $claudeRulesDir = Join-Path $claudeDir 'rules'
+        if (Test-Path $claudeRulesDir) {
+            $report.ClaudeRules = @(Get-ChildItem $claudeRulesDir -Recurse -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+
+        # Commands (slash commands)
+        $claudeCommandsDir = Join-Path $claudeDir 'commands'
+        if (Test-Path $claudeCommandsDir) {
+            $report.ClaudeCommands = @(Get-ChildItem $claudeCommandsDir -Recurse -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+    }
+
+    # CLAUDE.md location (check root first, then nested)
+    $claudeMdRoot   = Join-Path $Root 'CLAUDE.md'
+    $claudeMdNested = Join-Path $Root '.claude\CLAUDE.md'
+    if (Test-Path $claudeMdRoot)        { $report.ClaudeMd = 'CLAUDE.md' }
+    elseif (Test-Path $claudeMdNested)  { $report.ClaudeMd = '.claude\CLAUDE.md' }
+
+    # ---- .cursor/rules/ (priority 3) ----
+    $cursorRulesDir = Join-Path $Root '.cursor\rules'
+    if (Test-Path $cursorRulesDir) {
+        $report.CursorRules = @(Get-ChildItem $cursorRulesDir -Recurse -Filter '*.mdc' -File -ErrorAction SilentlyContinue |
+            ForEach-Object { _RelPath $_.FullName })
+    }
+
+    # ---- .agents/ (priority 4) ----
+    $agentsDir = Join-Path $Root '.agents'
+    if (Test-Path $agentsDir) {
+        $report.AgentsDir = '.agents'
+        $agentsSkillsDir = Join-Path $agentsDir 'skills'
+        if (Test-Path $agentsSkillsDir) {
+            $report.AgentsSkills = @(Get-ChildItem $agentsSkillsDir -Recurse -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+        $agentsWfDir = Join-Path $agentsDir 'workflows'
+        if (Test-Path $agentsWfDir) {
+            $report.AgentsWorkflows = @(Get-ChildItem $agentsWfDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+        $agentsRulesDir = Join-Path $agentsDir 'rules'
+        if (Test-Path $agentsRulesDir) {
+            $report.AgentsRules = @(Get-ChildItem $agentsRulesDir -Filter '*.md' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { _RelPath $_.FullName })
+        }
+    }
+
+    # ---- root AGENTS.md ----
+    $rootAgents = Join-Path $Root 'AGENTS.md'
+    if (Test-Path $rootAgents) { $report.RootAgentsMd = 'AGENTS.md' }
+
+    return $report
+}
+
+function New-ForgeAgentsMdContent {
+    # Build the rewritten AGENTS.md body from a scan report.
+    # Contains: mandatory-skill banner, references map, scan summary.
+    param(
+        [Parameter(Mandatory)]$Report,
+        [string]$ExistingProjectSection = ''
+    )
+
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.AppendLine('# AGENTS.md')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('> Project guidelines for ForgeCode / Claude Code / any AGENTS.md-compatible agent.')
+    [void]$sb.AppendLine('> Generated by `8sync forge init`. This file is equivalent to CLAUDE.md.')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('---')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('## MANDATORY — read before any task')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('**You MUST load and apply `.forge/skills/karpathy-guidelines/SKILL.md` before starting any non-trivial coding task.**')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('The four principles are non-negotiable:')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('1. **Think Before Coding** — state assumptions, surface ambiguity, ask when unclear.')
+    [void]$sb.AppendLine('2. **Simplicity First** — minimum code; no speculative abstractions.')
+    [void]$sb.AppendLine('3. **Surgical Changes** — every changed line traces to the user request.')
+    [void]$sb.AppendLine('4. **Goal-Driven Execution** — define verifiable success criteria; loop until green.')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('Full text: [`.forge/skills/karpathy-guidelines/SKILL.md`](./.forge/skills/karpathy-guidelines/SKILL.md)')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('---')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('## Skill / rule / memory references')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('The agent should auto-discover and consult these when the task matches:')
+    [void]$sb.AppendLine('')
+
+    # Forge skills
+    [void]$sb.AppendLine('### ForgeCode skills (`.forge/skills/`)')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('- `.forge/skills/karpathy-guidelines/SKILL.md` — MANDATORY baseline (above)')
+    [void]$sb.AppendLine('')
+
+    # ---- GSD (priority 1 -- project source of truth) ----
+    $hasGsd = ($Report.GsdRootDocs.Count -gt 0 -or $Report.GsdKnowledge.Count -gt 0 -or
+               $Report.GsdMilestones.Count -gt 0 -or $Report.GsdSkills.Count -gt 0 -or
+               $Report.GsdRules.Count -gt 0 -or $Report.GsdMemory.Count -gt 0)
+    if ($hasGsd) {
+        [void]$sb.AppendLine('### GSD workspace (`.gsd/`) — PRIMARY project source of truth')
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine('> Read these BEFORE touching code. They define the project state, decisions, and lessons.')
+        [void]$sb.AppendLine('')
+        if ($Report.GsdRootDocs.Count -gt 0) {
+            [void]$sb.AppendLine('**Project docs (read first):**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.GsdRootDocs) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.GsdKnowledge.Count -gt 0) {
+            [void]$sb.AppendLine('**Knowledge base (`.gsd/knowledge/` — lessons, patterns, gotchas):**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.GsdKnowledge) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.GsdMilestones.Count -gt 0) {
+            [void]$sb.AppendLine('**Milestones (`.gsd/milestones/`):**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.GsdMilestones) { [void]$sb.AppendLine(('- `{0}/`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.GsdSkills.Count -gt 0) {
+            [void]$sb.AppendLine('**Legacy GSD skills:**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.GsdSkills) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.GsdRules.Count -gt 0) {
+            [void]$sb.AppendLine('**Legacy GSD rules:**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.GsdRules) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.GsdMemory.Count -gt 0) {
+            [void]$sb.AppendLine('**Legacy GSD memory:**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.GsdMemory) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+    }
+
+    # ---- Claude Code (priority 2) ----
+    $hasClaude = ($Report.ClaudeSkills.Count -gt 0 -or $Report.ClaudeMemory.Count -gt 0 -or
+                  $Report.ClaudeRules.Count -gt 0 -or $Report.ClaudeCommands.Count -gt 0)
+    if ($hasClaude) {
+        [void]$sb.AppendLine('### Claude Code workspace (`.claude/`) — compatible, auto-loaded')
+        [void]$sb.AppendLine('')
+        if ($Report.ClaudeSkills.Count -gt 0) {
+            [void]$sb.AppendLine('**Skills:**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.ClaudeSkills) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.ClaudeMemory.Count -gt 0) {
+            [void]$sb.AppendLine('**Memory (long-lived context):**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.ClaudeMemory) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.ClaudeRules.Count -gt 0) {
+            [void]$sb.AppendLine('**Rules:**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.ClaudeRules) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+        if ($Report.ClaudeCommands.Count -gt 0) {
+            [void]$sb.AppendLine('**Slash commands:**')
+            [void]$sb.AppendLine('')
+            foreach ($p in $Report.ClaudeCommands) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+            [void]$sb.AppendLine('')
+        }
+    }
+
+    # Cursor
+    if ($Report.CursorRules.Count -gt 0) {
+        [void]$sb.AppendLine('### Cursor rules (`.cursor/rules/`)')
+        [void]$sb.AppendLine('')
+        foreach ($p in $Report.CursorRules) { [void]$sb.AppendLine(('- `{0}`' -f $p)) }
+        [void]$sb.AppendLine('')
+    }
+
+    # .agents/
+    if ($Report.AgentsDir) {
+        [void]$sb.AppendLine('### Oh-my-agent SSOT (`.agents/`) — do not edit directly')
+        [void]$sb.AppendLine('')
+        foreach ($p in $Report.AgentsSkills)    { [void]$sb.AppendLine(('- skill:    `{0}`' -f $p)) }
+        foreach ($p in $Report.AgentsWorkflows) { [void]$sb.AppendLine(('- workflow: `{0}`' -f $p)) }
+        foreach ($p in $Report.AgentsRules)     { [void]$sb.AppendLine(('- rule:     `{0}`' -f $p)) }
+        [void]$sb.AppendLine('')
+    }
+
+    [void]$sb.AppendLine('---')
+    [void]$sb.AppendLine('')
+    [void]$sb.AppendLine('## Project-specific guidelines')
+    [void]$sb.AppendLine('')
+    if ($ExistingProjectSection) {
+        [void]$sb.AppendLine('> Preserved from previous AGENTS.md / CLAUDE.md:')
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine($ExistingProjectSection.TrimEnd())
+        [void]$sb.AppendLine('')
+    } else {
+        [void]$sb.AppendLine('<!-- Add project-specific rules here. Anything below survives future `8sync forge init` runs -->')
+        [void]$sb.AppendLine('')
+    }
+
+    return $sb.ToString()
+}
+
+function Invoke-ForgeInit {
+    # Scan project root (.gsd/, .cursor/, .claude/, .agents/) and generate a
+    # clean `.forge/` tree + AGENTS.md (+ CLAUDE.md alias) that references them.
+    # Always writes the latest Karpathy guidelines skill as a mandatory load.
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    # Guard: ValueFromRemainingArguments yields $null (not @()) when zero args
+    # are passed, which breaks [Array]::IndexOf($Rest, ...) with ArgumentNullException.
+    if ($null -eq $Rest) { $Rest = @() }
+
+    $dryRun = $Rest -contains '--dry-run'
+    $force  = $Rest -contains '--force'
+
+    $pathIdx = [Array]::IndexOf($Rest, '--path')
+    $root = if ($pathIdx -ge 0 -and $pathIdx + 1 -lt $Rest.Count) {
+        (Resolve-Path $Rest[$pathIdx + 1] -ErrorAction SilentlyContinue).Path
+    } else {
+        (Get-Location).Path
+    }
+
+    if (-not $root -or -not (Test-Path $root)) {
+        Write-Host ''
+        Write-Host ('  [error] root not found: {0}' -f $root) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  FORGE -- init project config (AGENTS.md + .forge/ skills)' -ForegroundColor Cyan
+    Write-Host ('  root: {0}' -f $root) -ForegroundColor DarkGray
+    if ($dryRun) { Write-Host '  mode: DRY-RUN (no files written)' -ForegroundColor Yellow }
+    if ($force)  { Write-Host '  mode: --force (skip backups)' -ForegroundColor Yellow }
+    Write-Host ''
+
+    # ---- scan ----
+    Write-Host '  [1/5] Scanning project...' -ForegroundColor Cyan
+    $report = Get-ForgeProjectScanReport -Root $root
+
+    function _RowCount($label, $count, $color = 'White') {
+        $mark = if ($count -gt 0) { '[found]' } else { '[    ]' }
+        Write-Host ('    {0} {1,-24} {2}' -f $mark, $label, $count) -ForegroundColor $color
+    }
+    _RowCount '.forge/skills (Karpathy)' 1 'Green'
+    # GSD -- priority 1, show full breakdown
+    _RowCount '.gsd/*.md (root docs)'    $report.GsdRootDocs.Count
+    _RowCount '.gsd/knowledge/*.md'      $report.GsdKnowledge.Count
+    _RowCount '.gsd/milestones/M*/'      $report.GsdMilestones.Count
+    _RowCount '.gsd/skills'              $report.GsdSkills.Count
+    _RowCount '.gsd/rules'               $report.GsdRules.Count
+    _RowCount '.gsd/memory'              $report.GsdMemory.Count
+    # Claude -- priority 2
+    _RowCount '.claude/skills'           $report.ClaudeSkills.Count
+    _RowCount '.claude/memory/*.md'      $report.ClaudeMemory.Count
+    _RowCount '.claude/rules/**/*.md'    $report.ClaudeRules.Count
+    _RowCount '.claude/commands/*.md'    $report.ClaudeCommands.Count
+    # Cursor / agents
+    _RowCount '.cursor/rules/*.mdc'      $report.CursorRules.Count
+    _RowCount '.agents/skills'           $report.AgentsSkills.Count
+    _RowCount '.agents/workflows'        $report.AgentsWorkflows.Count
+    _RowCount '.agents/rules'            $report.AgentsRules.Count
+    $hasRootAgents = if ($report.RootAgentsMd) { 1 } else { 0 }
+    $hasClaudeMd   = if ($report.ClaudeMd)     { 1 } else { 0 }
+    _RowCount 'AGENTS.md (root)'         $hasRootAgents
+    _RowCount 'CLAUDE.md (root/nested)'  $hasClaudeMd
+    Write-Host ''
+
+    # ---- preserve existing project section ----
+    $existingSection = ''
+    $existingPaths = @()
+    if ($report.RootAgentsMd) { $existingPaths += (Join-Path $root $report.RootAgentsMd) }
+    if ($report.ClaudeMd -and $report.ClaudeMd -ne $report.RootAgentsMd) {
+        $existingPaths += (Join-Path $root $report.ClaudeMd)
+    }
+    foreach ($p in $existingPaths) {
+        if (Test-Path $p) {
+            try {
+                $txt = Get-Content $p -Raw -Encoding UTF8
+                # Keep whole body so user doesn't lose anything — just append.
+                if ($existingSection) { $existingSection += "`n`n---`n`n" }
+                $existingSection += ("_from `{0}`_`n`n" -f (Split-Path $p -Leaf)) + $txt.TrimEnd()
+            } catch {}
+        }
+    }
+
+    # ---- plan paths ----
+    $forgeDir   = Join-Path $root '.forge'
+    $skillsDir  = Join-Path $forgeDir 'skills\karpathy-guidelines'
+    $skillFile  = Join-Path $skillsDir 'SKILL.md'
+    $agentsFile = Join-Path $root 'AGENTS.md'
+    $claudeFile = Join-Path $root 'CLAUDE.md'
+    $ts         = (Get-Date -Format 'yyyyMMdd-HHmmss')
+
+    $agentsBody = New-ForgeAgentsMdContent -Report $report -ExistingProjectSection $existingSection
+    $skillBody  = Get-KarpathySkillContent
+
+    # ---- write (or preview) ----
+    Write-Host '  [2/5] Writing .forge/skills/karpathy-guidelines/SKILL.md' -ForegroundColor Cyan
+    if ($dryRun) {
+        Write-Host ('    [dry-run] would write {0} bytes to {1}' -f $skillBody.Length, $skillFile) -ForegroundColor DarkGray
+    } else {
+        if (-not (Test-Path $skillsDir)) { New-Item -ItemType Directory -Force -Path $skillsDir | Out-Null }
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($skillFile, $skillBody, $utf8)
+        Write-Host '    [ok]' -ForegroundColor Green
+    }
+
+    Write-Host '  [3/5] Writing AGENTS.md' -ForegroundColor Cyan
+    if ($dryRun) {
+        Write-Host ('    [dry-run] would write {0} bytes to {1}' -f $agentsBody.Length, $agentsFile) -ForegroundColor DarkGray
+    } else {
+        if ((Test-Path $agentsFile) -and -not $force) {
+            $bak = "$agentsFile.bak-8sync-$ts"
+            Copy-Item $agentsFile $bak -Force
+            Write-Host ('    [ok] backup: {0}' -f (Split-Path $bak -Leaf)) -ForegroundColor DarkGray
+        }
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($agentsFile, $agentsBody, $utf8)
+        Write-Host '    [ok]' -ForegroundColor Green
+    }
+
+    Write-Host '  [4/5] Writing CLAUDE.md (alias -> AGENTS.md)' -ForegroundColor Cyan
+    $claudeBody = @"
+# CLAUDE.md
+
+> This project uses **AGENTS.md** as the single source of truth.
+> Claude Code, ForgeCode, and any AGENTS.md-compatible agent load the same file.
+>
+> **Read: [AGENTS.md](./AGENTS.md)**
+
+"@
+    if ($dryRun) {
+        Write-Host ('    [dry-run] would write {0} bytes to {1}' -f $claudeBody.Length, $claudeFile) -ForegroundColor DarkGray
+    } else {
+        if ((Test-Path $claudeFile) -and -not $force) {
+            $bak = "$claudeFile.bak-8sync-$ts"
+            Copy-Item $claudeFile $bak -Force
+            Write-Host ('    [ok] backup: {0}' -f (Split-Path $bak -Leaf)) -ForegroundColor DarkGray
+        }
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($claudeFile, $claudeBody, $utf8)
+        Write-Host '    [ok]' -ForegroundColor Green
+    }
+
+    Write-Host '  [5/5] Done' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  Files:' -ForegroundColor DarkGray
+    Write-Host ('    {0}' -f $skillFile)  -ForegroundColor White
+    Write-Host ('    {0}' -f $agentsFile) -ForegroundColor White
+    Write-Host ('    {0}' -f $claudeFile) -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Next:' -ForegroundColor Cyan
+    Write-Host '    forge              # start a session; AGENTS.md + karpathy-guidelines auto-load' -ForegroundColor DarkGray
+    Write-Host '    :skill             # list skills forge picked up' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Get-ForgeBuiltInSkills {
+    # Registry of built-in skills that `8sync forge add-skill <name>` can install.
+    # To add a new skill: add an entry here and a content-getter function
+    # (Get-*SkillContent) that returns the full SKILL.md body.
+    [OutputType([hashtable])]
+    param()
+
+    return @{
+        'karpathy' = [ordered]@{
+            dir         = 'karpathy-guidelines'
+            description = 'Karpathy 4 principles: Think, Simplify, Surgical, Goal-Driven. Loaded first (priority: highest).'
+            getter      = 'Get-KarpathySkillContent'
+        }
+        # Future built-ins go here.
+    }
+}
+
+function Invoke-ForgeAddSkill {
+    # Install a built-in skill into one of the three Forge skill scopes:
+    #   --project  (default) -> <cwd>/.forge/skills/<dir>/SKILL.md
+    #   --agents             -> $HOME/.agents/skills/<dir>/SKILL.md
+    #   --global             -> $HOME/forge/skills/<dir>/SKILL.md
+    # Usage:
+    #   8sync forge add-skill                      # list built-ins
+    #   8sync forge add-skill karpathy             # project scope
+    #   8sync forge add-skill karpathy --global    # user-wide (all projects)
+    #   8sync forge add-skill karpathy --agents    # shared across agent tools
+    #   8sync forge add-skill karpathy --dry-run   # preview
+    #   8sync forge add-skill karpathy --force     # overwrite, no .bak
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    # Guard against $null (zero-arg case) -- see Invoke-ForgeInit.
+    if ($null -eq $Rest) { $Rest = @() }
+
+    $dryRun   = $Rest -contains '--dry-run'
+    $force    = $Rest -contains '--force'
+    $isGlobal = $Rest -contains '--global'
+    $isAgents = $Rest -contains '--agents'
+    $isProj   = $Rest -contains '--project'
+
+    # First non-flag arg is the skill name
+    $skillName = $null
+    foreach ($r in $Rest) {
+        if ($r -notlike '--*') { $skillName = $r.ToLowerInvariant(); break }
+    }
+
+    $skills = Get-ForgeBuiltInSkills
+
+    Write-Host ''
+    Write-Host '  FORGE -- add built-in skill' -ForegroundColor Cyan
+    Write-Host ''
+
+    # No skill name -> list available
+    if (-not $skillName) {
+        Write-Host '  Available built-in skills:' -ForegroundColor DarkGray
+        Write-Host ''
+        foreach ($k in ($skills.Keys | Sort-Object)) {
+            $desc = $skills[$k].description
+            Write-Host ('    {0,-12} {1}' -f $k, $desc) -ForegroundColor White
+        }
+        Write-Host ''
+        Write-Host '  Usage:' -ForegroundColor Cyan
+        Write-Host '    8sync forge add-skill <name>              # project scope (.forge/skills/)' -ForegroundColor DarkGray
+        Write-Host '    8sync forge add-skill <name> --global     # user-wide (~/forge/skills/)' -ForegroundColor DarkGray
+        Write-Host '    8sync forge add-skill <name> --agents     # shared (~/.agents/skills/)' -ForegroundColor DarkGray
+        Write-Host '    8sync forge add-skill <name> --dry-run    # preview only' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    if (-not $skills.ContainsKey($skillName)) {
+        Write-Host ("  [error] unknown skill '{0}'. Run without args to list." -f $skillName) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # Resolve scope -> base dir
+    # Precedence if multiple flags set: --global > --agents > --project (default)
+    $scope = 'project'
+    $baseDir = $null
+    if ($isGlobal) {
+        $scope = 'global'
+        $baseDir = Join-Path $HOME 'forge\skills'
+    } elseif ($isAgents) {
+        $scope = 'agents'
+        $baseDir = Join-Path $HOME '.agents\skills'
+    } else {
+        $scope = 'project'
+        $baseDir = Join-Path (Get-Location).Path '.forge\skills'
+    }
+
+    $skillMeta  = $skills[$skillName]
+    $skillDir   = Join-Path $baseDir $skillMeta.dir
+    $skillFile  = Join-Path $skillDir 'SKILL.md'
+    $getterName = $skillMeta.getter
+
+    # Call the content getter
+    $content = & (Get-Command $getterName -CommandType Function)
+
+    Write-Host ('  skill:  {0}' -f $skillName)   -ForegroundColor White
+    Write-Host ('  scope:  {0}' -f $scope)       -ForegroundColor White
+    Write-Host ('  target: {0}' -f $skillFile)   -ForegroundColor DarkGray
+    if ($dryRun) { Write-Host '  mode:   DRY-RUN (no files written)' -ForegroundColor Yellow }
+    if ($force)  { Write-Host '  mode:   --force (skip backups)'    -ForegroundColor Yellow }
+    Write-Host ''
+
+    if ($dryRun) {
+        Write-Host ('  [dry-run] would write {0} bytes to target' -f $content.Length) -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # Ensure dir exists
+    if (-not (Test-Path $skillDir)) {
+        try {
+            New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
+        } catch {
+            Write-Host ('  [error] could not create {0}: {1}' -f $skillDir, $_.Exception.Message) -ForegroundColor Red
+            Write-Host ''
+            return
+        }
+    }
+
+    # Backup existing
+    if ((Test-Path $skillFile) -and -not $force) {
+        $ts = (Get-Date -Format 'yyyyMMdd-HHmmss')
+        $bak = "$skillFile.bak-8sync-$ts"
+        try {
+            Copy-Item $skillFile $bak -Force
+            Write-Host ('  [ok] backup: {0}' -f (Split-Path $bak -Leaf)) -ForegroundColor DarkGray
+        } catch {}
+    }
+
+    # Write
+    try {
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($skillFile, $content, $utf8)
+        Write-Host '  [ok] written' -ForegroundColor Green
+    } catch {
+        Write-Host ('  [error] could not write {0}: {1}' -f $skillFile, $_.Exception.Message) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  Forge auto-loads this skill on the next session start.' -ForegroundColor DarkGray
+    if ($scope -eq 'global') {
+        Write-Host '  Scope: global -- applies to every project on this machine.' -ForegroundColor DarkGray
+    } elseif ($scope -eq 'agents') {
+        Write-Host '  Scope: agents -- shared with any AGENTS.md-compatible tool.' -ForegroundColor DarkGray
+    } else {
+        Write-Host '  Scope: project -- checked into version control with your repo.' -ForegroundColor DarkGray
+    }
+    Write-Host ''
+}
+
 function Install-OhMyZsh {
     param(
         [Parameter(Mandatory)][string]$BashPath,
@@ -1243,6 +2058,14 @@ function Invoke-ForgeSyncToGsd {
 function Show-ForgeHelp {
     Write-Host ''
     Write-HintSection 'FORGE -- ForgeCode AI pair programmer (tailcallhq/forgecode)'
+    Write-HintRow '8sync forge init'              'Scan .gsd/ .cursor/ .claude/ .agents/; generate AGENTS.md + .forge/skills (karpathy)'
+    Write-HintRow '8sync forge init --dry-run'    'Preview what init would write (no files changed)'
+    Write-HintRow '8sync forge init --force'      'Overwrite without creating .bak backup'
+    Write-HintRow '8sync forge init --path DIR'   'Init a specific project dir instead of cwd'
+    Write-HintRow '8sync forge add-skill'         'List built-in skills available for add-skill'
+    Write-HintRow '8sync forge add-skill karpathy'          'Install karpathy skill into .forge/skills/ (project)'
+    Write-HintRow '8sync forge add-skill karpathy --global' 'Install into ~/forge/skills/ (all projects)'
+    Write-HintRow '8sync forge add-skill karpathy --agents' 'Install into ~/.agents/skills/ (shared)'
     Write-HintRow '8sync forge install'           'Download + install forge binary via forgecode.dev/cli'
     Write-HintRow '8sync forge install --with-zsh' 'Install forge + auto-install MSYS2 zsh + oh-my-zsh'
     Write-HintRow '8sync forge install --force'   'Reinstall even if already present (update)'
@@ -1252,6 +2075,12 @@ function Show-ForgeHelp {
     Write-HintRow '8sync forge zsh --dry-run'     'Preview zsh install steps'
     Write-HintRow '8sync forge enter'             'Spawn an interactive zsh login subshell (exit to return)'
     Write-HintRow '8sync forge lightmode'         'Upgrade ~/.zshrc to v2 block (fix AI chat lag from msg 2+)'
+    Write-HintRow '8sync forge thinking'          'Show current thinking level (effort + enabled)'
+    Write-HintRow '8sync forge thinking low'      'Set reasoning effort=low (faster, cheaper)'
+    Write-HintRow '8sync forge thinking medium'   'Set reasoning effort=medium'
+    Write-HintRow '8sync forge thinking high'     'Set reasoning effort=high (default)'
+    Write-HintRow '8sync forge thinking off'      'Disable thinking entirely (enabled=false)'
+    Write-HintRow '8sync forge thinking on'       'Re-enable thinking at high effort'
     Write-HintRow '8sync forge zsh-usage'         'How to use zsh on Windows (no exec zsh -- spawn subshell)'
     Write-HintRow '8sync forge status'            'Show installed version, binary path, dependency check'
     Write-HintRow '8sync forge login'             'Run: forge provider login (configure AI provider)'
@@ -1285,6 +2114,10 @@ function Invoke-ForgeCommand {
         [string[]]$Rest
     )
 
+    # Guard: ValueFromRemainingArguments yields $null (not @()) when zero args
+    # are passed -- downstream -contains / [Array]::IndexOf must see an array.
+    if ($null -eq $Rest) { $Rest = @() }
+
     $dryRun   = $Rest -contains '--dry-run'
     $force    = $Rest -contains '--force'
     $withZsh  = $Rest -contains '--with-zsh'
@@ -1312,6 +2145,11 @@ function Invoke-ForgeCommand {
         'lightmode'   { Invoke-ForgeLightMode }
         'light-mode'  { Invoke-ForgeLightMode }
         'light'       { Invoke-ForgeLightMode }
+        'thinking'    { Invoke-ForgeThinking -Rest ($Rest | Select-Object -Skip 1) }
+        'think'       { Invoke-ForgeThinking -Rest ($Rest | Select-Object -Skip 1) }
+        'init'        { Invoke-ForgeInit -Rest ($Rest | Select-Object -Skip 1) }
+        'add-skill'   { Invoke-ForgeAddSkill -Rest ($Rest | Select-Object -Skip 1) }
+        'skill'       { Invoke-ForgeAddSkill -Rest ($Rest | Select-Object -Skip 1) }
         'sync-to-gsd' {
             $nameIdx = [Array]::IndexOf($Rest, '--name')
             $customName = if ($nameIdx -ge 0 -and $nameIdx + 1 -lt $Rest.Count) { $Rest[$nameIdx + 1] } else { 'anthropic-forge' }
