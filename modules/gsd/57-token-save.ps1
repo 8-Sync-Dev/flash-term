@@ -341,6 +341,154 @@ function Install-RtkForgeShims {
     Write-Host ('      - Remove shims: 8sync gsd token-save --forge-shims --remove') -ForegroundColor DarkYellow
 }
 
+function Set-ForgeTomlTokenSave {
+    # Tune ~/.forge/.forge.toml output-limit keys to reduce tokens consumed by
+    # Forge's native Read / Search / Stdout tools (no hook required -- these are
+    # hard caps Forge enforces before sending to the LLM).
+    #
+    # Only the token-impacting keys are changed; all other keys are preserved.
+    param([switch]$DryRun, [switch]$Remove)
+
+    $tomlPath = Join-Path $HOME '.forge\.forge.toml'
+
+    if (-not (Test-Path $tomlPath)) {
+        Write-Host '  [skip]   ~/.forge/.forge.toml not found' -ForegroundColor DarkGray
+        return
+    }
+
+    # Optimized values (conservative -- still usable, just smaller)
+    # Original defaults in comments.
+    $targets = [ordered]@{
+        max_read_lines            = 500    # was 2000 -- native Read tool: 500 lines max
+        max_search_lines          = 200    # was 1000 -- search result lines
+        max_search_result_bytes   = 3072   # was 10240 -- search result bytes (~3KB)
+        max_stdout_prefix_lines   = 50     # was 100
+        max_stdout_suffix_lines   = 50     # was 100
+        max_stdout_line_chars     = 300    # was 500
+        max_line_chars            = 1000   # was 2000
+        max_fetch_chars           = 20000  # was 50000 -- web fetch
+    }
+
+    $originals = [ordered]@{
+        max_read_lines            = 2000
+        max_search_lines          = 1000
+        max_search_result_bytes   = 10240
+        max_stdout_prefix_lines   = 100
+        max_stdout_suffix_lines   = 100
+        max_stdout_line_chars     = 500
+        max_line_chars            = 2000
+        max_fetch_chars           = 50000
+    }
+
+    $applyValues = if ($Remove) { $originals } else { $targets }
+    $action      = if ($Remove) { 'Restoring' } else { 'Tuning' }
+
+    $content = [System.IO.File]::ReadAllText($tomlPath)
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] Would update ~/.forge/.forge.toml ({0} keys):" -f $applyValues.Count) -ForegroundColor Yellow
+        foreach ($k in $applyValues.Keys) {
+            $match = [regex]::Match($content, "(?m)^$k\s*=\s*(.+)$")
+            $cur = if ($match.Success) { $match.Groups[1].Value.Trim() } else { '(not set)' }
+            Write-Host ("    {0,-32} {1} -> {2}" -f $k, $cur, $applyValues[$k]) -ForegroundColor Yellow
+        }
+        return
+    }
+
+    # Backup
+    $backup = $tomlPath + '.bak-tokensave-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+    try { Copy-Item $tomlPath $backup -Force; Write-Host ('  [ok]     Backed up .forge.toml -> {0}' -f (Split-Path $backup -Leaf)) -ForegroundColor DarkGray } catch {}
+
+    $updated = $content
+    $changed = @()
+    foreach ($k in $applyValues.Keys) {
+        $val = $applyValues[$k]
+        $pattern = "(?m)^($k\s*=\s*)(.+)$"
+        if ([regex]::IsMatch($updated, $pattern)) {
+            $updated = [regex]::Replace($updated, $pattern, "`${1}$val")
+            $changed += $k
+        }
+        # If key not present, we skip (safer than injecting into unknown TOML structure)
+    }
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($tomlPath, $updated, $utf8NoBom)
+
+    Write-Host ("  [ok]     {0} {1} keys in .forge.toml" -f $action, $changed.Count) -ForegroundColor Green
+    foreach ($k in $changed) {
+        Write-Host ("    {0,-32} = {1}" -f $k, $applyValues[$k]) -ForegroundColor DarkGray
+    }
+}
+
+function Install-ForgeRtkSkill {
+    # Write a global Forge skill file that instructs Forge's AI to prefer rtk
+    # commands over native tools. Forge reads .md files from ~/.forge/skills/
+    # (global) and .forge/skills/ (project) at session start, injecting them
+    # into the system context.
+    param([switch]$DryRun, [switch]$Remove)
+
+    $skillsDir = Join-Path $HOME '.forge\skills'
+    $skillFile = Join-Path $skillsDir 'rtk-token-save.md'
+
+    if ($Remove) {
+        if (Test-Path $skillFile) {
+            if ($DryRun) { Write-Host ('  [dry-run] Would remove {0}' -f $skillFile) -ForegroundColor Yellow; return }
+            Remove-Item $skillFile -Force
+            Write-Host ('  [ok]     Removed Forge rtk skill file') -ForegroundColor Green
+        } else {
+            Write-Host '  [skip]   Forge rtk skill file not found' -ForegroundColor DarkGray
+        }
+        return
+    }
+
+    $skillContent = @'
+# RTK Token Optimizer (managed by 8sync gsd token-save --forge-full)
+
+You have rtk (Token Killer) available. Use it to compress tool output and save tokens.
+
+## Command preferences
+
+When running shell commands, ALWAYS prefer the rtk variant:
+
+| Instead of | Use |
+|---|---|
+| `git status` / `git log` / `git diff` | `rtk git status` / `rtk git log` / `rtk diff` |
+| `cat file` | `rtk read file` |
+| `ls` / `ls -la` | `rtk ls` / `rtk ls -la` |
+| `grep pattern dir` | `rtk grep pattern dir` |
+| `find . -name ...` | `rtk find . -name ...` |
+| `cargo test` / `cargo build` | `rtk cargo test` / `rtk cargo build` |
+| `npm test` / `npm run build` | `rtk npm test` / `rtk npm run build` |
+| `pytest` | `rtk pytest` |
+| `docker ps` / `docker logs` | `rtk docker ps` / `rtk docker logs` |
+| `tsc --noEmit` | `rtk tsc --noEmit` |
+| `npx eslint` | `rtk lint` |
+
+## When reading files via shell
+
+Use `rtk read <file>` instead of `cat <file>`. rtk read applies intelligent
+line-range extraction and deduplication before returning content.
+
+## Checking savings
+
+Run `rtk gain` at any time to see cumulative token savings.
+'@
+
+    if ($DryRun) {
+        Write-Host ('  [dry-run] Would write Forge rtk skill: {0}' -f $skillFile) -ForegroundColor Yellow
+        return
+    }
+
+    if (-not (Test-Path $skillsDir)) {
+        $null = New-Item -Path $skillsDir -ItemType Directory -Force
+    }
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($skillFile, $skillContent, $utf8NoBom)
+    Write-Host ('  [ok]     Wrote Forge rtk skill -> ~/.forge/skills/rtk-token-save.md') -ForegroundColor Green
+    Write-Host '  [info]   Forge loads skills from ~/.forge/skills/ at session start.' -ForegroundColor DarkGray
+}
+
 function Invoke-GsdTokenSave {
     param(
         [switch]$DryRun,
@@ -349,9 +497,13 @@ function Invoke-GsdTokenSave {
         [switch]$IncludeDisableCaching,
         [switch]$ForgeShims,
         [switch]$ForgeShimsRemove,
+        [switch]$ForgeFull,
         [ValidateSet('auto', 'scoop', 'cargo', 'binary')]
         [string]$Method = 'auto'
     )
+
+    # --forge-full implies --forge-shims + toml tuning + skill file
+    if ($ForgeFull) { $ForgeShims = $true }
 
     Write-Host ''
     Write-Host '  GSD TOKEN OPTIMIZER' -ForegroundColor Cyan
@@ -436,10 +588,21 @@ function Invoke-GsdTokenSave {
     }
     Write-Host ''
 
-    # ---- Step 5: forge .bat shims (Windows PATH interception) ---------
+    # ---- Step 5: forge coverage (shims + toml + skill) ----------------
 
-    Write-Host '  [5/5] Forge rtk shims (Windows .bat PATH layer)...' -ForegroundColor Cyan
-    if ($ForgeShims -or $ForgeShimsRemove) {
+    Write-Host '  [5/5] Forge rtk coverage...' -ForegroundColor Cyan
+    if ($ForgeFull) {
+        Write-Host '  [info]   --forge-full: applying all 3 layers for maximum Forge coverage.' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host '  [5a] .bat PATH shims (shell subprocess calls)' -ForegroundColor Cyan
+        Install-RtkForgeShims -DryRun:$DryRun
+        Write-Host ''
+        Write-Host '  [5b] .forge.toml output limits (native Read/Search tools)' -ForegroundColor Cyan
+        Set-ForgeTomlTokenSave -DryRun:$DryRun
+        Write-Host ''
+        Write-Host '  [5c] Forge global skill file (AI instruction layer)' -ForegroundColor Cyan
+        Install-ForgeRtkSkill -DryRun:$DryRun
+    } elseif ($ForgeShims -or $ForgeShimsRemove) {
         if ($ForgeShimsRemove) {
             Write-Host '  [info]   Removing shims...' -ForegroundColor DarkGray
             Install-RtkForgeShims -DryRun:$DryRun -Remove
@@ -448,9 +611,9 @@ function Invoke-GsdTokenSave {
             Install-RtkForgeShims -DryRun:$DryRun
         }
     } else {
-        Write-Host '  [skip]   Pass --forge-shims to create .bat shims so Forge uses rtk.' -ForegroundColor DarkGray
-        Write-Host '           (Forge reads ~/.claude/settings.json hook -- but only Claude Code' -ForegroundColor DarkGray
-        Write-Host '            actually runs it. .bat shims work at the OS PATH level instead.)' -ForegroundColor DarkGray
+        Write-Host '  [skip]   Pass --forge-full for maximum Forge coverage (shims + toml + skill).' -ForegroundColor DarkGray
+        Write-Host '           Or --forge-shims for shell-only shims.' -ForegroundColor DarkGray
+        Write-Host '           (Forge does not read ~/.claude/settings.json -- hook has no effect.)' -ForegroundColor DarkGray
     }
     Write-Host ''
 
@@ -458,15 +621,17 @@ function Invoke-GsdTokenSave {
 
     Write-Host '  Next steps:' -ForegroundColor Cyan
     Write-Host '    1. Restart your Claude Code / GSD session so the hook loads.' -ForegroundColor White
-    Write-Host '    2. In GSD, run a command like `git status` -- it should be' -ForegroundColor White
-    Write-Host '       transparently rewritten to `rtk git status` and return compressed output.' -ForegroundColor White
+    Write-Host '    2. In GSD, run a command like `git status` -- rtk compresses output.' -ForegroundColor White
     Write-Host '    3. Run `rtk gain` to see cumulative token savings.' -ForegroundColor White
-    if ($ForgeShims) {
+    if ($ForgeFull) {
+        Write-Host '    4. Restart Forge -- new PATH + tuned limits + skill file all active.' -ForegroundColor White
+        Write-Host '       Forge will now: (a) use rtk shims for shell calls, (b) cap native' -ForegroundColor White
+        Write-Host '       Read/Search output at smaller limits, (c) have AI prefer rtk commands.' -ForegroundColor White
+    } elseif ($ForgeShims) {
         Write-Host '    4. Restart Forge -- it will inherit the new PATH and use rtk shims.' -ForegroundColor White
     }
     Write-Host ''
-    Write-Host '  Caveat: the hook only fires on Claude Code Bash tool calls.' -ForegroundColor DarkGray
-    Write-Host '  Built-in Read/Grep/Glob tools bypass it. Prefer shell commands' -ForegroundColor DarkGray
-    Write-Host '  (cat, rg, find) or call `rtk read|grep|find` explicitly.' -ForegroundColor DarkGray
+    Write-Host '  Caveat: Claude Code hook fires on Bash tool calls only.' -ForegroundColor DarkGray
+    Write-Host '  Forge native Read/Glob tools bypass the hook (covered by --forge-full toml tuning).' -ForegroundColor DarkGray
     Write-Host ''
 }
