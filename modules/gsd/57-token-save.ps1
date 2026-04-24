@@ -246,12 +246,109 @@ function Set-ClaudeCodeTokenSaveEnv {
     }
 }
 
+function Get-RtkForgeShimsDir {
+    # Returns the dedicated shims directory for Forge rtk wrappers.
+    return Join-Path $HOME '.local\bin\rtk-forge-shims'
+}
+
+function Install-RtkForgeShims {
+    # Creates .bat shim files in ~/.local/bin/rtk-forge-shims/ that wrap
+    # common dev commands through rtk. When this dir is prepended to PATH,
+    # any subprocess Forge spawns (cmd.exe, pwsh, etc.) will transparently
+    # call `rtk git`, `rtk ls`, etc. instead of the real binaries.
+    #
+    # Uses the %~n0 trick so one shim template covers all commands -- each
+    # .bat file is identical; the filename is passed as the subcommand to rtk.
+    #
+    # Special case: `cat` -> `rtk read` (rtk's read subcommand compresses files).
+    param([switch]$DryRun, [switch]$Remove)
+
+    $shimsDir = Get-RtkForgeShimsDir
+
+    # Commands to shim: (bat-name, rtk-subcommand)
+    $shims = @(
+        @('git',    'git'),
+        @('ls',     'ls'),
+        @('cat',    'read'),
+        @('grep',   'grep'),
+        @('find',   'find'),
+        @('cargo',  'cargo'),
+        @('npm',    'npm'),
+        @('pytest', 'pytest'),
+        @('docker', 'docker')
+    )
+
+    if ($Remove) {
+        if (-not (Test-Path $shimsDir)) {
+            Write-Host '  [skip]   Forge rtk shims dir not found (nothing to remove)' -ForegroundColor DarkGray
+            return
+        }
+        if ($DryRun) {
+            Write-Host ('  [dry-run] Would remove shims dir: {0}' -f $shimsDir) -ForegroundColor Yellow
+            return
+        }
+        Remove-Item $shimsDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host ('  [ok]     Removed rtk shims dir: {0}' -f $shimsDir) -ForegroundColor Green
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host ('  [dry-run] Would create shims in: {0}' -f $shimsDir) -ForegroundColor Yellow
+        foreach ($s in $shims) {
+            Write-Host ('    + {0}.bat -> rtk {1} %*' -f $s[0], $s[1]) -ForegroundColor Yellow
+        }
+        return
+    }
+
+    if (-not (Test-Path $shimsDir)) {
+        $null = New-Item -Path $shimsDir -ItemType Directory -Force
+    }
+
+    foreach ($s in $shims) {
+        $name = $s[0]; $sub = $s[1]
+        $batPath = Join-Path $shimsDir ($name + '.bat')
+        $content = "@echo off`r`nrtk $sub %*`r`n"
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($batPath, $content, $utf8NoBom)
+    }
+    Write-Host ('  [ok]     Created {0} shims in {1}' -f $shims.Count, $shimsDir) -ForegroundColor Green
+    Write-Host ('           git ls cat grep find cargo npm pytest docker -> rtk ...') -ForegroundColor DarkGray
+
+    # Prepend to current session PATH
+    $pathDirs = $env:PATH -split ';'
+    $alreadyFirst = $pathDirs.Count -gt 0 -and ($pathDirs[0] -ieq $shimsDir)
+    if (-not $alreadyFirst) {
+        $env:PATH = $shimsDir + ';' + ($pathDirs | Where-Object { $_ -ine $shimsDir } | Where-Object { $_ -ne '' } | Join-String -Separator ';')
+        Write-Host ('  [ok]     Prepended shims dir to current-session PATH') -ForegroundColor Green
+    }
+
+    # Persist to user PATH via setx
+    try {
+        $userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+        $userParts = $userPath -split ';' | Where-Object { $_ -ine $shimsDir -and $_ -ne '' }
+        $newUserPath = $shimsDir + ';' + ($userParts -join ';')
+        [System.Environment]::SetEnvironmentVariable('PATH', $newUserPath, 'User')
+        Write-Host ('  [ok]     Persisted shims dir to user PATH (new shells will inherit)') -ForegroundColor Green
+    } catch {
+        Write-Host ('  [warn]   Could not persist to user PATH: {0}' -f $_.Exception.Message) -ForegroundColor DarkYellow
+        Write-Host ('           Manually run: setx PATH "%PATH%;{0}"' -f $shimsDir) -ForegroundColor DarkGray
+    }
+
+    Write-Host '' 
+    Write-Host '  [!] IMPORTANT: shims intercept git/ls/cat/grep for ALL processes using' -ForegroundColor DarkYellow
+    Write-Host '      this PATH, not just Forge. rtk is transparent for most uses but:' -ForegroundColor DarkYellow
+    Write-Host '      - `cat` is remapped to `rtk read` (may differ for binary files)' -ForegroundColor DarkYellow
+    Write-Host ('      - Remove shims: 8sync gsd token-save --forge-shims --remove') -ForegroundColor DarkYellow
+}
+
 function Invoke-GsdTokenSave {
     param(
         [switch]$DryRun,
         [switch]$SkipAuthFix,
         [switch]$SkipEnv,
         [switch]$IncludeDisableCaching,
+        [switch]$ForgeShims,
+        [switch]$ForgeShimsRemove,
         [ValidateSet('auto', 'scoop', 'cargo', 'binary')]
         [string]$Method = 'auto'
     )
@@ -339,6 +436,24 @@ function Invoke-GsdTokenSave {
     }
     Write-Host ''
 
+    # ---- Step 5: forge .bat shims (Windows PATH interception) ---------
+
+    Write-Host '  [5/5] Forge rtk shims (Windows .bat PATH layer)...' -ForegroundColor Cyan
+    if ($ForgeShims -or $ForgeShimsRemove) {
+        if ($ForgeShimsRemove) {
+            Write-Host '  [info]   Removing shims...' -ForegroundColor DarkGray
+            Install-RtkForgeShims -DryRun:$DryRun -Remove
+        } else {
+            Write-Host '  [info]   Creating .bat shims in PATH for Forge (and any Windows shell).' -ForegroundColor DarkGray
+            Install-RtkForgeShims -DryRun:$DryRun
+        }
+    } else {
+        Write-Host '  [skip]   Pass --forge-shims to create .bat shims so Forge uses rtk.' -ForegroundColor DarkGray
+        Write-Host '           (Forge reads ~/.claude/settings.json hook -- but only Claude Code' -ForegroundColor DarkGray
+        Write-Host '            actually runs it. .bat shims work at the OS PATH level instead.)' -ForegroundColor DarkGray
+    }
+    Write-Host ''
+
     # ---- done ----------------------------------------------------------
 
     Write-Host '  Next steps:' -ForegroundColor Cyan
@@ -346,6 +461,9 @@ function Invoke-GsdTokenSave {
     Write-Host '    2. In GSD, run a command like `git status` -- it should be' -ForegroundColor White
     Write-Host '       transparently rewritten to `rtk git status` and return compressed output.' -ForegroundColor White
     Write-Host '    3. Run `rtk gain` to see cumulative token savings.' -ForegroundColor White
+    if ($ForgeShims) {
+        Write-Host '    4. Restart Forge -- it will inherit the new PATH and use rtk shims.' -ForegroundColor White
+    }
     Write-Host ''
     Write-Host '  Caveat: the hook only fires on Claude Code Bash tool calls.' -ForegroundColor DarkGray
     Write-Host '  Built-in Read/Grep/Glob tools bypass it. Prefer shell commands' -ForegroundColor DarkGray
