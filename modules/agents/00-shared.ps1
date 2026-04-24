@@ -72,31 +72,43 @@ function Clone-SkillRepo {
     }
 
     if (Test-Path (Join-Path $target '.git')) {
-        # Already cloned -- pull latest
+        # Already cloned -- pull latest (non-interactive, 30s timeout)
         try {
             Write-Host ('  [info]   Pulling latest: {0}' -f $Dir) -ForegroundColor DarkGray
-            Push-Location $target
-            $out = & git pull --ff-only 2>&1 | Out-String
-            Pop-Location
-            if ($LASTEXITCODE -eq 0) {
+            $env:GIT_TERMINAL_PROMPT = '0'
+            $proc = Start-Process -FilePath 'git' -ArgumentList 'pull','--ff-only' -WorkingDirectory $target -NoNewWindow -Wait -PassThru -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+            if ($proc.ExitCode -eq 0) {
                 Write-Host ('  [ok]     {0}: up to date' -f $Dir) -ForegroundColor Green
-                return $target
             }
-        } catch { Pop-Location }
+        } catch {}
+        $env:GIT_TERMINAL_PROMPT = $null
         return $target
     }
 
-    # Fresh clone
+    # Ensure URL ends with .git for reliable clone
+    $cloneUrl = $Url
+    if ($cloneUrl -notmatch '\.git$' -and $cloneUrl -match 'github\.com') {
+        $cloneUrl = $cloneUrl.TrimEnd('/') + '.git'
+    }
+
+    # Fresh clone -- non-interactive (GIT_TERMINAL_PROMPT=0), 60s timeout
     try {
-        Write-Host ('  [info]   Cloning {0}...' -f $Url) -ForegroundColor DarkGray
-        $out = & git clone --depth=1 $Url $target 2>&1 | Out-String
-        if ($LASTEXITCODE -eq 0) {
+        Write-Host ('  [info]   Cloning {0}...' -f $cloneUrl) -ForegroundColor DarkGray
+        $env:GIT_TERMINAL_PROMPT = '0'
+        $stdoutTmp = [System.IO.Path]::GetTempFileName()
+        $stderrTmp = [System.IO.Path]::GetTempFileName()
+        $proc = Start-Process -FilePath 'git' -ArgumentList 'clone','--depth=1',$cloneUrl,$target -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutTmp -RedirectStandardError $stderrTmp
+        $env:GIT_TERMINAL_PROMPT = $null
+        Remove-Item $stdoutTmp -Force -ErrorAction SilentlyContinue
+        Remove-Item $stderrTmp -Force -ErrorAction SilentlyContinue
+        if ($proc.ExitCode -eq 0) {
             Write-Host ('  [ok]     Cloned -> {0}' -f $target) -ForegroundColor Green
             return $target
         }
-        Write-Host ('  [error]  git clone failed (exit {0})' -f $LASTEXITCODE) -ForegroundColor Red
+        Write-Host ('  [error]  git clone failed (exit {0})' -f $proc.ExitCode) -ForegroundColor Red
         return $null
     } catch {
+        $env:GIT_TERMINAL_PROMPT = $null
         Write-Host ('  [error]  {0}' -f $_.Exception.Message) -ForegroundColor Red
         return $null
     }

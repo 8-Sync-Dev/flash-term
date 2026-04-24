@@ -177,7 +177,11 @@ function Install-AgentSkillEntry {
             Write-Host '       karpathy-guidelines already deployed to ~/.forge/skills/.' -ForegroundColor Green
             # Still ensure it's in agents/skills/
             if (-not (Test-Path $target) -and (Test-Path $forgeTarget)) {
-                if (-not $DryRun) { Copy-Item $forgeTarget $target -Recurse -Force }
+                if (-not $DryRun) {
+                    $parentDir = Split-Path $target -Parent
+                    if (-not (Test-Path $parentDir)) { $null = New-Item -Path $parentDir -ItemType Directory -Force }
+                    Copy-Item $forgeTarget $target -Recurse -Force
+                }
             }
             return $true
         }
@@ -200,7 +204,8 @@ function Install-AgentSkillEntry {
     }
 
     if ($localDir -or $DryRun) {
-        Deploy-SkillToForge -SourceDir ($localDir ?? (Join-Path (Get-AgentInstallRoot) $dir)) -SkillDir $dir -DryRun:$DryRun
+        $deploySource = if ($localDir) { $localDir } else { Join-Path (Get-AgentInstallRoot) $dir }
+        Deploy-SkillToForge -SourceDir $deploySource -SkillDir $dir -DryRun:$DryRun
         return $true
     }
     return $false
