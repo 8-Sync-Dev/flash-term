@@ -89,7 +89,6 @@ function Invoke-GsdAutoSetup {
     $destPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
-        Invoke-GsdRuntimePatch
         Write-Host ("  [ok] Written to {0}" -f $destPath) -ForegroundColor Green
         Write-Host ''
         Write-Host '  Verify: /gsd prefs   /model' -ForegroundColor DarkGray
@@ -153,7 +152,6 @@ function Invoke-GsdVersionCheck {
 function Invoke-GsdFix {
     param(
         [switch]$DryRun,
-        [switch]$Stable,
         [switch]$Force,
         [switch]$Refresh,
         [switch]$AllowGlobal
@@ -161,9 +159,6 @@ function Invoke-GsdFix {
 
     Write-Host ''
     Write-Host '  [gsd] Running unified repair...' -ForegroundColor Cyan
-    if ($Stable) {
-        Write-Host '  [stable] Applying stable GSD patch profile' -ForegroundColor Cyan
-    }
 
     # 1) Version check -- auto sync to pinned version
     $null = Invoke-GsdVersionCheck -DryRun:$DryRun -AllowGlobal:$AllowGlobal
@@ -176,7 +171,6 @@ function Invoke-GsdFix {
     Invoke-GsdNodeModulesBridgeFix -DryRun:$DryRun
     Invoke-GsdResourceLoaderFix -DryRun:$DryRun
     Invoke-GsdAutoExtensionLoaderPatch -DryRun:$DryRun
-    Invoke-GsdRuntimePatch -DryRun:$DryRun -Stable:$Stable
 
     # 2.5) Claude Code native path + OAuth routing + global Claude settings
     $claudeBundle = Invoke-GsdClaudeFix -DryRun:$DryRun
@@ -289,7 +283,6 @@ function Invoke-GsdCommand {
     $dryRun   = $Rest -contains '--dry-run'
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
-    $stable   = $Rest -contains '--stable'
     $force    = $Rest -contains '--force'
     $balance  = $Rest -contains '--balance'   # alias for --tier=balanced (backward compat)
     $allowGlobal = $Rest -contains '--allow-global'
@@ -393,7 +386,7 @@ function Invoke-GsdCommand {
             }
         }
         'status' { Invoke-GsdStatus }
-        'fix'    { Invoke-GsdFix -DryRun:$dryRun -Stable:$stable -Force:$force -Refresh:($Rest -contains '--refresh') -AllowGlobal:$allowGlobal }
+        'fix'    { Invoke-GsdFix -DryRun:$dryRun -Force:$force -Refresh:($Rest -contains '--refresh') -AllowGlobal:$allowGlobal }
         'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force -AllowGlobal:$allowGlobal | Out-Null }
         'local'  { Invoke-GsdLocalCommand -Rest ($Rest | Select-Object -Skip 1) }
         'global' { Invoke-GsdGlobalCommand -Rest ($Rest | Select-Object -Skip 1) }
@@ -449,6 +442,24 @@ function Invoke-GsdCommand {
         'combo'  { Invoke-GsdCombo -Rest ($Rest | Select-Object -Skip 1) }
         'auth-fix' {
             Invoke-GsdAuthFix -DryRun:$dryRun
+        }
+        'token-save' {
+            $skipAuth = $Rest -contains '--skip-auth-fix'
+            $methodIdx = [Array]::IndexOf($Rest, '--method')
+            $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -Method $method
+        }
+        'token-optimize' {
+            $skipAuth = $Rest -contains '--skip-auth-fix'
+            $methodIdx = [Array]::IndexOf($Rest, '--method')
+            $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -Method $method
+        }
+        'rtk' {
+            $skipAuth = $Rest -contains '--skip-auth-fix'
+            $methodIdx = [Array]::IndexOf($Rest, '--method')
+            $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -Method $method
         }
         'forge-sync' {
             Write-Host ''
