@@ -271,11 +271,14 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd auth-fix [--dry-run]' -ForegroundColor White
     Write-Host '        Fix Anthropic auth loop (gsd-build/gsd-2#4280): removes stale OAuth entry from' -ForegroundColor DarkGray
     Write-Host '        auth.json and sets claude-code: {type:"cli"} so GSD uses Claude Code CLI.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd token-save [--dry-run] [--skip-auth-fix] [--method auto|cargo|binary]' -ForegroundColor White
+    Write-Host '    8sync gsd token-save [--dry-run] [--skip-auth-fix] [--skip-env] [--disable-caching] [--method auto|cargo|binary]' -ForegroundColor White
     Write-Host '        Install rtk (github.com/rtk-ai/rtk) + register Claude Code Bash hook so every' -ForegroundColor DarkGray
     Write-Host '        `git status`, `cat`, `grep`, `cargo test`, etc. gets compressed BEFORE hitting' -ForegroundColor DarkGray
     Write-Host '        LLM context. Reported savings: 60-90%% token reduction on Bash tool calls.' -ForegroundColor DarkGray
-    Write-Host '        Aliases: token-optimize, rtk. Also runs auth-fix unless --skip-auth-fix.' -ForegroundColor DarkGray
+    Write-Host '        Also writes CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1, SKIP_PROMPT_HISTORY=1,' -ForegroundColor DarkGray
+    Write-Host '        DISABLE_GIT_INSTRUCTIONS=1 into ~/.claude/settings.json env block.' -ForegroundColor DarkGray
+    Write-Host '        Aliases: token-optimize, rtk. --disable-caching (NOT recommended) also adds' -ForegroundColor DarkGray
+    Write-Host '        DISABLE_PROMPT_CACHING=1. Also runs auth-fix unless --skip-auth-fix.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Deep removal' -ForegroundColor Cyan
     Write-Host '    8sync gsd nuke [--dry-run] [--yes] [--keep-home] [--project-only]' -ForegroundColor White

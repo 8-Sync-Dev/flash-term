@@ -152,10 +152,106 @@ function Invoke-RtkInitGlobal {
     }
 }
 
+function Set-ClaudeCodeTokenSaveEnv {
+    # Writes opinionated token-saving env vars into ~/.claude/settings.json
+    # under the "env" block (honored by Claude Code CLI at launch).
+    #
+    # Enabled (safe savings):
+    #   CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 -- fixed thinking budget, no ballooning
+    #   CLAUDE_CODE_SKIP_PROMPT_HISTORY=1       -- don't persist transcript
+    #   CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1  -- drop built-in git prompt boilerplate
+    #
+    # NOT enabled: DISABLE_PROMPT_CACHING (would HURT token usage -- caching
+    # is what gives the discount on repeated system prompts).
+    param([switch]$DryRun, [switch]$IncludeDisableCaching)
+
+    $settingsPath = Join-Path $HOME '.claude\settings.json'
+    $settingsDir  = Split-Path $settingsPath -Parent
+
+    $desired = [ordered]@{
+        CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING = '1'
+        CLAUDE_CODE_SKIP_PROMPT_HISTORY       = '1'
+        CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS  = '1'
+    }
+    if ($IncludeDisableCaching) {
+        $desired['DISABLE_PROMPT_CACHING'] = '1'
+    }
+
+    # Read existing settings.json if present
+    $settings = [ordered]@{}
+    if (Test-Path $settingsPath) {
+        try {
+            $raw    = [System.IO.File]::ReadAllText($settingsPath)
+            $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+            foreach ($prop in $parsed.PSObject.Properties) {
+                $settings[$prop.Name] = $prop.Value
+            }
+        } catch {
+            Write-Host ('  [warn]   settings.json unreadable ({0}) -- will rewrite.' -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    # Merge env block
+    $envBlock = [ordered]@{}
+    if ($settings.Contains('env') -and $settings['env']) {
+        foreach ($prop in $settings['env'].PSObject.Properties) {
+            $envBlock[$prop.Name] = $prop.Value
+        }
+    }
+
+    $added = @()
+    foreach ($key in $desired.Keys) {
+        if (-not $envBlock.Contains($key) -or [string]$envBlock[$key] -ne [string]$desired[$key]) {
+            $envBlock[$key] = $desired[$key]
+            $added += $key
+        }
+    }
+
+    if ($added.Count -eq 0) {
+        Write-Host '  [ok]     All token-save env vars already set.' -ForegroundColor Green
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] Would write/update settings.json env:' -ForegroundColor Yellow
+        foreach ($k in $added) { Write-Host ('    + {0}={1}' -f $k, $desired[$k]) -ForegroundColor Yellow }
+        return
+    }
+
+    if (-not (Test-Path $settingsDir)) {
+        $null = New-Item -Path $settingsDir -ItemType Directory -Force
+    }
+
+    # Backup before write
+    if (Test-Path $settingsPath) {
+        $backup = $settingsPath + '.bak-tokensave-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+        try {
+            Copy-Item $settingsPath $backup -Force
+            Write-Host ('  [ok]     Backed up settings.json -> {0}' -f (Split-Path $backup -Leaf)) -ForegroundColor DarkGray
+        } catch {
+            Write-Host ('  [warn]   Could not backup settings.json: {0}' -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    $settings['env'] = $envBlock
+    try {
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $json = ($settings | ConvertTo-Json -Depth 20)
+        [System.IO.File]::WriteAllText($settingsPath, $json, $utf8NoBom)
+        foreach ($k in $added) {
+            Write-Host ('  [ok]     Set env.{0}={1}' -f $k, $desired[$k]) -ForegroundColor Green
+        }
+    } catch {
+        Write-Host ('  [error]  Could not write settings.json: {0}' -f $_.Exception.Message) -ForegroundColor Red
+    }
+}
+
 function Invoke-GsdTokenSave {
     param(
         [switch]$DryRun,
         [switch]$SkipAuthFix,
+        [switch]$SkipEnv,
+        [switch]$IncludeDisableCaching,
         [ValidateSet('auto', 'scoop', 'cargo', 'binary')]
         [string]$Method = 'auto'
     )
@@ -168,7 +264,7 @@ function Invoke-GsdTokenSave {
 
     # ---- Step 1: ensure rtk present ------------------------------------
 
-    Write-Host '  [1/3] Ensuring rtk is installed...' -ForegroundColor Cyan
+    Write-Host '  [1/4] Ensuring rtk is installed...' -ForegroundColor Cyan
     $rtkCmd = Get-Command rtk -ErrorAction SilentlyContinue
     if ($rtkCmd) {
         $verOut = & rtk --version 2>&1 | Out-String
@@ -213,7 +309,7 @@ function Invoke-GsdTokenSave {
 
     # ---- Step 2: register rtk hook -------------------------------------
 
-    Write-Host '  [2/3] Registering rtk PreToolUse hook for Claude Code...' -ForegroundColor Cyan
+    Write-Host '  [2/4] Registering rtk PreToolUse hook for Claude Code...' -ForegroundColor Cyan
     if (-not (Get-Command rtk -ErrorAction SilentlyContinue)) {
         Write-Host '  [warn]   rtk still not on PATH -- skipping hook registration.' -ForegroundColor DarkYellow
         Write-Host '           Restart your shell and rerun: 8sync gsd token-save' -ForegroundColor DarkGray
@@ -224,13 +320,24 @@ function Invoke-GsdTokenSave {
 
     # ---- Step 3: reaffirm auth.json ------------------------------------
 
-    Write-Host '  [3/3] Verifying auth.json routing -> claude-code CLI...' -ForegroundColor Cyan
+    Write-Host '  [3/4] Verifying auth.json routing -> claude-code CLI...' -ForegroundColor Cyan
     if ($SkipAuthFix) {
         Write-Host '  [skip]   --skip-auth-fix passed; not touching auth.json' -ForegroundColor DarkGray
     } else {
         # Reuse the existing fixer -- idempotent, no-ops if already correct.
         Invoke-GsdAuthFix -DryRun:$DryRun
     }
+    Write-Host ''
+
+    # ---- Step 4: write token-save env vars to settings.json -----------
+
+    Write-Host '  [4/4] Writing token-save env vars to ~/.claude/settings.json...' -ForegroundColor Cyan
+    if ($SkipEnv) {
+        Write-Host '  [skip]   --skip-env passed; not touching settings.json' -ForegroundColor DarkGray
+    } else {
+        Set-ClaudeCodeTokenSaveEnv -DryRun:$DryRun -IncludeDisableCaching:$IncludeDisableCaching
+    }
+    Write-Host ''
 
     # ---- done ----------------------------------------------------------
 

@@ -445,21 +445,27 @@ function Invoke-GsdCommand {
         }
         'token-save' {
             $skipAuth = $Rest -contains '--skip-auth-fix'
+            $skipEnv  = $Rest -contains '--skip-env'
+            $incCache = $Rest -contains '--disable-caching'
             $methodIdx = [Array]::IndexOf($Rest, '--method')
             $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
-            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -Method $method
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -Method $method
         }
         'token-optimize' {
             $skipAuth = $Rest -contains '--skip-auth-fix'
+            $skipEnv  = $Rest -contains '--skip-env'
+            $incCache = $Rest -contains '--disable-caching'
             $methodIdx = [Array]::IndexOf($Rest, '--method')
             $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
-            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -Method $method
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -Method $method
         }
         'rtk' {
             $skipAuth = $Rest -contains '--skip-auth-fix'
+            $skipEnv  = $Rest -contains '--skip-env'
+            $incCache = $Rest -contains '--disable-caching'
             $methodIdx = [Array]::IndexOf($Rest, '--method')
             $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
-            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -Method $method
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -Method $method
         }
         'forge-sync' {
             Write-Host ''
