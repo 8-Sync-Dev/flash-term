@@ -447,6 +447,9 @@ function Invoke-GsdCommand {
             Invoke-GsdNuke -DryRun:$dryRun -Yes:$yes -KeepHome:$keepHome -ProjectOnly:$projOnly
         }
         'combo'  { Invoke-GsdCombo -Rest ($Rest | Select-Object -Skip 1) }
+        'auth-fix' {
+            Invoke-GsdAuthFix -DryRun:$dryRun
+        }
         'forge-sync' {
             Write-Host ''
             Write-Host '  [gsd] Syncing Forge Claude Code OAuth token...' -ForegroundColor Cyan
@@ -467,6 +470,7 @@ function Invoke-GsdCommand {
             Write-Host ''
         }
         'guide'  { Show-GsdGuide }
+        'claude-code-auth' { Invoke-GsdAuthFix -DryRun:$dryRun }
         'help'   { Show-GsdHelp }
         default  { Show-GsdHelp }
     }

@@ -1914,6 +1914,129 @@ function Sync-ForgeTokenToGsdAuthJson {
     }
 }
 
+function Invoke-GsdAuthFix {
+    <#
+    .SYNOPSIS
+    Fix GSD Anthropic auth by writing {"claude-code":{"type":"cli"}} to auth.json.
+
+    Root cause (gsd-build/gsd-2#4280): after Anthropic OAuth was removed from GSD,
+    stale auth.json entries with shape {type:"oauth", access, refresh, expires} under
+    the "anthropic" key cause a permanent cooldown/auth-loop. The correct fix is to:
+      1. Remove the stale "anthropic" OAuth entry.
+      2. Set "claude-code": {"type": "cli"} so GSD routes through the Claude Code CLI
+         extension instead of trying to OAuth-authenticate with Anthropic directly.
+
+    Safe to run repeatedly (idempotent).
+    #>
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-Host '  GSD auth fix (ref: gsd-build/gsd-2#4280)' -ForegroundColor Cyan
+    Write-Host '  Clears stale Anthropic OAuth entry, sets claude-code CLI provider.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $authJsonPath = Join-Path $HOME '.gsd\agent\auth.json'
+    $agentDir     = Split-Path $authJsonPath -Parent
+
+    # ---- read current state -------------------------------------------
+
+    $authData = [ordered]@{}
+    $hasStaleAnthropicOauth = $false
+    $hasClaudeCodeCli       = $false
+
+    if (Test-Path $authJsonPath) {
+        try {
+            $raw    = [System.IO.File]::ReadAllText($authJsonPath)
+            $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+            foreach ($prop in $parsed.PSObject.Properties) {
+                $authData[$prop.Name] = $prop.Value
+            }
+
+            $anthropicEntry = $authData['anthropic']
+            if ($anthropicEntry -and $anthropicEntry.type -eq 'oauth') {
+                $hasStaleAnthropicOauth = $true
+                $exp = $anthropicEntry.expires
+                $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+                $ageMin = if ($exp) { [math]::Round(($now - [long]$exp) / 60000) } else { '?' }
+                Write-Host ("  [detect] Stale Anthropic OAuth entry found (expired {0} min ago)" -f $ageMin) -ForegroundColor DarkYellow
+            }
+
+            $ccEntry = $authData['claude-code']
+            if ($ccEntry -and $ccEntry.type -eq 'cli') {
+                $hasClaudeCodeCli = $true
+                Write-Host '  [detect] claude-code CLI entry already present' -ForegroundColor DarkGray
+            }
+        } catch {
+            Write-Host ("  [warn]   auth.json could not be parsed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            Write-Host '  Will create a clean auth.json.' -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host '  [detect] auth.json does not exist yet -- will create.' -ForegroundColor DarkGray
+    }
+
+    # ---- nothing to do? -----------------------------------------------
+
+    if (-not $hasStaleAnthropicOauth -and $hasClaudeCodeCli) {
+        Write-Host '  [ok] auth.json already correct (no stale OAuth, claude-code CLI set).' -ForegroundColor Green
+        Write-Host ''
+        return
+    }
+
+    # ---- apply fix ----------------------------------------------------
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] Would apply:' -ForegroundColor Yellow
+        if ($hasStaleAnthropicOauth) {
+            Write-Host '    - remove auth.json["anthropic"] (stale OAuth entry)' -ForegroundColor Yellow
+        }
+        Write-Host '    - set    auth.json["claude-code"] = {"type": "cli"}' -ForegroundColor Yellow
+        Write-Host ''
+        return
+    }
+
+    # Ensure agent dir exists
+    if (-not (Test-Path $agentDir)) {
+        $null = New-Item -Path $agentDir -ItemType Directory -Force
+    }
+
+    # Backup existing auth.json
+    if (Test-Path $authJsonPath) {
+        $backup = $authJsonPath + '.bak-authfix-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+        try {
+            Copy-Item $authJsonPath $backup -Force
+            Write-Host ("  [ok]     Backed up auth.json -> {0}" -f (Split-Path $backup -Leaf)) -ForegroundColor DarkGray
+        } catch {
+            Write-Host ("  [warn]   Could not backup auth.json: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    }
+
+    # Remove stale anthropic OAuth entry
+    if ($hasStaleAnthropicOauth) {
+        $authData.Remove('anthropic')
+        Write-Host '  [ok]     Removed stale anthropic OAuth entry' -ForegroundColor Green
+    }
+
+    # Set claude-code CLI entry
+    $authData['claude-code'] = [pscustomobject]@{ type = 'cli' }
+    Write-Host '  [ok]     Set claude-code = {"type": "cli"}' -ForegroundColor Green
+
+    # Write back
+    try {
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $json = $authData | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($authJsonPath, $json, $utf8NoBom)
+        Write-Host ("  [ok]     Written: {0}" -f $authJsonPath) -ForegroundColor Green
+    } catch {
+        Write-Host ("  [error]  Could not write auth.json: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  Next: restart GSD session and run /model to verify claude-code provider is active.' -ForegroundColor Cyan
+    Write-Host ''
+}
+
 function Sync-ForgeClaudeCodeToken {
     <#
     .SYNOPSIS

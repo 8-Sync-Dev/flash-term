@@ -269,6 +269,9 @@ function Show-GsdHelp {
     Write-Host '  Forge bridge' -ForegroundColor Cyan
     Write-Host '    8sync gsd forge-sync' -ForegroundColor White
     Write-Host '        Sync Forge Claude Code OAuth token to ANTHROPIC_API_KEY. Auto-refreshes expired tokens.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd auth-fix [--dry-run]' -ForegroundColor White
+    Write-Host '        Fix Anthropic auth loop (gsd-build/gsd-2#4280): removes stale OAuth entry from' -ForegroundColor DarkGray
+    Write-Host '        auth.json and sets claude-code: {type:"cli"} so GSD uses Claude Code CLI.' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  Deep removal' -ForegroundColor Cyan
     Write-Host '    8sync gsd nuke [--dry-run] [--yes] [--keep-home] [--project-only]' -ForegroundColor White
