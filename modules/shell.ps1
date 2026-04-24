@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','forge','gsd','gsd-1','gguf','remove')
+    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','forge','gsd','gsd-1','gguf','remove','agents')
 
         # subcommands per mode
         $subMap = @{
@@ -70,6 +70,7 @@ function Register-8SyncCompleter {
             'gsd-1' = @('help','status','guide','setup','--dry-run','--model','--plan','claude','codex','claude-codex')
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
             remove   = @('claude-code','gsd2','gsd-2','--dry-run','--keep-home','--keep-npm-cache','help')
+            agents   = @('max-skill','list','check','help','--dry-run','--skip-token-save','--only','karpathy','ui-ux-pro-max','dembrandt','ba-skills','getdesign','gitnexus','code-review-graph','rtk-token-save')
         }
 
         if ($count -le 1) {

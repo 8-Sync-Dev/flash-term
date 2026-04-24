@@ -1,0 +1,91 @@
+[
+  {
+    "name": "karpathy",
+    "display": "Karpathy Guidelines",
+    "url": "https://github.com/forrestchang/andrej-karpathy-skills",
+    "dir": "karpathy-guidelines",
+    "use_when": "ALL coding tasks — mandatory baseline read first. Software engineering best practices by Andrej Karpathy: avoid over-engineering, test before refactor, keep it simple.",
+    "priority": 1,
+    "mandatory": true,
+    "builtin": true,
+    "tags": ["baseline", "engineering", "mandatory"]
+  },
+  {
+    "name": "ui-ux-pro-max",
+    "display": "UI/UX Pro Max",
+    "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git",
+    "dir": "ui-ux-pro-max",
+    "use_when": "Frontend, UI components, design systems, React/Vue/CSS, animations, user experience, landing pages, dashboards.",
+    "priority": 2,
+    "mandatory": false,
+    "builtin": false,
+    "tags": ["ui", "ux", "frontend", "css", "react", "design"]
+  },
+  {
+    "name": "dembrandt",
+    "display": "Dembrandt Design",
+    "url": "https://github.com/dembrandt/dembrandt.git",
+    "dir": "dembrandt",
+    "use_when": "Visual design, creative/generative coding, portfolio work, art-direction-heavy interfaces, brand identity work.",
+    "priority": 3,
+    "mandatory": false,
+    "builtin": false,
+    "tags": ["design", "creative", "visual", "portfolio"]
+  },
+  {
+    "name": "ba-skills",
+    "display": "BA Skills (Ruby/Rails)",
+    "url": "https://github.com/phong-baruby/ba-skills.git",
+    "dir": "ba-skills",
+    "use_when": "Ruby/Rails development, backend API design, database schema, ActiveRecord patterns, RSpec testing.",
+    "priority": 4,
+    "mandatory": false,
+    "builtin": false,
+    "tags": ["ruby", "rails", "backend", "api", "database"]
+  },
+  {
+    "name": "getdesign",
+    "display": "GetDesign.md",
+    "url": "https://getdesign.md/",
+    "dir": "getdesign",
+    "use_when": "Design tokens, typography systems, color palettes, spacing scales, component specifications. Use when establishing or auditing a design system.",
+    "priority": 5,
+    "mandatory": false,
+    "builtin": false,
+    "fetch_type": "url",
+    "tags": ["design-tokens", "typography", "color", "design-system"]
+  },
+  {
+    "name": "gitnexus",
+    "display": "GitNexus",
+    "url": "https://github.com/abhigyanpatwari/GitNexus.git",
+    "dir": "gitnexus",
+    "use_when": "Git workflow automation, PR management, branch strategies, commit conventions, release management, CI/CD setup.",
+    "priority": 6,
+    "mandatory": false,
+    "builtin": false,
+    "tags": ["git", "workflow", "pr", "ci", "devops"]
+  },
+  {
+    "name": "code-review-graph",
+    "display": "Code Review Graph",
+    "url": "https://github.com/tirth8205/code-review-graph.git",
+    "dir": "code-review-graph",
+    "use_when": "Code review, pull request analysis, dependency impact graphs, refactoring guidance, technical debt mapping.",
+    "priority": 7,
+    "mandatory": false,
+    "builtin": false,
+    "tags": ["code-review", "refactor", "dependencies", "quality"]
+  },
+  {
+    "name": "rtk-token-save",
+    "display": "RTK Token Optimizer",
+    "url": "built-in",
+    "dir": "rtk-token-save",
+    "use_when": "Always active — instructs AI to use rtk commands for token efficiency (git->rtk git, cat->rtk read, etc.).",
+    "priority": 8,
+    "mandatory": false,
+    "builtin": true,
+    "tags": ["token", "performance", "rtk"]
+  }
+]

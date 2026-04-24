@@ -136,7 +136,7 @@ function Register-8SyncAlias {
                 $modulesDir = $bootstrapDir
                 $moduleFiles = @(
                     'core.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
-                    'clean.ps1','theme.ps1','gpu.ps1','opencode.ps1','forge.ps1','gsd.ps1','gsd1.ps1','gguf.ps1'
+                    'clean.ps1','theme.ps1','gpu.ps1','opencode.ps1','forge.ps1','gsd.ps1','gsd1.ps1','gguf.ps1','agents.ps1'
                 )
                 $ok = 0; $fail = 0
                 foreach ($f in $moduleFiles) {
@@ -175,6 +175,7 @@ function Register-8SyncAlias {
             'gsd-1'    { Invoke-Gsd1Command -Rest $Rest }
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
             'remove'   { Invoke-RemoveCommand -Rest $Rest }
+            'agents'   { Invoke-AgentCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }
