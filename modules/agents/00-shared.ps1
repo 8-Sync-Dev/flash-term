@@ -124,9 +124,9 @@ function Wait-AntimalwareCooldown {
     # Wait until MsMpEng RAM drops below a safer threshold before heavy I/O.
     # Returns quickly when process is absent or already cool.
     param(
-        [int]$HighMb = 1200,
-        [int]$TargetMb = 700,
-        [int]$MaxSeconds = 45
+        [int]$HighMb = 300,
+        [int]$TargetMb = 150,
+        [int]$MaxSeconds = 25
     )
 
     try {
@@ -260,13 +260,17 @@ function Clone-SkillRepo {
     # Free RAM before clone: flush working set + GC
     Wait-AntimalwareCooldown
     $antiMb = Get-AntimalwareWorkingSetMb
-    $isAdmin = Test-IsAdministrator
-    if ($antiMb -ge 1000 -and -not $isAdmin) {
-        Write-Host ('  [warn]   Antimalware still high ({0} MB) and no admin rights.' -f $antiMb) -ForegroundColor DarkYellow
-        Write-Host '           Switching to lightweight raw fetch mode (no git clone).' -ForegroundColor DarkYellow
+    if ($antiMb -ge 100) {
+        Write-Host ('  [warn]   Antimalware high ({0} MB). Using lightweight raw fetch mode.' -f $antiMb) -ForegroundColor DarkYellow
         $light = Fetch-SkillFromGithubRaw -RepoUrl $cloneUrl -Dir $Dir
         if ($light) { return $light }
-        Write-Host '  [warn]   Lightweight fetch failed, attempting git clone anyway.' -ForegroundColor DarkYellow
+        Write-Host '  [warn]   Lightweight fetch failed. Waiting cooldown before git clone...' -ForegroundColor DarkYellow
+        Wait-AntimalwareCooldown -HighMb 220 -TargetMb 140 -MaxSeconds 20
+        $antiMb = Get-AntimalwareWorkingSetMb
+        if ($antiMb -ge 180) {
+            Write-Host ('  [error]  Antimalware still too high ({0} MB). Skip git clone to avoid crash.' -f $antiMb) -ForegroundColor Red
+            return $null
+        }
     }
 
     Invoke-EmptyWorkingSet
@@ -296,7 +300,7 @@ function Clone-SkillRepo {
             [GC]::Collect()
             [GC]::WaitForPendingFinalizers()
             Invoke-EmptyWorkingSet
-            Wait-AntimalwareCooldown -HighMb 1000 -TargetMb 650 -MaxSeconds 20
+            Wait-AntimalwareCooldown -HighMb 220 -TargetMb 140 -MaxSeconds 12
             Start-Sleep -Milliseconds 250
             return $target
         }
