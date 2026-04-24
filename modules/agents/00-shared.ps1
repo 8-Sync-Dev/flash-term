@@ -50,6 +50,26 @@ function Get-ClaudeContextDir {
     Join-Path $HOME '.claude'
 }
 
+function Get-RealGitExe {
+    # Resolve the REAL git.exe path, bypassing any .bat shims in PATH
+    # (rtk-forge-shims/git.bat would redirect to `rtk git` which can't clone).
+    $shimDir = Join-Path $HOME '.local\bin\rtk-forge-shims'
+    $candidates = $env:PATH -split ';' | Where-Object { $_ -ine $shimDir -and $_ -ne '' }
+    foreach ($d in $candidates) {
+        $p = Join-Path $d 'git.exe'
+        if (Test-Path $p) { return $p }
+    }
+    # Fallback common locations
+    foreach ($p in @(
+        'C:\Program Files\Git\cmd\git.exe',
+        'C:\Program Files\Git\bin\git.exe',
+        (Join-Path $HOME 'scoop\shims\git.exe')
+    )) {
+        if (Test-Path $p) { return $p }
+    }
+    return 'git'  # hope for the best
+}
+
 function Clone-SkillRepo {
     # Clone or pull a git skill repo into the install root.
     # Returns the local path on success, $null on failure.
@@ -71,17 +91,19 @@ function Clone-SkillRepo {
         $null = New-Item -Path $root -ItemType Directory -Force
     }
 
+    $gitExe = Get-RealGitExe
+
     if (Test-Path (Join-Path $target '.git')) {
-        # Already cloned -- pull latest (non-interactive, 30s timeout)
+        # Already cloned -- pull latest
         try {
             Write-Host ('  [info]   Pulling latest: {0}' -f $Dir) -ForegroundColor DarkGray
             $env:GIT_TERMINAL_PROMPT = '0'
-            $proc = Start-Process -FilePath 'git' -ArgumentList 'pull','--ff-only' -WorkingDirectory $target -NoNewWindow -Wait -PassThru -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
-            if ($proc.ExitCode -eq 0) {
-                Write-Host ('  [ok]     {0}: up to date' -f $Dir) -ForegroundColor Green
-            }
-        } catch {}
-        $env:GIT_TERMINAL_PROMPT = $null
+            $null = & $gitExe -C $target pull --ff-only 2>&1
+            $env:GIT_TERMINAL_PROMPT = $null
+            Write-Host ('  [ok]     {0}: up to date' -f $Dir) -ForegroundColor Green
+        } catch {
+            $env:GIT_TERMINAL_PROMPT = $null
+        }
         return $target
     }
 
@@ -91,21 +113,18 @@ function Clone-SkillRepo {
         $cloneUrl = $cloneUrl.TrimEnd('/') + '.git'
     }
 
-    # Fresh clone -- non-interactive (GIT_TERMINAL_PROMPT=0), 60s timeout
+    # Fresh clone -- non-interactive, direct git.exe (bypasses rtk shim)
     try {
         Write-Host ('  [info]   Cloning {0}...' -f $cloneUrl) -ForegroundColor DarkGray
         $env:GIT_TERMINAL_PROMPT = '0'
-        $stdoutTmp = [System.IO.Path]::GetTempFileName()
-        $stderrTmp = [System.IO.Path]::GetTempFileName()
-        $proc = Start-Process -FilePath 'git' -ArgumentList 'clone','--depth=1',$cloneUrl,$target -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutTmp -RedirectStandardError $stderrTmp
+        $null = & $gitExe clone --depth=1 $cloneUrl $target 2>&1
+        $exitCode = $LASTEXITCODE
         $env:GIT_TERMINAL_PROMPT = $null
-        Remove-Item $stdoutTmp -Force -ErrorAction SilentlyContinue
-        Remove-Item $stderrTmp -Force -ErrorAction SilentlyContinue
-        if ($proc.ExitCode -eq 0) {
+        if ($exitCode -eq 0) {
             Write-Host ('  [ok]     Cloned -> {0}' -f $target) -ForegroundColor Green
             return $target
         }
-        Write-Host ('  [error]  git clone failed (exit {0})' -f $proc.ExitCode) -ForegroundColor Red
+        Write-Host ('  [error]  git clone failed (exit {0})' -f $exitCode) -ForegroundColor Red
         return $null
     } catch {
         $env:GIT_TERMINAL_PROMPT = $null
