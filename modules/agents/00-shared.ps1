@@ -70,6 +70,56 @@ function Get-RealGitExe {
     return 'git'  # hope for the best
 }
 
+function Suspend-Defender {
+    # Temporarily add exclusion paths for git clone dirs to stop Antimalware
+    # from scanning every git object (1.7GB+ RAM). Requires elevation.
+    # Returns $true if exclusions were added, $false if not (non-admin).
+    param([string[]]$Paths)
+    $added = @()
+    try {
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            # Try via powershell -Verb RunAs silently -- skip if UAC blocked
+            return @()
+        }
+        foreach ($p in $Paths) {
+            try {
+                Add-MpPreference -ExclusionPath $p -ErrorAction Stop
+                $added += $p
+            } catch {}
+        }
+        # Also exclude git.exe process from real-time scan during clone
+        try { Add-MpPreference -ExclusionProcess 'git.exe' -ErrorAction Stop } catch {}
+        return $added
+    } catch {
+        return @()
+    }
+}
+
+function Resume-Defender {
+    # Remove exclusions added by Suspend-Defender.
+    param([string[]]$Paths)
+    foreach ($p in $Paths) {
+        try { Remove-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue } catch {}
+    }
+    try { Remove-MpPreference -ExclusionProcess 'git.exe' -ErrorAction SilentlyContinue } catch {}
+}
+
+function Invoke-EmptyWorkingSet {
+    # Flush current process working set to free physical RAM pages back to OS.
+    # Safe -- OS will page back in on demand. Gives headroom for git clones.
+    try {
+        $sig = @'
+using System; using System.Runtime.InteropServices;
+public class WS { [DllImport("psapi.dll")] public static extern bool EmptyWorkingSet(IntPtr h); }
+'@
+        if (-not ([System.Management.Automation.PSTypeName]'WS').Type) {
+            Add-Type -TypeDefinition $sig -Language CSharp -ErrorAction Stop
+        }
+        [WS]::EmptyWorkingSet([System.Diagnostics.Process]::GetCurrentProcess().Handle) | Out-Null
+    } catch {}
+}
+
 function Clone-SkillRepo {
     # Clone or pull a git skill repo into the install root.
     # Returns the local path on success, $null on failure.
@@ -113,8 +163,12 @@ function Clone-SkillRepo {
         $cloneUrl = $cloneUrl.TrimEnd('/') + '.git'
     }
 
+    # Free RAM before clone: flush working set + GC
+    Invoke-EmptyWorkingSet
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+
     # Fresh clone -- ultra-light to avoid RAM spike (0xc0000142 on low-mem machines)
-    # --depth=1 --single-branch --no-tags --filter=blob:none = minimal network + disk + RAM
     try {
         Write-Host ('  [info]   Cloning {0}...' -f $cloneUrl) -ForegroundColor DarkGray
         $env:GIT_TERMINAL_PROMPT = '0'
@@ -125,9 +179,11 @@ function Clone-SkillRepo {
         $env:GIT_CONFIG_NOSYSTEM = $null
         if ($exitCode -eq 0) {
             Write-Host ('  [ok]     Cloned -> {0}' -f $target) -ForegroundColor Green
-            # Free memory between clones -- prevents 0xc0000142 on constrained machines
+            # Free memory between clones
             [GC]::Collect()
-            Start-Sleep -Milliseconds 500
+            [GC]::WaitForPendingFinalizers()
+            Invoke-EmptyWorkingSet
+            Start-Sleep -Milliseconds 300
             return $target
         }
         Write-Host ('  [error]  git clone failed (exit {0})' -f $exitCode) -ForegroundColor Red

@@ -245,10 +245,33 @@ function Invoke-AgentMaxSkill {
 
     $toInstall = if ($Only) { $registry | Where-Object { $_.name -eq $Only } } else { $registry }
 
+    # Suspend Windows Defender real-time scan on clone dirs + git.exe process
+    # Antimalware eats 1.7GB+ scanning every git object → causes 0xc0000142
+    $cloneRoot = Get-AgentInstallRoot
+    $forgeRoot = Get-ForgeGlobalSkillsDir
+    $defenderPaths = @($cloneRoot, $forgeRoot)
+    $defenderExcluded = @()
+    if (-not $DryRun) {
+        $defenderExcluded = Suspend-Defender -Paths $defenderPaths
+        if ($defenderExcluded.Count -gt 0) {
+            Write-Host ('  [ok]     Defender exclusions added for clone dirs ({0} paths)' -f $defenderExcluded.Count) -ForegroundColor Green
+        } else {
+            Write-Host '  [info]   Non-admin: Defender exclusions skipped (clone may be slower)' -ForegroundColor DarkGray
+        }
+        # Pre-flush RAM before clone loop
+        Invoke-EmptyWorkingSet
+    }
+
     $ok = 0; $fail = 0
     foreach ($skill in $toInstall | Sort-Object { [int]($_.priority) }) {
         $result = Install-AgentSkillEntry -Skill $skill -DryRun:$DryRun
         if ($result) { $ok++ } else { $fail++ }
+    }
+
+    # Restore Defender exclusions
+    if ($defenderExcluded.Count -gt 0) {
+        Resume-Defender -Paths $defenderExcluded
+        Write-Host '  [ok]     Defender exclusions removed (real-time scan restored)' -ForegroundColor Green
     }
 
     Write-Host ("`n  Installed: {0} skills{1}" -f $ok, $(if ($fail) { ", $fail failed" } else { '' })) -ForegroundColor $(if ($fail) { 'DarkYellow' } else { 'Green' })
