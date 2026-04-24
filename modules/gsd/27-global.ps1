@@ -625,7 +625,7 @@ function Show-GsdGlobalHelp {
     Write-Host ''
     Write-Host '  Typical workflow' -ForegroundColor Yellow
     Write-Host '    cd wezterm/test/latest                    # or any project with local runtime' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local fix --stable              # ensure source is patched' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd local fix                       # bridge node_modules' -ForegroundColor DarkGray
     Write-Host '    8sync gsd global status                   # check what will be used' -ForegroundColor DarkGray
     Write-Host '    8sync gsd global promote --dry-run        # preview' -ForegroundColor DarkGray
     Write-Host '    8sync gsd global promote                  # commit' -ForegroundColor DarkGray

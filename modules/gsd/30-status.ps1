@@ -25,55 +25,6 @@ function Invoke-GsdStatus {
     }
     Write-Host ''
 
-    $patch = Get-GsdRuntimePatchStatus
-    $providerPatchColor = switch ($patch.ProviderPatch) {
-        'patched'   { 'Green' }
-        'unpatched' { 'Yellow' }
-        'missing'   { 'DarkYellow' }
-        default     { 'Red' }
-    }
-    $labelColor = switch ($patch.UiLabel) {
-        'anthropic'     { 'Green' }
-        'dynamic'       { 'Green' }
-        'anthropic-api' { 'Yellow' }
-        'missing'       { 'DarkYellow' }
-        default         { 'Red' }
-    }
-    $settingsColor = if ($patch.Settings -eq 'ok') { 'Green' } elseif ($patch.Settings -eq 'missing') { 'DarkYellow' } else { 'Red' }
-    $oauthScopeColor = switch ($patch.OAuthScope) {
-        'patched'     { 'Green' }
-        'scope-only'  { 'Yellow' }
-        'needs-patch' { 'Red' }
-        'missing'     { 'DarkYellow' }
-        default       { 'DarkYellow' }
-    }
-
-    Write-Host '  Runtime patch status:' -ForegroundColor Cyan
-    Write-Host ("    Anthropic OAuth prompt fix   {0}" -f $patch.ProviderPatch) -ForegroundColor $providerPatchColor
-    Write-Host ("    Anthropic OAuth scope        {0}" -f $patch.OAuthScope) -ForegroundColor $oauthScopeColor
-    Write-Host ("    Anthropic UI label          {0}" -f $patch.UiLabel) -ForegroundColor $labelColor
-    Write-Host ("    settings.json               {0}" -f $patch.Settings) -ForegroundColor $settingsColor
-    if ($patch.DefaultProvider -or $patch.DefaultModel) {
-        Write-Host ("    default model               {0}/{1}" -f $patch.DefaultProvider, $patch.DefaultModel) -ForegroundColor DarkGray
-    }
-    $claudePathColor = switch ($patch.ClaudePathStatus) {
-        'native-configured' { 'Green' }
-        'native-found'      { 'Yellow' }
-        'shim-only'         { 'Yellow' }
-        default             { 'DarkYellow' }
-    }
-    Write-Host ("    Claude Code path           {0}" -f $patch.ClaudePathStatus) -ForegroundColor $claudePathColor
-    if ($patch.ConfiguredClaudePath) {
-        Write-Host ("      configured               {0}" -f $patch.ConfiguredClaudePath) -ForegroundColor DarkGray
-    }
-    if ($patch.NativeClaudePath) {
-        Write-Host ("      native                   {0}" -f $patch.NativeClaudePath) -ForegroundColor DarkGray
-    }
-    if ($patch.ShimClaudePath -and $patch.ShimClaudePath -ne $patch.NativeClaudePath) {
-        Write-Host ("      shim                     {0}" -f $patch.ShimClaudePath) -ForegroundColor DarkGray
-    }
-    Write-Host ''
-
     $prefPath = Join-Path $gsdHome 'PREFERENCES.md'
     $detectedPlan = ''
     if (Test-Path $prefPath) {

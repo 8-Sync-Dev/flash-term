@@ -42,7 +42,7 @@ Project-scoped gsd-pi vendoring. This directory is NOT global. Global runtime un
 8sync gsd local baseline            # seed baseline from global or clone
 8sync gsd local add-submodule       # add upstream as submodule at latest/
 8sync gsd local use baseline        # point current/ to baseline copy
-8sync gsd local fix --stable        # patch current/ with known stable fixes
+8sync gsd local fix                 # bridge node_modules for local runtime
 8sync gsd local enter               # activate GSD_CODING_AGENT_DIR for this shell
 gsd ...                             # now runs from current/
 8sync gsd local leave               # revert to global
@@ -216,7 +216,7 @@ function Invoke-GsdLocalInit {
     Write-Host ("    8sync gsd local baseline       # seed {0} from global or clone" -f ("baseline-{0}" -f $script:GsdPinnedVersion)) -ForegroundColor DarkGray
     Write-Host '    8sync gsd local add-submodule  # add upstream at latest/' -ForegroundColor DarkGray
     Write-Host '    8sync gsd local use baseline   # seed current/ from baseline' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd local fix --stable   # apply patches' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd local fix            # bridge node_modules' -ForegroundColor DarkGray
     Write-Host '    8sync gsd local enter          # activate local runtime in this shell' -ForegroundColor DarkGray
     Write-Host ''
 }
@@ -435,7 +435,7 @@ function Invoke-GsdLocalUse {
         return
     }
 
-    Write-Host '  [next]    8sync gsd local fix --stable' -ForegroundColor DarkGray
+    Write-Host '  [next]    8sync gsd local fix' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -510,8 +510,7 @@ function Invoke-GsdLocalLeave {
 
 function Invoke-GsdLocalFix {
     param(
-        [switch]$DryRun,
-        [switch]$Stable
+        [switch]$DryRun
     )
 
     $projectRoot = Resolve-GsdProjectRoot
@@ -534,7 +533,6 @@ function Invoke-GsdLocalFix {
     Write-Host ''
     Write-Host '  [gsd local] fix' -ForegroundColor Cyan
     Write-Host ("  scope     : {0}" -f $currentDir) -ForegroundColor DarkGray
-    if ($Stable) { Write-Host '  [stable] applying stable patch profile' -ForegroundColor Cyan }
 
     # --- 1) Bridge local agent node_modules -> current/node_modules -------
     $currentNm = Join-Path $currentDir 'node_modules'
@@ -563,86 +561,6 @@ function Invoke-GsdLocalFix {
             } catch {
                 Write-Host ("  [warn]    bridge failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
             }
-        }
-    }
-
-    # --- 2) Anthropic OAuth system prompt fix in current/ -----------------
-    $anthropicShared = Join-Path $currentDir 'packages\pi-ai\dist\providers\anthropic-shared.js'
-    if (Test-Path $anthropicShared) {
-        try {
-            $raw = (Get-Content $anthropicShared -Raw -Encoding UTF8) -replace "`r`n", "`n"
-            if ($raw -match "params\.system = \[" -and $raw -notmatch "params\.system\.push\(") {
-                Write-Host '  [ok]      Anthropic OAuth system prompt fix already applied in current/' -ForegroundColor Green
-            } else {
-                $oldBlock = @"
-    if (isOAuthToken) {
-        params.system = [
-            {
-                type: "text",
-                text: "You are Claude Code, Anthropic's official CLI for Claude.",
-                ...(cacheControl ? { cache_control: cacheControl } : {}),
-            },
-        ];
-        if (context.systemPrompt) {
-            params.system.push({
-                type: "text",
-                text: sanitizeSurrogates(context.systemPrompt),
-                ...(cacheControl ? { cache_control: cacheControl } : {}),
-            });
-        }
-    }
-"@ -replace "`r`n", "`n"
-                $newBlock = @"
-    if (isOAuthToken) {
-        params.system = [
-            {
-                type: "text",
-                text: "You are Claude Code, Anthropic's official CLI for Claude.",
-                ...(cacheControl ? { cache_control: cacheControl } : {}),
-            },
-        ];
-    }
-"@ -replace "`r`n", "`n"
-
-                if ($raw.Contains($oldBlock)) {
-                    if ($DryRun) {
-                        Write-Host ("  [dry-run] patch {0}" -f $anthropicShared) -ForegroundColor DarkYellow
-                    } else {
-                        $updated = $raw.Replace($oldBlock, $newBlock)
-                        [System.IO.File]::WriteAllText($anthropicShared, $updated, [System.Text.UTF8Encoding]::new($false))
-                        Write-Host '  [ok]      patched Anthropic OAuth system prompt in current/' -ForegroundColor Green
-                    }
-                } else {
-                    Write-Host '  [warn]    anthropic-shared.js has unexpected shape; skipped OAuth patch' -ForegroundColor DarkYellow
-                }
-            }
-        } catch {
-            Write-Host ("  [warn]    OAuth patch failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
-        }
-    } else {
-        Write-Host '  [warn]    anthropic-shared.js not found in current/' -ForegroundColor DarkYellow
-    }
-
-    # --- 3) Provider label normalize --------------------------------------
-    $labelPath = Join-Path $currentDir 'packages\pi-coding-agent\dist\modes\interactive\components\model-selector.js'
-    if (Test-Path $labelPath) {
-        try {
-            $raw = Get-Content $labelPath -Raw -Encoding UTF8
-            if ($raw -match 'anthropic:\s*"anthropic"') {
-                Write-Host '  [ok]      provider label already normalized in current/' -ForegroundColor Green
-            } elseif ($raw -match 'anthropic:\s*"anthropic-api"') {
-                if ($DryRun) {
-                    Write-Host ("  [dry-run] patch label {0}" -f $labelPath) -ForegroundColor DarkYellow
-                } else {
-                    $updated = $raw -replace 'anthropic:\s*"anthropic-api"', 'anthropic: "anthropic"'
-                    [System.IO.File]::WriteAllText($labelPath, $updated, [System.Text.UTF8Encoding]::new($false))
-                    Write-Host '  [ok]      normalized anthropic label in current/' -ForegroundColor Green
-                }
-            } else {
-                Write-Host '  [ok]      label map uses dynamic provider; no patch needed' -ForegroundColor Green
-            }
-        } catch {
-            Write-Host ("  [warn]    label patch failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
         }
     }
 
@@ -748,7 +666,7 @@ function Ensure-GsdSandboxProject {
 # ---------------------------------------------------------------------------
 #  Invoke-GsdLocalBuild -- run `npm run build:core` inside current/ to
 #  compile TypeScript sources -> dist/loader.js + provider artifacts.
-#  Required after apply-anthropic-patch or when current/ lacks dist/.
+#  Required when current/ lacks dist/.
 # ---------------------------------------------------------------------------
 function Invoke-GsdLocalBuild {
     param([switch]$DryRun)
@@ -809,114 +727,6 @@ function Invoke-GsdLocalBuild {
         Write-Host ("  [err]     build failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
     } finally {
         try { Pop-Location } catch {}
-    }
-    Write-Host ''
-}
-
-# ---------------------------------------------------------------------------
-#  Invoke-GsdLocalApplyAnthropicPatch -- restore Anthropic OAuth module that
-#  upstream gsd-pi removed in commit c2acb1fb4 (TOS compliance). Copies the
-#  saved patches from modules/gsd/patches/ into current/ so /login anthropic
-#  works again. Build must follow this step to compile .ts -> .js.
-# ---------------------------------------------------------------------------
-function Invoke-GsdLocalApplyAnthropicPatch {
-    param([switch]$DryRun)
-
-    $projectRoot = Resolve-GsdProjectRoot
-    if (-not $projectRoot) {
-        Write-Host '  [err]     No .gsd/ project root found.' -ForegroundColor Red
-        return
-    }
-
-    $currentDir = Join-Path $projectRoot '.gsd\vendor\gsd-pi\current'
-    if (-not (Test-Path $currentDir)) {
-        Write-Host '  [err]     current/ missing. Run `8sync gsd local use latest` first.' -ForegroundColor Red
-        return
-    }
-
-    # Resolve patch files shipped with wezterm repo
-    $wez = Get-GsdWezTermRootLocal
-    $patchDir = Join-Path $wez 'modules\gsd\patches'
-    $srcAnthropic = Join-Path $patchDir 'anthropic-oauth.ts'
-    $srcIndex     = Join-Path $patchDir 'oauth-index-with-anthropic.ts'
-    $srcProvider  = Join-Path $patchDir 'anthropic-provider-with-oauth.ts'
-
-    $missing = @()
-    foreach ($p in @($srcAnthropic, $srcIndex, $srcProvider)) {
-        if (-not (Test-Path $p)) { $missing += $p }
-    }
-    if ($missing.Count -gt 0) {
-        Write-Host '  [err]     patch sources missing in modules/gsd/patches/' -ForegroundColor Red
-        foreach ($p in $missing) {
-            Write-Host ("          expected: {0}" -f $p) -ForegroundColor DarkGray
-        }
-        return
-    }
-
-    # Destination files inside current/
-    $oauthDir  = Join-Path $currentDir 'packages\pi-ai\src\utils\oauth'
-    $destAnthropic = Join-Path $oauthDir 'anthropic.ts'
-    $destIndex     = Join-Path $oauthDir 'index.ts'
-
-    $providerDir  = Join-Path $currentDir 'packages\pi-ai\src\providers'
-    $destProvider = Join-Path $providerDir 'anthropic.ts'
-
-    if (-not (Test-Path $oauthDir)) {
-        Write-Host ("  [err]     oauth dir missing: {0}" -f $oauthDir) -ForegroundColor Red
-        Write-Host '          current/ may not be gsd-pi 2.70+ source tree' -ForegroundColor DarkGray
-        return
-    }
-    if (-not (Test-Path $providerDir)) {
-        Write-Host ("  [err]     providers dir missing: {0}" -f $providerDir) -ForegroundColor Red
-        return
-    }
-
-    Write-Host ''
-    Write-Host '  [gsd local] apply-anthropic-patch (restore OAuth for TOS-removed Anthropic)' -ForegroundColor Cyan
-    Write-Host ("  patch dir : {0}" -f $patchDir) -ForegroundColor DarkGray
-    Write-Host ("  oauth dir : {0}" -f $oauthDir) -ForegroundColor DarkGray
-    Write-Host ("  provider  : {0}" -f $providerDir) -ForegroundColor DarkGray
-
-    if ($DryRun) {
-        Write-Host ("  [dry-run] copy {0} -> {1}" -f (Split-Path $srcAnthropic -Leaf), $destAnthropic) -ForegroundColor DarkYellow
-        Write-Host ("  [dry-run] copy {0} -> {1}" -f (Split-Path $srcIndex -Leaf), $destIndex) -ForegroundColor DarkYellow
-        Write-Host ("  [dry-run] copy {0} -> {1}" -f (Split-Path $srcProvider -Leaf), $destProvider) -ForegroundColor DarkYellow
-        Write-Host '  [dry-run] after: run `8sync gsd local build` to compile .ts -> dist/' -ForegroundColor DarkYellow
-        Write-Host ''
-        return
-    }
-
-    $applied = 0
-    $target = 3
-    try {
-        Copy-Item -Path $srcAnthropic -Destination $destAnthropic -Force -ErrorAction Stop
-        Write-Host ("  [ok]      restored oauth/anthropic.ts (OAuth login flow)") -ForegroundColor Green
-        $applied++
-    } catch {
-        Write-Host ("  [err]     failed to copy oauth/anthropic.ts: {0}" -f $_.Exception.Message) -ForegroundColor Red
-    }
-
-    try {
-        Copy-Item -Path $srcIndex -Destination $destIndex -Force -ErrorAction Stop
-        Write-Host ("  [ok]      restored oauth/index.ts (re-register anthropic provider)") -ForegroundColor Green
-        $applied++
-    } catch {
-        Write-Host ("  [err]     failed to copy oauth/index.ts: {0}" -f $_.Exception.Message) -ForegroundColor Red
-    }
-
-    try {
-        Copy-Item -Path $srcProvider -Destination $destProvider -Force -ErrorAction Stop
-        Write-Host ("  [ok]      restored providers/anthropic.ts (Bearer-auth branch for sk-ant-oat* tokens)") -ForegroundColor Green
-        $applied++
-    } catch {
-        Write-Host ("  [err]     failed to copy providers/anthropic.ts: {0}" -f $_.Exception.Message) -ForegroundColor Red
-    }
-
-    if ($applied -eq $target) {
-        Write-Host '  [ok]      Anthropic OAuth patch applied to source (3 files)' -ForegroundColor Green
-        Write-Host '  [next]    run `8sync gsd local build` to compile .ts -> dist/' -ForegroundColor DarkGray
-    } else {
-        Write-Host ("  [warn]    only {0}/{1} files applied" -f $applied, $target) -ForegroundColor DarkYellow
     }
     Write-Host ''
 }
@@ -1077,14 +887,12 @@ function Invoke-GsdLocalSetup {
     Write-Host '  [5/6] install + patches + fix' -ForegroundColor Yellow
     Invoke-GsdLocalInstall -DryRun:$DryRun
 
-    # If using latest, restore Anthropic OAuth (removed upstream) + build
+    # If using latest source, build it
     if ($target -eq 'latest') {
-        Write-Host '  [latest]  restoring Anthropic OAuth (upstream removed for TOS compliance)' -ForegroundColor Cyan
-        Invoke-GsdLocalApplyAnthropicPatch -DryRun:$DryRun
         Invoke-GsdLocalBuild -DryRun:$DryRun
     }
 
-    Invoke-GsdLocalFix -DryRun:$DryRun -Stable
+    Invoke-GsdLocalFix -DryRun:$DryRun
 
     # --- Step 6: enter (unless skipped) ----------------------------------
     if ($SkipEnter) {
@@ -1161,8 +969,7 @@ function Show-GsdLocalHelp {
     Write-Host '    8sync gsd local add-submodule    Add upstream gsd-2 at latest/' -ForegroundColor White
     Write-Host '    8sync gsd local install          Run npm install inside current/' -ForegroundColor White
     Write-Host '    8sync gsd local build            Run npm run build:core inside current/' -ForegroundColor White
-    Write-Host '    8sync gsd local apply-anthropic-patch  Restore Anthropic OAuth (needed for latest)' -ForegroundColor White
-    Write-Host '    8sync gsd local fix [--stable]   Apply stable patches to current/' -ForegroundColor White
+    Write-Host '    8sync gsd local fix              Bridge node_modules for local runtime' -ForegroundColor White
     Write-Host '    8sync gsd local enter            Activate local runtime in this shell' -ForegroundColor White
     Write-Host '    8sync gsd local leave            Revert to global runtime' -ForegroundColor White
     Write-Host ''
@@ -1221,7 +1028,7 @@ function Invoke-GsdLocalCommand {
             Invoke-GsdLocalUse -Target $target -Version $versionArg -DryRun:$dryRun
             if (-not $noAuto -and -not $dryRun) {
                 Invoke-GsdLocalInstall -DryRun:$dryRun
-                Invoke-GsdLocalFix -DryRun:$dryRun -Stable
+                Invoke-GsdLocalFix -DryRun:$dryRun
                 Write-Host ''
                 Write-Host ('  [done]    switched to {0}. Run `gsd` to start.' -f $target) -ForegroundColor Green
                 Write-Host ''
@@ -1229,10 +1036,8 @@ function Invoke-GsdLocalCommand {
         }
         'install'                { Invoke-GsdLocalInstall -DryRun:$dryRun }
         'build'                  { Invoke-GsdLocalBuild -DryRun:$dryRun }
-        'apply-anthropic-patch'  { Invoke-GsdLocalApplyAnthropicPatch -DryRun:$dryRun }
         'fix'            {
-            $stable = $Rest -contains '--stable'
-            Invoke-GsdLocalFix -DryRun:$dryRun -Stable:$stable
+            Invoke-GsdLocalFix -DryRun:$dryRun
         }
         'enter'          { Invoke-GsdLocalEnter -DryRun:$dryRun }
         'leave'          { Invoke-GsdLocalLeave }

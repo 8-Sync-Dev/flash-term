@@ -266,3 +266,41 @@ Read the relevant file from `.agents/rules/` when working on matching code.
 | quality | `.agents/rules/quality.md` | on request |
 
 <!-- OMA:END -->
+
+<!-- agents:max-skill:start — managed by 8sync agents max-skill -->
+
+## Agent Skill Library (8sync max-skill)
+
+**Rule:** Before any non-trivial task, read karpathy-guidelines first.
+Then select additional skills by task type:
+
+| Task type | Skills |
+|---|---|
+| Any coding | `agents/skills/karpathy-guidelines/` (mandatory) |
+| Frontend/UI | + `agents/skills/ui-ux-pro-max/` |
+| Design system | + `agents/skills/getdesign/` + `agents/skills/dembrandt/` |
+| Git/PR/CI | + `agents/skills/gitnexus/` |
+| Code review | + `agents/skills/code-review-graph/` |
+| Ruby/Rails | + `agents/skills/ba-skills/` |
+| Shell cmds | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |
+
+### Skill Registry
+
+- **Karpathy Guidelines** **(mandatory)**: ALL coding tasks — mandatory baseline read first. Software engineering best practices by Andrej Karpathy: avoid over-engineering, test before refactor, keep it simple.  
+  Ref: https://github.com/forrestchang/andrej-karpathy-skills
+- **UI/UX Pro Max**: Frontend, UI components, design systems, React/Vue/CSS, animations, user experience, landing pages, dashboards.  
+  Ref: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
+- **Dembrandt Design**: Visual design, creative/generative coding, portfolio work, art-direction-heavy interfaces, brand identity work.  
+  Ref: https://github.com/dembrandt/dembrandt.git
+- **BA Skills (Ruby/Rails)**: Ruby/Rails development, backend API design, database schema, ActiveRecord patterns, RSpec testing.  
+  Ref: https://github.com/phong-baruby/ba-skills.git
+- **GetDesign.md**: Design tokens, typography systems, color palettes, spacing scales, component specifications. Use when establishing or auditing a design system.  
+  Ref: https://getdesign.md/
+- **GitNexus**: Git workflow automation, PR management, branch strategies, commit conventions, release management, CI/CD setup.  
+  Ref: https://github.com/abhigyanpatwari/GitNexus.git
+- **Code Review Graph**: Code review, pull request analysis, dependency impact graphs, refactoring guidance, technical debt mapping.  
+  Ref: https://github.com/tirth8205/code-review-graph.git
+- **RTK Token Optimizer**: Always active — instructs AI to use rtk commands for token efficiency (git->rtk git, cat->rtk read, etc.).  
+  Ref: built-in
+
+<!-- agents:max-skill:end -->

@@ -399,7 +399,6 @@ function Invoke-GsdSetupFromModel {
 
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
-        Invoke-GsdRuntimePatch
         $claudeBundle = Invoke-GsdClaudeFix -PreferencesPath $destPath
         $claudeFix = $claudeBundle.ClaudePath
         if ($claudeFix.Status -in @('configured','rewritten','already-correct')) {
@@ -542,7 +541,6 @@ function Invoke-GsdClaudeMaxSetup {
     $destPath = Join-Path (Resolve-GsdHome) 'PREFERENCES.md'
     $ok = Write-GsdPreferencesModels -ModelsYaml $yaml -DestPath $destPath -DryRun:$DryRun
     if ($ok -and -not $DryRun) {
-        Invoke-GsdRuntimePatch
         $claudeBundle = Invoke-GsdClaudeFix -PreferencesPath $destPath
         $claudeFix = $claudeBundle.ClaudePath
         if ($claudeFix.Status -in @('configured','rewritten','already-correct')) {
@@ -625,7 +623,6 @@ function Invoke-GsdSetup {
             }
         } catch {}
 
-        Invoke-GsdRuntimePatch -DryRun:$DryRun
         $claudeBundle = Invoke-GsdClaudeFix -DryRun:$DryRun -PreferencesPath $destFile
         $claudeFix = $claudeBundle.ClaudePath
         if ($claudeFix.Status -in @('configured','rewritten','already-correct')) {

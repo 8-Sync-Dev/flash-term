@@ -190,6 +190,29 @@ $script:GsdComboRegistry = [ordered]@{
         example  = '8sync gsd combo karpathy'
         handler  = { param($Rest) Invoke-GsdComboKarpathy -Rest $Rest }
     }
+    'max-skill' = @{
+        category = 'workflow'
+        summary  = 'All-in-one: Karpathy + COMPACT context + curated best-practice skills'
+        details  = @(
+            'Combines the strongest skill injections into one command:',
+            '  1. Karpathy guidelines (forrestchang/andrej-karpathy-skills)',
+            '  2. COMPACT context limit (200-300k) for model stability',
+            '  3. Curated best-practice skills from top open-source projects',
+            '',
+            'Writes into:',
+            '  - agent-instructions.md, .gsd/KNOWLEDGE.md, .claude/CLAUDE.md',
+            '  - AGENTS.md (skill routing + curated patterns)',
+            '  - .gsd/PREFERENCES.md (COMPACT token profile)',
+            '',
+            'COMPACT rationale (gsd-2 #4676):',
+            '  Even 1M-context models degrade past ~300k tokens.',
+            '  Capping at 200-300k keeps reasoning sharp + reduces cost.',
+            '',
+            'Re-run is safe -- marker sections replaced in-place.'
+        )
+        example  = '8sync gsd combo max-skill'
+        handler  = { param($Rest) Invoke-GsdComboMaxSkill -Rest $Rest }
+    }
 
     # ── META ────────────────────────────────────────────────────────────────
     'list' = @{
@@ -968,4 +991,300 @@ function Remove-GsdKarpathySection {
     $endEsc = [regex]::Escape($script:GsdKarpathyEndMarker)
     $pattern = "(?ms)\r?\n?" + $beginEsc + ".*?" + $endEsc + "\r?\n?"
     return [regex]::Replace($Content, $pattern, "`n")
+}
+
+# ---------------------------------------------------------------------------
+# Combo: max-skill -- all-in-one skill injection + COMPACT context limit
+# ---------------------------------------------------------------------------
+
+$script:MaxSkillBeginMarker = '<!-- MAX-SKILL:BEGIN -->'
+$script:MaxSkillEndMarker = '<!-- MAX-SKILL:END -->'
+
+function Invoke-GsdComboMaxSkill {
+    param([string[]]$Rest = @())
+    $dryRun = $Rest -contains '--dry-run'
+    $force  = $Rest -contains '--force'
+    $update = $Rest -contains '--update' -or $Rest -contains '--refresh'
+    $remove = $Rest -contains '--remove' -or $Rest -contains '--uninstall'
+    $skipKarpathy = $Rest -contains '--skip-karpathy'
+    $skipCompact  = $Rest -contains '--skip-compact'
+    $skipSkills   = $Rest -contains '--skip-skills'
+
+    $repoRoot = (Get-Location).Path
+
+    Write-Host ''
+    Write-HintSection 'Combo max-skill -- full skill injection + COMPACT context'
+    Write-Host ''
+    Write-Host ("  Repo: {0}" -f $repoRoot) -ForegroundColor DarkGray
+    Write-Host ''
+
+    if ($remove) {
+        Write-Host '  === REMOVING all max-skill injections ===' -ForegroundColor Yellow
+        Write-Host ''
+        if (-not $skipKarpathy) {
+            Write-Host '  [1/3] Removing Karpathy sections...' -ForegroundColor Cyan
+            $karpathyArgs = @('--remove')
+            if ($dryRun) { $karpathyArgs += '--dry-run' }
+            Invoke-GsdComboKarpathy -Rest $karpathyArgs
+        }
+        if (-not $skipSkills) {
+            Write-Host '  [2/3] Removing curated skills sections...' -ForegroundColor Cyan
+            Remove-MaxSkillSections -RepoRoot $repoRoot -DryRun:$dryRun
+        }
+        if (-not $skipCompact) {
+            Write-Host '  [3/3] COMPACT config in PREFERENCES.md must be removed manually' -ForegroundColor Yellow
+            Write-Host '        Edit .gsd/PREFERENCES.md and change token_profile back' -ForegroundColor DarkGray
+        }
+        Write-Host ''
+        return
+    }
+
+    # ── Step 1: Karpathy skills (most important) ──────────────────────────
+    if (-not $skipKarpathy) {
+        Write-Host '  === [1/3] Karpathy Guidelines ===' -ForegroundColor Magenta
+        $karpathyArgs = @()
+        if ($dryRun)  { $karpathyArgs += '--dry-run' }
+        if ($update)  { $karpathyArgs += '--update' }
+        Invoke-GsdComboKarpathy -Rest $karpathyArgs
+    } else {
+        Write-Host '  [1/3] Karpathy: skipped (--skip-karpathy)' -ForegroundColor DarkGray
+    }
+
+    # ── Step 2: COMPACT context limit ─────────────────────────────────────
+    if (-not $skipCompact) {
+        Write-Host '  === [2/3] COMPACT Context Limit ===' -ForegroundColor Magenta
+        Write-MaxSkillCompact -RepoRoot $repoRoot -DryRun:$dryRun -Force:$force
+    } else {
+        Write-Host '  [2/3] COMPACT: skipped (--skip-compact)' -ForegroundColor DarkGray
+    }
+
+    # ── Step 3: Curated best-practice skills ──────────────────────────────
+    if (-not $skipSkills) {
+        Write-Host '  === [3/3] Curated Best-Practice Skills ===' -ForegroundColor Magenta
+        Write-MaxSkillCurated -RepoRoot $repoRoot -DryRun:$dryRun
+    } else {
+        Write-Host '  [3/3] Curated skills: skipped (--skip-skills)' -ForegroundColor DarkGray
+    }
+
+    Write-Host ''
+    Write-Host '  ══════════════════════════════════════════════════' -ForegroundColor Green
+    Write-Host '  max-skill injection complete.' -ForegroundColor Green
+    Write-Host '  ══════════════════════════════════════════════════' -ForegroundColor Green
+    Write-Host ''
+    Write-Host '  What was injected:' -ForegroundColor Cyan
+    if (-not $skipKarpathy) { Write-Host '    [x] Karpathy guidelines (4 principles)' -ForegroundColor White }
+    if (-not $skipCompact)  { Write-Host '    [x] COMPACT context limit (200k tokens)' -ForegroundColor White }
+    if (-not $skipSkills)   { Write-Host '    [x] Curated best-practice skills (7 patterns)' -ForegroundColor White }
+    Write-Host ''
+    Write-Host '  Commit:' -ForegroundColor Cyan
+    Write-Host '    git add agent-instructions.md AGENTS.md .gsd/ .claude/' -ForegroundColor DarkGray
+    Write-Host '    git commit -m "chore(agent): max-skill injection"' -ForegroundColor DarkGray
+    Write-Host ''
+    Write-Host '  Flags: --update  --remove  --dry-run  --force' -ForegroundColor DarkGray
+    Write-Host '         --skip-karpathy  --skip-compact  --skip-skills' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Write-MaxSkillCompact {
+    param([string]$RepoRoot, [switch]$DryRun, [switch]$Force)
+
+    $gsdDir = Join-Path $RepoRoot '.gsd'
+    $prefsPath = Join-Path $gsdDir 'PREFERENCES.md'
+
+    $compactYaml = @'
+
+# COMPACT context limit (injected by 8sync gsd combo max-skill)
+# Rationale: even 1M-context models degrade past ~300k tokens.
+# Keeping context <=200k ensures sharp reasoning + lower cost.
+# See: https://github.com/gsd-build/gsd-2/issues/4676
+token_profile: compact
+context_limit:
+  max_tokens: 200000
+  warn_at: 150000
+  strategy: summarize_and_trim
+  preserve:
+    - system_prompt
+    - active_task
+    - recent_conversation_turns: 20
+    - pinned_memories
+  trim_order:
+    - old_conversation_turns
+    - completed_task_details
+    - stale_scan_results
+    - verbose_tool_output
+'@
+
+    Write-Host ''
+    Write-Host ("  Target: {0}" -f $prefsPath) -ForegroundColor DarkGray
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] COMPACT config:' -ForegroundColor Yellow
+        Write-Host $compactYaml -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    if (-not (Test-Path $gsdDir)) { New-Item -ItemType Directory -Path $gsdDir -Force | Out-Null }
+
+    if (Test-Path $prefsPath) {
+        $existing = Get-Content $prefsPath -Raw -Encoding UTF8
+        if ($existing -match 'token_profile:\s*compact') {
+            if (-not $Force) {
+                Write-Host '  [skip] COMPACT already set (use --force to overwrite)' -ForegroundColor DarkYellow
+                Write-Host ''
+                return
+            }
+        }
+        $compactMarker = '# COMPACT context limit (injected by 8sync gsd combo max-skill)'
+        if ($existing -match [regex]::Escape($compactMarker)) {
+            $pattern = "(?ms)" + [regex]::Escape($compactMarker) + ".*?trim_order:\r?\n(?:    - [^\n]+\n?)+"
+            $existing = [regex]::Replace($existing, $pattern, '')
+        }
+        if ($existing -match 'token_profile:\s*\w+') {
+            $existing = $existing -replace 'token_profile:\s*\w+', 'token_profile: compact'
+        }
+        $newContent = $existing.TrimEnd() + "`n" + $compactYaml + "`n"
+    } else {
+        $newContent = "---`nversion: 1`n---`n" + $compactYaml + "`n"
+    }
+
+    Set-Content -Path $prefsPath -Value $newContent -Encoding UTF8 -Force
+    Write-Host '  [ok] COMPACT context limit written to PREFERENCES.md' -ForegroundColor Green
+    Write-Host ''
+}
+
+function Write-MaxSkillCurated {
+    param([string]$RepoRoot, [switch]$DryRun)
+
+    $targets = @(
+        [pscustomobject]@{ Path = Join-Path $RepoRoot 'agent-instructions.md'; Label = 'agent-instructions.md' },
+        [pscustomobject]@{ Path = Join-Path $RepoRoot 'AGENTS.md';             Label = 'AGENTS.md' },
+        [pscustomobject]@{ Path = Join-Path $RepoRoot '.gsd/KNOWLEDGE.md';     Label = '.gsd/KNOWLEDGE.md' },
+        [pscustomobject]@{ Path = Join-Path $RepoRoot '.claude/CLAUDE.md';     Label = '.claude/CLAUDE.md' }
+    )
+
+    $section = Build-MaxSkillCuratedSection
+
+    if ($DryRun) {
+        Write-Host ''
+        Write-Host '  [dry-run] curated skills preview (first 40 lines):' -ForegroundColor Yellow
+        ($section -split "`n" | Select-Object -First 40) | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        Write-Host '    ...' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host '  [dry-run] targets:' -ForegroundColor Yellow
+        foreach ($t in $targets) { Write-Host ("    {0}" -f $t.Path) -ForegroundColor DarkGray }
+        Write-Host ''
+        return
+    }
+
+    foreach ($t in $targets) {
+        $dir = Split-Path $t.Path -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+        $existing = if (Test-Path $t.Path) { Get-Content $t.Path -Raw -Encoding UTF8 } else { '' }
+        $newContent = Write-MaxSkillSection -Existing $existing -Section $section -Header $t.Label
+        Set-Content -Path $t.Path -Value $newContent -Encoding UTF8 -Force
+        $verb = if ($existing -match [regex]::Escape($script:MaxSkillBeginMarker)) { 'updated' } else { 'injected' }
+        Write-Host ("  [ok] {0} {1}" -f $verb, $t.Label) -ForegroundColor Green
+    }
+    Write-Host ''
+}
+
+function Build-MaxSkillCuratedSection {
+    $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+    $content = @"
+$script:MaxSkillBeginMarker
+<!-- Injected: $stamp by 8sync gsd combo max-skill -->
+<!-- Re-run '8sync gsd combo max-skill --update' to refresh -->
+<!-- Re-run '8sync gsd combo max-skill --remove' to strip -->
+
+## Curated Best-Practice Skills (auto-injected)
+
+> Battle-tested patterns from top open-source AI coding projects.
+> These complement Karpathy's guidelines with actionable rules.
+
+### 1. Verify Before Declaring Done
+- Run the verification command after every change (lint, typecheck, test).
+- Never say "done" unless verification passes with zero errors.
+- If verification fails, fix it yourself — do not ask the user to fix it.
+
+### 2. Incremental Commits, Small PRs
+- Commit after each logical unit of work (one function, one fix, one test).
+- Keep PRs under 400 lines of diff. Split larger changes into stacked PRs.
+- Write commit messages that explain WHY, not WHAT.
+
+### 3. Read Before Write
+- Always read the existing file before editing. Never guess at file contents.
+- Check imports, types, and neighboring code before adding new code.
+- Search the codebase for existing solutions before writing new ones.
+
+### 4. Minimal Context, Maximum Signal
+- Keep system prompts and instructions concise. Remove fluff.
+- When context is limited, prioritize: active task > recent turns > old history.
+- Summarize completed work into one line; don't keep full transcripts.
+
+### 5. Defense-in-Depth for Long Tasks
+- For tasks over 10 minutes: checkpoint progress, use worktrees, set timeouts.
+- After every milestone: commit, verify, report. Never batch 3+ milestones.
+- On failure: revert to last known-good state, don't debug endlessly.
+
+### 6. Structured Thinking Before Acting
+- For non-trivial tasks: write a 3-5 bullet plan before coding.
+- Identify the riskiest part first and tackle it early.
+- If a plan has more than 7 steps, break it into sub-plans.
+
+### 7. Context Window Discipline
+- Prefer 200k token context max, even if the model supports more.
+- Trim old conversation turns aggressively; keep only active task context.
+- Pin critical info (system prompt, task definition, key decisions) — trim everything else.
+
+"@
+    return $content + $script:MaxSkillEndMarker + "`n"
+}
+
+function Write-MaxSkillSection {
+    param([string]$Existing, [string]$Section, [string]$Header)
+
+    $beginEsc = [regex]::Escape($script:MaxSkillBeginMarker)
+    $endEsc = [regex]::Escape($script:MaxSkillEndMarker)
+    $pattern = "(?ms)" + $beginEsc + ".*?" + $endEsc + "\r?\n?"
+
+    if ($Existing -match $pattern) {
+        return [regex]::Replace($Existing, $pattern, $Section)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Existing)) {
+        $titleFile = Split-Path $Header -Leaf
+        $preface = "# $titleFile`n`nProject-specific guidance for AI coding agents.`n`n"
+        return $preface + $Section
+    }
+
+    $sep = if ($Existing.EndsWith("`n")) { "`n" } else { "`n`n" }
+    return $Existing.TrimEnd() + $sep + "`n" + $Section
+}
+
+function Remove-MaxSkillSections {
+    param([string]$RepoRoot, [switch]$DryRun)
+
+    $targets = @(
+        (Join-Path $RepoRoot 'agent-instructions.md'),
+        (Join-Path $RepoRoot 'AGENTS.md'),
+        (Join-Path $RepoRoot '.gsd/KNOWLEDGE.md'),
+        (Join-Path $RepoRoot '.claude/CLAUDE.md')
+    )
+
+    $beginEsc = [regex]::Escape($script:MaxSkillBeginMarker)
+    $endEsc = [regex]::Escape($script:MaxSkillEndMarker)
+    $pattern = "(?ms)\r?\n?" + $beginEsc + ".*?" + $endEsc + "\r?\n?"
+
+    foreach ($path in $targets) {
+        if (-not (Test-Path $path)) { continue }
+        $content = Get-Content $path -Raw -Encoding UTF8
+        $stripped = [regex]::Replace($content, $pattern, "`n")
+        if ($content -ne $stripped) {
+            if (-not $DryRun) { Set-Content -Path $path -Value $stripped -Encoding UTF8 -Force }
+            $label = $path.Replace($RepoRoot + [IO.Path]::DirectorySeparatorChar, '')
+            Write-Host ("    [{0}] removed from {1}" -f (if ($DryRun) { 'dry-run' } else { 'ok' }), $label) -ForegroundColor Green
+        }
+    }
 }
