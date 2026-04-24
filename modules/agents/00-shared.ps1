@@ -98,7 +98,7 @@ function Clone-SkillRepo {
         try {
             Write-Host ('  [info]   Pulling latest: {0}' -f $Dir) -ForegroundColor DarkGray
             $env:GIT_TERMINAL_PROMPT = '0'
-            $null = & $gitExe -C $target pull --ff-only 2>&1
+            $null = & $gitExe -C $target pull --ff-only --no-tags --quiet 2>&1
             $env:GIT_TERMINAL_PROMPT = $null
             Write-Host ('  [ok]     {0}: up to date' -f $Dir) -ForegroundColor Green
         } catch {
@@ -113,21 +113,28 @@ function Clone-SkillRepo {
         $cloneUrl = $cloneUrl.TrimEnd('/') + '.git'
     }
 
-    # Fresh clone -- non-interactive, direct git.exe (bypasses rtk shim)
+    # Fresh clone -- ultra-light to avoid RAM spike (0xc0000142 on low-mem machines)
+    # --depth=1 --single-branch --no-tags --filter=blob:none = minimal network + disk + RAM
     try {
         Write-Host ('  [info]   Cloning {0}...' -f $cloneUrl) -ForegroundColor DarkGray
         $env:GIT_TERMINAL_PROMPT = '0'
-        $null = & $gitExe clone --depth=1 $cloneUrl $target 2>&1
+        $env:GIT_CONFIG_NOSYSTEM = '1'
+        $null = & $gitExe clone --depth=1 --single-branch --no-tags --filter=blob:none --quiet $cloneUrl $target 2>&1
         $exitCode = $LASTEXITCODE
         $env:GIT_TERMINAL_PROMPT = $null
+        $env:GIT_CONFIG_NOSYSTEM = $null
         if ($exitCode -eq 0) {
             Write-Host ('  [ok]     Cloned -> {0}' -f $target) -ForegroundColor Green
+            # Free memory between clones -- prevents 0xc0000142 on constrained machines
+            [GC]::Collect()
+            Start-Sleep -Milliseconds 500
             return $target
         }
         Write-Host ('  [error]  git clone failed (exit {0})' -f $exitCode) -ForegroundColor Red
         return $null
     } catch {
         $env:GIT_TERMINAL_PROMPT = $null
+        $env:GIT_CONFIG_NOSYSTEM = $null
         Write-Host ('  [error]  {0}' -f $_.Exception.Message) -ForegroundColor Red
         return $null
     }
