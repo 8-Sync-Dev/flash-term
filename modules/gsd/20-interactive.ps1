@@ -270,6 +270,20 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd forge-sync' -ForegroundColor White
     Write-Host '        Sync Forge Claude Code OAuth token to ANTHROPIC_API_KEY. Auto-refreshes expired tokens.' -ForegroundColor DarkGray
     Write-Host ''
+    Write-Host '  Deep removal' -ForegroundColor Cyan
+    Write-Host '    8sync gsd nuke [--dry-run] [--yes] [--keep-home] [--project-only]' -ForegroundColor White
+    Write-Host '        Completely remove ALL gsd-pi artifacts: npm/bun global packages, shims,' -ForegroundColor DarkGray
+    Write-Host '        scoop nodejs-lts node_modules, npm cache, ~/.gsd/, ~/.gsd-cache/,' -ForegroundColor DarkGray
+    Write-Host '        and project-local .gsd/vendor/gsd-pi/. Prompts for confirmation.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd nuke --dry-run' -ForegroundColor White
+    Write-Host '        Preview every path that would be deleted (no changes).' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd nuke --yes' -ForegroundColor White
+    Write-Host '        Skip the YES confirmation prompt (for scripted use).' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd nuke --keep-home' -ForegroundColor White
+    Write-Host '        Remove packages and shims but keep ~/.gsd/ and ~/.gsd-cache/.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd nuke --project-only' -ForegroundColor White
+    Write-Host '        Only delete <cwd-project>/.gsd/vendor/gsd-pi/ -- touch nothing global.' -ForegroundColor DarkGray
+    Write-Host ''
     Write-Host '  Quick start' -ForegroundColor Cyan
     Write-Host '    --model codex' -ForegroundColor White
     Write-Host '        Single-brand. Use only the selected ecosystem.' -ForegroundColor DarkGray

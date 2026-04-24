@@ -14,6 +14,7 @@ foreach ($moduleFile in @(
     '30-status.ps1',
     '40-gguf.ps1',
     '50-command.ps1',
+    '55-nuke.ps1',
     '60-combo.ps1'
 )) {
     . (Join-Path $script:GsdModuleDir $moduleFile)

@@ -439,6 +439,13 @@ function Invoke-GsdCommand {
                 default { Write-Host '  Usage: 8sync gsd remove gguf [--name <id>]' -ForegroundColor DarkGray }
             }
         }
+        'nuke' {
+            $dryRun    = $Rest -contains '--dry-run'
+            $yes       = $Rest -contains '--yes'
+            $keepHome  = $Rest -contains '--keep-home'
+            $projOnly  = $Rest -contains '--project-only'
+            Invoke-GsdNuke -DryRun:$dryRun -Yes:$yes -KeepHome:$keepHome -ProjectOnly:$projOnly
+        }
         'combo'  { Invoke-GsdCombo -Rest ($Rest | Select-Object -Skip 1) }
         'forge-sync' {
             Write-Host ''
