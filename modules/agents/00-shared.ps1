@@ -120,6 +120,95 @@ public class WS { [DllImport("psapi.dll")] public static extern bool EmptyWorkin
     } catch {}
 }
 
+function Wait-AntimalwareCooldown {
+    # Wait until MsMpEng RAM drops below a safer threshold before heavy I/O.
+    # Returns quickly when process is absent or already cool.
+    param(
+        [int]$HighMb = 1200,
+        [int]$TargetMb = 700,
+        [int]$MaxSeconds = 45
+    )
+
+    try {
+        $p = Get-Process -Name 'MsMpEng' -ErrorAction SilentlyContinue
+        if (-not $p) { return }
+
+        $mb = [math]::Round($p.WorkingSet64 / 1MB)
+        if ($mb -lt $HighMb) { return }
+
+        Write-Host ('  [info]   Antimalware RAM high ({0} MB). Waiting for cooldown...' -f $mb) -ForegroundColor DarkYellow
+        $deadline = (Get-Date).AddSeconds($MaxSeconds)
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 1500
+            $p = Get-Process -Name 'MsMpEng' -ErrorAction SilentlyContinue
+            if (-not $p) { break }
+            $mb = [math]::Round($p.WorkingSet64 / 1MB)
+            if ($mb -le $TargetMb) {
+                Write-Host ('  [ok]     Antimalware cooled down to {0} MB' -f $mb) -ForegroundColor Green
+                break
+            }
+        }
+    } catch {}
+}
+
+function Get-AntimalwareWorkingSetMb {
+    try {
+        $p = Get-Process -Name 'MsMpEng' -ErrorAction SilentlyContinue
+        if (-not $p) { return 0 }
+        return [int][math]::Round($p.WorkingSet64 / 1MB)
+    } catch {
+        return 0
+    }
+}
+
+function Test-IsAdministrator {
+    try {
+        return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        return $false
+    }
+}
+
+function Fetch-SkillFromGithubRaw {
+    # Fallback path when Antimalware is too hot and non-admin cannot add exclusions.
+    # Downloads only SKILL/README markdown from raw URLs (no git clone).
+    param(
+        [string]$RepoUrl,
+        [string]$Dir
+    )
+
+    $m = [regex]::Match($RepoUrl, 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)')
+    if (-not $m.Success) { return $null }
+
+    $owner = $m.Groups['owner'].Value
+    $repo  = $m.Groups['repo'].Value
+    $root  = Get-AgentInstallRoot
+    $target = Join-Path $root $Dir
+    if (-not (Test-Path $target)) { $null = New-Item -Path $target -ItemType Directory -Force }
+
+    $candidates = @(
+        "https://raw.githubusercontent.com/$owner/$repo/main/SKILL.md",
+        "https://raw.githubusercontent.com/$owner/$repo/main/README.md",
+        "https://raw.githubusercontent.com/$owner/$repo/master/SKILL.md",
+        "https://raw.githubusercontent.com/$owner/$repo/master/README.md"
+    )
+
+    foreach ($u in $candidates) {
+        try {
+            $content = (Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop).Content
+            if (-not [string]::IsNullOrWhiteSpace($content)) {
+                $skillMd = Join-Path $target 'SKILL.md'
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                [System.IO.File]::WriteAllText($skillMd, $content, $utf8NoBom)
+                Write-Host ('  [ok]     Lightweight fetch -> {0}' -f $skillMd) -ForegroundColor Green
+                return $target
+            }
+        } catch {}
+    }
+
+    return $null
+}
+
 function Clone-SkillRepo {
     # Clone or pull a git skill repo into the install root.
     # Returns the local path on success, $null on failure.
@@ -163,30 +252,55 @@ function Clone-SkillRepo {
         $cloneUrl = $cloneUrl.TrimEnd('/') + '.git'
     }
 
+    # Clean incomplete dirs from previous crashes
+    if (Test-Path $target) {
+        try { Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+    }
+
     # Free RAM before clone: flush working set + GC
+    Wait-AntimalwareCooldown
+    $antiMb = Get-AntimalwareWorkingSetMb
+    $isAdmin = Test-IsAdministrator
+    if ($antiMb -ge 1000 -and -not $isAdmin) {
+        Write-Host ('  [warn]   Antimalware still high ({0} MB) and no admin rights.' -f $antiMb) -ForegroundColor DarkYellow
+        Write-Host '           Switching to lightweight raw fetch mode (no git clone).' -ForegroundColor DarkYellow
+        $light = Fetch-SkillFromGithubRaw -RepoUrl $cloneUrl -Dir $Dir
+        if ($light) { return $light }
+        Write-Host '  [warn]   Lightweight fetch failed, attempting git clone anyway.' -ForegroundColor DarkYellow
+    }
+
     Invoke-EmptyWorkingSet
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
 
-    # Fresh clone -- ultra-light to avoid RAM spike (0xc0000142 on low-mem machines)
+    # Fresh clone (sparse) -- drastically reduces checkout file count and Defender scan load
     try {
-        Write-Host ('  [info]   Cloning {0}...' -f $cloneUrl) -ForegroundColor DarkGray
+        Write-Host ('  [info]   Cloning (sparse) {0}...' -f $cloneUrl) -ForegroundColor DarkGray
         $env:GIT_TERMINAL_PROMPT = '0'
         $env:GIT_CONFIG_NOSYSTEM = '1'
-        $null = & $gitExe clone --depth=1 --single-branch --no-tags --filter=blob:none --quiet $cloneUrl $target 2>&1
+
+        $null = & $gitExe clone --depth=1 --single-branch --no-tags --filter=blob:none --sparse --no-checkout --quiet $cloneUrl $target 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw ('git clone failed (exit {0})' -f $LASTEXITCODE)
+        }
+
+        # Keep only docs/skill files to minimize file creation
+        $null = & $gitExe -C $target sparse-checkout set --no-cone SKILL.md skill.md README.md readme.md "*/SKILL.md" "*/README.md" docs "docs/*" 2>&1
+        $null = & $gitExe -C $target checkout --quiet 2>&1
+
         $exitCode = $LASTEXITCODE
         $env:GIT_TERMINAL_PROMPT = $null
         $env:GIT_CONFIG_NOSYSTEM = $null
         if ($exitCode -eq 0) {
             Write-Host ('  [ok]     Cloned -> {0}' -f $target) -ForegroundColor Green
-            # Free memory between clones
             [GC]::Collect()
             [GC]::WaitForPendingFinalizers()
             Invoke-EmptyWorkingSet
-            Start-Sleep -Milliseconds 300
+            Wait-AntimalwareCooldown -HighMb 1000 -TargetMb 650 -MaxSeconds 20
+            Start-Sleep -Milliseconds 250
             return $target
         }
-        Write-Host ('  [error]  git clone failed (exit {0})' -f $exitCode) -ForegroundColor Red
+        Write-Host ('  [error]  git checkout failed (exit {0})' -f $exitCode) -ForegroundColor Red
         return $null
     } catch {
         $env:GIT_TERMINAL_PROMPT = $null
@@ -195,7 +309,6 @@ function Clone-SkillRepo {
         return $null
     }
 }
-
 function Fetch-SkillFromUrl {
     # Fetch skill content from a plain URL (not a git repo).
     # Saves to agents/skills/<dir>/SKILL.md
