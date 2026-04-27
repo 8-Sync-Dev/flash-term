@@ -318,7 +318,7 @@ function Install-RtkForgeShims {
     $pathDirs = $env:PATH -split ';'
     $alreadyFirst = $pathDirs.Count -gt 0 -and ($pathDirs[0] -ieq $shimsDir)
     if (-not $alreadyFirst) {
-        $env:PATH = $shimsDir + ';' + ($pathDirs | Where-Object { $_ -ine $shimsDir } | Where-Object { $_ -ne '' } | Join-String -Separator ';')
+        $env:PATH = $shimsDir + ';' + (($pathDirs | Where-Object { $_ -ine $shimsDir } | Where-Object { $_ -ne '' }) -join ';')
         Write-Host ('  [ok]     Prepended shims dir to current-session PATH') -ForegroundColor Green
     }
 
