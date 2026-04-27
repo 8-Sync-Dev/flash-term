@@ -266,3 +266,50 @@ Read the relevant file from `.agents/rules/` when working on matching code.
 | quality | `.agents/rules/quality.md` | on request |
 
 <!-- OMA:END -->
+
+<!-- agents:max-skill:start -- managed by 8sync agents max-skill -->
+
+## Agent Skill Library (8sync max-skill)
+
+**Rule:** Before any non-trivial task, read karpathy-guidelines first.
+Then select additional skills by task type:
+
+| Task type | Skills |
+|---|---|
+| Any coding | `agents/skills/karpathy-guidelines/` (mandatory) |
+| GSD workflow | + `agents/skills/gsd-pi-guide/` |
+| Shell cmds | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |
+
+### Skill Registry
+
+- **Karpathy Guidelines** **(mandatory)**: ALL coding tasks -- mandatory baseline read first. Software engineering best practices by Andrej Karpathy: avoid over-engineering, test before refactor, keep it simple.  
+  Ref: https://github.com/forrestchang/andrej-karpathy-skills
+- **GSD 2 Guide**: GSD 2 workflow, auto mode, slash commands, milestone planning, slice execution, verification, cost management. Read to understand how to use /gsd commands.  
+  Ref: local
+
+### GSD Project Context (auto-injected)
+
+When working in a GSD-enabled project, these files contain critical project state.
+**Read the relevant file BEFORE making decisions** that depend on project context.
+
+| File | What it contains | When to read |
+|---|---|---|
+| `.gsd/PROJECT.md` | Project name, tech stack, goals, constraints | Start of any session |
+| `.gsd/CONTEXT.md` | Current milestone, active slice, recent decisions | Before planning or coding |
+| `.gsd/STATE.md` | Workflow state machine position, phase, blockers | Before any `/gsd` command |
+| `.gsd/CODEBASE.md` | Auto-generated codebase map (modules, entry points) | When navigating unfamiliar code |
+| `.gsd/DECISIONS.md` | Architecture decisions log (ADRs) | Before proposing arch changes |
+| `.gsd/KNOWLEDGE.md` | Learned patterns, gotchas, team conventions | Before writing new code |
+| `.gsd/PREFERENCES.md` | User coding style, tool preferences, review standards | Always (style compliance) |
+| `.gsd/milestones/M*/` | Milestone roadmaps, slice breakdowns, validation criteria | When planning or reviewing scope |
+
+**Priority order:** PROJECT.md > CONTEXT.md > STATE.md > others as needed.
+
+### GSD Workflow Reference
+
+Read `agents/skills/gsd-pi-guide/SKILL.md` for the full GSD 2 CLI reference.
+Key commands: `/gsd start`, `/gsd plan`, `/gsd auto`, `/gsd status`, `/gsd cost`.
+GSD uses a state machine: discuss > plan > execute > verify > complete.
+Never skip phases. Always verify before marking complete.
+
+<!-- agents:max-skill:end -->

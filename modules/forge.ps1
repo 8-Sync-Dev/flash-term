@@ -649,89 +649,138 @@ function Invoke-ForgeLightMode {
 }
 
 function Invoke-ForgeThinking {
-    # Set the [reasoning] effort + enabled fields in ~/.forge/.forge.toml globally.
+    # Configure Forge reasoning effort via the canonical `forge config` CLI.
+    #
+    # Why CLI, not regex on a TOML file:
+    #   Forge resolves its global config path itself (`forge config path`).
+    #   On legacy installs that path is ~/forge/.forge.toml; on migrated
+    #   installs it is ~/.forge/.forge.toml. Hardcoding either path silently
+    #   edits the wrong file -- the symptom is `:forge` inside the TUI still
+    #   showing the old [reasoning] block. Using `forge config set` always
+    #   writes to whatever file Forge will actually load.
+    #
+    # Effort levels supported by Forge 2.12+:
+    #   none | minimal | low | medium | high | xhigh | max
+    #
+    # 8sync mappings:
+    #   off  -> none      (thinking effectively disabled)
+    #   on   -> high      (re-enable at the historical default)
+    #   <other> -> passed through verbatim if Forge accepts it
+    #
     # Usage:
-    #   8sync forge thinking            -- show current value
-    #   8sync forge thinking low        -- effort = "low",  enabled = true
-    #   8sync forge thinking medium     -- effort = "medium", enabled = true
-    #   8sync forge thinking high       -- effort = "high",  enabled = true  (default)
-    #   8sync forge thinking off        -- enabled = false  (thinking disabled)
-    #   8sync forge thinking on         -- effort = "high",  enabled = true  (re-enable)
+    #   8sync forge thinking                 -- show current [reasoning] block
+    #   8sync forge thinking off             -- effort = "none"
+    #   8sync forge thinking low|medium|high -- set that effort level
+    #   8sync forge thinking xhigh|max       -- maximum-effort levels
+    #   8sync forge thinking on              -- alias for high
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
         [string[]]$Rest
     )
 
-    $tomlPath = Join-Path $HOME '.forge\.forge.toml'
-
     Write-Host ''
     Write-Host '  FORGE -- thinking (reasoning) setting' -ForegroundColor Cyan
     Write-Host ''
 
-    if (-not (Test-Path $tomlPath)) {
-        Write-Host ('  [error] .forge.toml not found at {0}' -f $tomlPath) -ForegroundColor Red
-        Write-Host '  Make sure Forge is installed: 8sync forge install' -ForegroundColor DarkGray
+    if (-not (Test-CommandExists 'forge')) {
+        Write-Host '  [error] forge CLI not found in PATH.' -ForegroundColor Red
+        Write-Host '  Install it first:  8sync forge install' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
 
-    # Read current values for display
-    $content = Get-Content $tomlPath -Raw -Encoding UTF8
-    $curEffort  = if ($content -match 'effort\s*=\s*"([^"]+)"') { $Matches[1] } else { '?' }
-    $curEnabled = if ($content -match 'enabled\s*=\s*(true|false)') { $Matches[1] } else { '?' }
+    # Resolve the actual config file Forge uses (informational only).
+    $tomlPath = $null
+    try {
+        $tomlPath = (& forge config path 2>$null | Select-Object -First 1).Trim()
+    } catch {
+        # ignore; fall back to "?"
+    }
+
+    # Read current [reasoning] via the CLI -- guaranteed to reflect what Forge sees.
+    function Script:Read-ForgeReasoning {
+        $cur = [pscustomobject]@{ Effort = '?'; Enabled = '?' }
+        try {
+            # --porcelain emits raw TOML. Without it, Forge pretty-prints with
+            # styled section headers that don't include literal "[reasoning]".
+            $out = & forge config list --porcelain 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not $out) { return $cur }
+
+            $inSection = $false
+            foreach ($line in $out) {
+                $t = $line.Trim()
+                if ($t -eq '[reasoning]')   { $inSection = $true;  continue }
+                if ($t -match '^\[.*\]$')   { $inSection = $false; continue }
+                if (-not $inSection) { continue }
+                if ($t -match '^effort\s*=\s*"([^"]+)"')      { $cur.Effort  = $Matches[1] }
+                elseif ($t -match '^enabled\s*=\s*(true|false)') { $cur.Enabled = $Matches[1] }
+            }
+        } catch { }
+        return $cur
+    }
+
+    $cur = Read-ForgeReasoning
 
     $level = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
 
-    # Show current state only
+    # Show current state only.
     if ($level -in @('status', '')) {
-        Write-Host '  Current [reasoning] in .forge.toml:' -ForegroundColor DarkGray
-        Write-Host ("    effort  = `"{0}`"" -f $curEffort)  -ForegroundColor White
-        Write-Host ("    enabled = {0}" -f $curEnabled) -ForegroundColor White
+        if ($tomlPath) {
+            Write-Host ('  Config file: {0}' -f $tomlPath) -ForegroundColor DarkGray
+        }
+        Write-Host '  Current [reasoning] (live, via `forge config list`):' -ForegroundColor DarkGray
+        Write-Host ("    effort  = `"{0}`"" -f $cur.Effort)  -ForegroundColor White
+        Write-Host ("    enabled = {0}" -f $cur.Enabled) -ForegroundColor White
         Write-Host ''
-        Write-Host '  Usage: 8sync forge thinking [low|medium|high|off|on]' -ForegroundColor DarkGray
+        Write-Host '  Usage: 8sync forge thinking [off|low|medium|high|xhigh|max|on]' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
 
-    # Resolve target effort + enabled
-    $newEffort  = $null
-    $newEnabled = $null
+    # Map friendly aliases -> Forge effort levels.
+    $newEffort = switch ($level) {
+        'off'     { 'none' }
+        'on'      { 'high' }
+        'med'     { 'medium' }
+        'none'    { 'none' }
+        'minimal' { 'minimal' }
+        'low'     { 'low' }
+        'medium'  { 'medium' }
+        'high'    { 'high' }
+        'xhigh'   { 'xhigh' }
+        'max'     { 'max' }
+        default   { $null }
+    }
 
-    switch ($level) {
-        'off'    { $newEffort = $curEffort; $newEnabled = 'false' }
-        'on'     { $newEffort = 'high';     $newEnabled = 'true'  }
-        'low'    { $newEffort = 'low';      $newEnabled = 'true'  }
-        'medium' { $newEffort = 'medium';   $newEnabled = 'true'  }
-        'med'    { $newEffort = 'medium';   $newEnabled = 'true'  }
-        'high'   { $newEffort = 'high';     $newEnabled = 'true'  }
-        default  {
-            Write-Host ("  [error] unknown level '{0}'. Valid: low | medium | high | off | on" -f $level) -ForegroundColor Red
+    if (-not $newEffort) {
+        Write-Host ("  [error] unknown level '{0}'." -f $level) -ForegroundColor Red
+        Write-Host '  Valid: off | none | minimal | low | medium | high | xhigh | max | on' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    Write-Host ("  before: effort = `"{0}`"  enabled = {1}" -f $cur.Effort, $cur.Enabled) -ForegroundColor DarkGray
+    Write-Host ("  applying: forge config set reasoning-effort {0}" -f $newEffort) -ForegroundColor Yellow
+
+    try {
+        $setOut = & forge config set reasoning-effort $newEffort 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ('  [error] forge config set failed: {0}' -f ($setOut -join ' ')) -ForegroundColor Red
             Write-Host ''
             return
         }
-    }
-
-    # Show before → after
-    Write-Host ("  before: effort = `"{0}`"  enabled = {1}" -f $curEffort, $curEnabled) -ForegroundColor DarkGray
-    Write-Host ("  after:  effort = `"{0}`"  enabled = {1}" -f $newEffort, $newEnabled) -ForegroundColor Yellow
-    Write-Host ''
-
-    # Write changes: replace inline in the [reasoning] section
-    try {
-        $updated = $content
-        $updated = $updated -replace '(?m)^effort\s*=\s*"[^"]+"',  ("effort = `"{0}`"" -f $newEffort)
-        $updated = $updated -replace '(?m)^enabled\s*=\s*(true|false)', ("enabled = {0}" -f $newEnabled)
-
-        $utf8 = [System.Text.UTF8Encoding]::new($false)
-        [System.IO.File]::WriteAllText($tomlPath, $updated, $utf8)
-        Write-Host '  [ok] .forge.toml updated' -ForegroundColor Green
     } catch {
-        Write-Host ('  [error] could not write .forge.toml: {0}' -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ('  [error] could not invoke forge config set: {0}' -f $_.Exception.Message) -ForegroundColor Red
         Write-Host ''
         return
     }
 
-    Write-Host '  Takes effect for the next Forge session.' -ForegroundColor DarkGray
+    $after = Read-ForgeReasoning
+    Write-Host ("  after:  effort = `"{0}`"  enabled = {1}" -f $after.Effort, $after.Enabled) -ForegroundColor Green
+    if ($tomlPath) {
+        Write-Host ('  Written to: {0}' -f $tomlPath) -ForegroundColor DarkGray
+    }
+    Write-Host '  Takes effect for the next Forge session (exit and re-enter forge).' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -2075,12 +2124,14 @@ function Show-ForgeHelp {
     Write-HintRow '8sync forge zsh --dry-run'     'Preview zsh install steps'
     Write-HintRow '8sync forge enter'             'Spawn an interactive zsh login subshell (exit to return)'
     Write-HintRow '8sync forge lightmode'         'Upgrade ~/.zshrc to v2 block (fix AI chat lag from msg 2+)'
-    Write-HintRow '8sync forge thinking'          'Show current thinking level (effort + enabled)'
+    Write-HintRow '8sync forge thinking'          'Show live [reasoning] from `forge config list`'
+    Write-HintRow '8sync forge thinking off'      'effort=none (disable thinking; via forge config set)'
     Write-HintRow '8sync forge thinking low'      'Set reasoning effort=low (faster, cheaper)'
     Write-HintRow '8sync forge thinking medium'   'Set reasoning effort=medium'
-    Write-HintRow '8sync forge thinking high'     'Set reasoning effort=high (default)'
-    Write-HintRow '8sync forge thinking off'      'Disable thinking entirely (enabled=false)'
-    Write-HintRow '8sync forge thinking on'       'Re-enable thinking at high effort'
+    Write-HintRow '8sync forge thinking high'     'Set reasoning effort=high'
+    Write-HintRow '8sync forge thinking xhigh'    'Set reasoning effort=xhigh'
+    Write-HintRow '8sync forge thinking max'      'Set reasoning effort=max'
+    Write-HintRow '8sync forge thinking on'       'Alias for high'
     Write-HintRow '8sync forge zsh-usage'         'How to use zsh on Windows (no exec zsh -- spawn subshell)'
     Write-HintRow '8sync forge status'            'Show installed version, binary path, dependency check'
     Write-HintRow '8sync forge login'             'Run: forge provider login (configure AI provider)'

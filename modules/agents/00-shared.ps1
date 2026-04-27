@@ -26,7 +26,7 @@ function Get-AgentSkillRegistry {
             name = 'karpathy'; display = 'Karpathy Guidelines'
             url = 'https://github.com/forrestchang/andrej-karpathy-skills'
             dir = 'karpathy-guidelines'; priority = 1; mandatory = $true; builtin = $true
-            use_when = 'ALL coding tasks — mandatory baseline.'
+            use_when = 'ALL coding tasks -- mandatory baseline.'
             tags = @('baseline','engineering','mandatory')
         }
     )
@@ -52,6 +52,8 @@ function Get-ClaudeContextDir {
 
 function Clone-SkillRepo {
     # Clone or pull a git skill repo into the install root.
+    # Uses --depth=1 --no-tags for minimal fetch.
+    # All git operations have a 90-second timeout to prevent hanging.
     # Returns the local path on success, $null on failure.
     param(
         [string]$Url,
@@ -61,6 +63,7 @@ function Clone-SkillRepo {
 
     $root    = Get-AgentInstallRoot
     $target  = Join-Path $root $Dir
+    $timeoutMs = 90000  # 90 seconds max per git operation
 
     if ($DryRun) {
         Write-Host ('  [dry-run] Would clone {0} -> {1}' -f $Url, $target) -ForegroundColor Yellow
@@ -72,13 +75,18 @@ function Clone-SkillRepo {
     }
 
     if (Test-Path (Join-Path $target '.git')) {
-        # Already cloned -- pull latest (non-interactive, 30s timeout)
+        # Already cloned -- pull latest with timeout
         try {
             Write-Host ('  [info]   Pulling latest: {0}' -f $Dir) -ForegroundColor DarkGray
             $env:GIT_TERMINAL_PROMPT = '0'
-            $proc = Start-Process -FilePath 'git' -ArgumentList 'pull','--ff-only' -WorkingDirectory $target -NoNewWindow -Wait -PassThru -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
-            if ($proc.ExitCode -eq 0) {
-                Write-Host ('  [ok]     {0}: up to date' -f $Dir) -ForegroundColor Green
+            $proc = Start-Process -FilePath 'git' -ArgumentList 'pull','--ff-only' -WorkingDirectory $target -NoNewWindow -PassThru -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+            if ($proc.WaitForExit($timeoutMs)) {
+                if ($proc.ExitCode -eq 0) {
+                    Write-Host ('  [ok]     {0}: up to date' -f $Dir) -ForegroundColor Green
+                }
+            } else {
+                Write-Host ('  [warn]   git pull timed out ({0}s) -- killing' -f ($timeoutMs / 1000)) -ForegroundColor DarkYellow
+                try { $proc.Kill() } catch {}
             }
         } catch {}
         $env:GIT_TERMINAL_PROMPT = $null
@@ -91,16 +99,32 @@ function Clone-SkillRepo {
         $cloneUrl = $cloneUrl.TrimEnd('/') + '.git'
     }
 
-    # Fresh clone -- non-interactive (GIT_TERMINAL_PROMPT=0), 60s timeout
+    # Fresh clone with timeout -- non-interactive, depth=1
     try {
         Write-Host ('  [info]   Cloning {0}...' -f $cloneUrl) -ForegroundColor DarkGray
         $env:GIT_TERMINAL_PROMPT = '0'
         $stdoutTmp = [System.IO.Path]::GetTempFileName()
         $stderrTmp = [System.IO.Path]::GetTempFileName()
-        $proc = Start-Process -FilePath 'git' -ArgumentList 'clone','--depth=1',$cloneUrl,$target -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutTmp -RedirectStandardError $stderrTmp
+        $proc = Start-Process -FilePath 'git' -ArgumentList 'clone','--depth=1','--no-tags',$cloneUrl,$target -NoNewWindow -PassThru -RedirectStandardOutput $stdoutTmp -RedirectStandardError $stderrTmp
+
+        $finished = $proc.WaitForExit($timeoutMs)
         $env:GIT_TERMINAL_PROMPT = $null
+
+        if (-not $finished) {
+            Write-Host ('  [error]  git clone timed out ({0}s) -- killing' -f ($timeoutMs / 1000)) -ForegroundColor Red
+            try { $proc.Kill() } catch {}
+            # Clean up partial clone
+            if (Test-Path $target) {
+                Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Remove-Item $stdoutTmp -Force -ErrorAction SilentlyContinue
+            Remove-Item $stderrTmp -Force -ErrorAction SilentlyContinue
+            return $null
+        }
+
         Remove-Item $stdoutTmp -Force -ErrorAction SilentlyContinue
         Remove-Item $stderrTmp -Force -ErrorAction SilentlyContinue
+
         if ($proc.ExitCode -eq 0) {
             Write-Host ('  [ok]     Cloned -> {0}' -f $target) -ForegroundColor Green
             return $target
@@ -114,43 +138,11 @@ function Clone-SkillRepo {
     }
 }
 
-function Fetch-SkillFromUrl {
-    # Fetch skill content from a plain URL (not a git repo).
-    # Saves to agents/skills/<dir>/SKILL.md
-    param(
-        [string]$Url,
-        [string]$Dir,
-        [switch]$DryRun
-    )
-
-    $root    = Get-AgentInstallRoot
-    $target  = Join-Path $root $Dir
-    $skillMd = Join-Path $target 'SKILL.md'
-
-    if ($DryRun) {
-        Write-Host ('  [dry-run] Would fetch {0} -> {1}' -f $Url, $skillMd) -ForegroundColor Yellow
-        return $target
-    }
-
-    if (-not (Test-Path $target)) {
-        $null = New-Item -Path $target -ItemType Directory -Force
-    }
-
-    try {
-        $content = (Invoke-WebRequest -Uri $Url -UseBasicParsing -ErrorAction Stop).Content
-        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-        [System.IO.File]::WriteAllText($skillMd, $content, $utf8NoBom)
-        Write-Host ('  [ok]     Fetched {0} -> SKILL.md ({1} chars)' -f $Url, $content.Length) -ForegroundColor Green
-        return $target
-    } catch {
-        Write-Host ('  [error]  Fetch failed: {0}' -f $_.Exception.Message) -ForegroundColor Red
-        return $null
-    }
-}
-
 function Deploy-SkillToForge {
-    # Copy/link installed skill content into ~/.forge/skills/<dir>/.
-    # Forge loads all .md files in that dir automatically.
+    # Deploy only skill-relevant files (.md, .json, .csv, .yaml, .yml, .txt) to
+    # ~/.forge/skills/<dir>/.  Forge reads .md files; the rest are data.
+    # Skips .git/, executables, binaries, node_modules, etc. to minimize
+    # file I/O and avoid triggering Windows Defender real-time scanning.
     param(
         [string]$SourceDir,
         [string]$SkillDir,
@@ -170,17 +162,50 @@ function Deploy-SkillToForge {
         return
     }
 
+    # Resolve to absolute path (SourceDir may contain ..\..)
+    $SourceDir = (Resolve-Path $SourceDir).Path
+
     if (-not (Test-Path $forgeSkills)) {
         $null = New-Item -Path $forgeSkills -ItemType Directory -Force
     }
 
-    # Copy source dir -> forge skills dir (overwrite)
+    # Allowed extensions for skill content (Forge only needs .md; others are data)
+    $allowedExts = @('.md', '.json', '.csv', '.yaml', '.yml', '.txt')
+    # Directories to always skip
+    $skipDirs = @('.git', 'node_modules', '__pycache__', '.venv', 'target', 'dist', 'build')
+
     try {
         if (Test-Path $target) {
             Remove-Item $target -Recurse -Force
         }
-        Copy-Item $SourceDir $target -Recurse -Force
-        Write-Host ('  [ok]     Deployed to ~/.forge/skills/{0}/' -f $SkillDir) -ForegroundColor Green
+        $null = New-Item -Path $target -ItemType Directory -Force
+
+        $files = Get-ChildItem -Path $SourceDir -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object {
+                $relPath = $_.FullName.Substring($SourceDir.Length).TrimStart('\','/')
+                $inSkipDir = $false
+                foreach ($sd in $skipDirs) {
+                    if ($relPath -like "$sd\*" -or $relPath -like "$sd/*") {
+                        $inSkipDir = $true
+                        break
+                    }
+                }
+                (-not $inSkipDir) -and ($_.Extension -in $allowedExts)
+            }
+
+        $copied = 0
+        foreach ($f in $files) {
+            $relPath = $f.FullName.Substring($SourceDir.Length).TrimStart('\','/')
+            $destPath = Join-Path $target $relPath
+            $destDir  = Split-Path $destPath -Parent
+            if (-not (Test-Path $destDir)) {
+                $null = New-Item -Path $destDir -ItemType Directory -Force
+            }
+            Copy-Item $f.FullName $destPath -Force
+            $copied++
+        }
+
+        Write-Host ('  [ok]     Deployed to ~/.forge/skills/{0}/ ({1} files)' -f $SkillDir, $copied) -ForegroundColor Green
     } catch {
         Write-Host ('  [error]  Deploy failed: {0}' -f $_.Exception.Message) -ForegroundColor Red
     }
