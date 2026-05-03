@@ -137,7 +137,6 @@ gsd headless query                    # exit 0 done / 1 error / 2 blocked
 8sync gsd setup --pick                # fzf picker có status
 8sync gsd status                      # auth/key/routing
 8sync gsd keys                        # list provider
-8sync gsd model add claude-opus-4-7   # thêm model không cần upgrade gsd-pi
 8sync gsd fix --refresh               # refresh runtime local (không đụng global)
 8sync gsd local                       # inspect .gsd/vendor/gsd-pi
 ```

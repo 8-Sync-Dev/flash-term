@@ -436,16 +436,19 @@ function Build-ClaudeMaxYaml {
         return $null
     }
 
-    # Model IDs
-    $opus   = 'anthropic/claude-opus-4-6'
-    $sonnet = 'anthropic/claude-sonnet-4-6'
-    $haiku  = 'anthropic/claude-haiku-4-5'
+    # Model IDs -- claude-code provider (flat-rate, $0 via subscription)
+    # Opus has two generations: 4-7 (newest) and 4-6 (fallback)
+    # Sonnet and Haiku have one current version each
+    $opus        = 'claude-code/claude-opus-4-7'
+    $opusPrev    = 'claude-code/claude-opus-4-6'
+    $sonnet      = 'claude-code/claude-sonnet-4-6'
+    $haiku       = 'claude-code/claude-haiku-4-5'
 
     # Helper: pick best available model in preference order
     function Pick {
         param([string[]]$Preference)
         $available = $Preference | Where-Object {
-            ($_ -eq $opus -and $hasOpus) -or ($_ -eq $sonnet -and $hasSonnet) -or ($_ -eq $haiku -and $hasHaiku)
+            ($_ -in @($opus, $opusPrev) -and $hasOpus) -or ($_ -eq $sonnet -and $hasSonnet) -or ($_ -eq $haiku -and $hasHaiku)
         }
         return @($available)
     }
@@ -458,11 +461,11 @@ function Build-ClaudeMaxYaml {
     #
     switch ($Tier) {
         'heavy' {
-            $planModels   = Pick @($opus, $sonnet, $haiku)
-            $rsrchModels  = Pick @($opus, $sonnet, $haiku)
-            $execModels   = Pick @($sonnet, $opus, $haiku)
+            $planModels   = Pick @($opus, $opusPrev, $sonnet, $haiku)
+            $rsrchModels  = Pick @($opus, $opusPrev, $sonnet, $haiku)
+            $execModels   = Pick @($sonnet, $opus, $opusPrev, $haiku)
             $simpModels   = Pick @($sonnet, $haiku, $opus)
-            $valdModels   = Pick @($sonnet, $opus, $haiku)
+            $valdModels   = Pick @($sonnet, $opus, $opusPrev, $haiku)
             $compModels   = Pick @($sonnet, $haiku, $opus)
             $subModels    = Pick @($sonnet, $haiku, $opus)
         }
@@ -477,13 +480,13 @@ function Build-ClaudeMaxYaml {
         }
         default {
             # balanced
-            $planModels   = Pick @($opus, $sonnet, $haiku)
-            $rsrchModels  = Pick @($opus, $sonnet, $haiku)
-            $execModels   = Pick @($sonnet, $opus, $haiku)
+            $planModels   = Pick @($opus, $opusPrev, $sonnet, $haiku)
+            $rsrchModels  = Pick @($opus, $opusPrev, $sonnet, $haiku)
+            $execModels   = Pick @($sonnet, $opus, $opusPrev, $haiku)
             $simpModels   = Pick @($haiku, $sonnet)
-            $valdModels   = Pick @($sonnet, $opus, $haiku)
+            $valdModels   = Pick @($sonnet, $opus, $opusPrev, $haiku)
             $compModels   = Pick @($sonnet, $haiku)
-            $subModels    = Pick @($haiku, $sonnet)
+            $subModels    = Pick @($sonnet, $haiku)
         }
     }
 
@@ -673,8 +676,10 @@ function Invoke-GsdSetup {
             Write-Host '  optional: 8sync gsd key google <key>  (gemini-2.5-pro free tier)' -ForegroundColor DarkGray
         }
         'claude-max' {
-            Write-Host '  /login -> anthropic' -ForegroundColor Yellow
-            Write-Host '  Models : Opus 4-6 plan/research -> Sonnet 4-6 exec -> Haiku 4-5 simple' -ForegroundColor DarkGray
+            Write-Host '  8sync gsd forge-sync  (or: forge provider login claude_code)' -ForegroundColor Yellow
+            Write-Host '  Provider: claude-code (flat-rate, $0 via subscription)' -ForegroundColor DarkGray
+            Write-Host '  Models : Opus 4-7 plan/research -> Sonnet 4-6 exec -> Haiku 4-5 simple' -ForegroundColor DarkGray
+            Write-Host '  Fallback: Opus 4-6 (previous gen)' -ForegroundColor DarkGray
             Write-Host '  100% Claude -- no external providers needed' -ForegroundColor DarkGray
         }
         'codex-max' {
@@ -708,7 +713,7 @@ function Invoke-GsdSetup {
         }
         'claude-code' {
             Write-Host '  8sync gsd forge-sync  (auto-syncs Forge OAuth token)' -ForegroundColor Yellow
-            Write-Host '  Models : Opus 4.7 plan/research -> Sonnet 4.6 exec -> Haiku 4.5 simple' -ForegroundColor DarkGray
+            Write-Host '  Models : Opus 4-7 plan/research -> Sonnet 4-6 exec -> Haiku 4-5 simple' -ForegroundColor DarkGray
             Write-Host '  100% Claude via Forge subscription -- $0 API cost (Pro/Max covers all)' -ForegroundColor Cyan
         }
     }

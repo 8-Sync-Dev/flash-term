@@ -499,7 +499,8 @@ function Invoke-GsdTokenSave {
         [switch]$ForgeShimsRemove,
         [switch]$ForgeFull,
         [ValidateSet('auto', 'scoop', 'cargo', 'binary')]
-        [string]$Method = 'auto'
+        [string]$Method = 'auto',
+        [int]$CompactPct = 70
     )
 
     # --forge-full implies --forge-shims + toml tuning + skill file
@@ -586,6 +587,15 @@ function Invoke-GsdTokenSave {
     } else {
         Set-ClaudeCodeTokenSaveEnv -DryRun:$DryRun -IncludeDisableCaching:$IncludeDisableCaching
     }
+
+    Write-Host "  [compact] autoCompact: smart + threshold: ${CompactPct}% + removing DISABLE_1M_CONTEXT..." -ForegroundColor Cyan
+    $compactResult = Ensure-GsdClaudeGlobalSettings -DryRun:$DryRun -CompactPct $CompactPct
+    if ($compactResult.Changed) {
+        Write-Host "  [ok]     Applied: smart compact @ ${CompactPct}%, 1M context unlocked" -ForegroundColor Green
+    } else {
+        Write-Host "  [ok]     Already correct (smart @ ${CompactPct}%, 1M unlocked)" -ForegroundColor Green
+    }
+    Write-Host '  [warn]   CLAUDE_AUTOCOMPACT_PCT_OVERRIDE has known upstream bugs - may not be honored' -ForegroundColor DarkYellow
     Write-Host ''
 
     # ---- Step 5: forge coverage (shims + toml + skill) ----------------

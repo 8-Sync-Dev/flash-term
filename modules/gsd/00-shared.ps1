@@ -292,86 +292,17 @@ function Normalize-GsdPreferencesForClaudeCodeOAuth {
         [switch]$DryRun
     )
 
-    if (-not (Test-Path $Path)) {
-        return [pscustomobject]@{ Status='missing'; Changed=$false; Path=$Path; Replacements=0 }
-    }
-
-    # Historical cleanup: older wrapper revisions rewrote anthropic/* -> claude-code/*.
-    # GSD 2.76 does not require claude-code as the provider identity, so keep
-    # Anthropic routing and only use Claude Code as a native bridge executable.
-    $raw = Get-Content $Path -Raw -Encoding UTF8
-    $pairs = [ordered]@{
-        'claude-code/claude-opus-4-7'   = 'anthropic/claude-opus-4-7'
-        'claude-code/claude-sonnet-4-7' = 'anthropic/claude-sonnet-4-7'
-        'claude-code/claude-opus-4-6'   = 'anthropic/claude-opus-4-6'
-        'claude-code/claude-sonnet-4-6' = 'anthropic/claude-sonnet-4-6'
-        'claude-code/claude-haiku-4-5'  = 'anthropic/claude-haiku-4-5'
-    }
-
-    $updated = $raw
-    $count = 0
-    foreach ($from in $pairs.Keys) {
-        $to = $pairs[$from]
-        $hits = ([regex]::Matches($updated, [regex]::Escape($from))).Count
-        if ($hits -gt 0) {
-            $count += $hits
-            $updated = $updated.Replace($from, $to)
-        }
-    }
-
-    if ($count -eq 0) {
-        return [pscustomobject]@{ Status='already-clean'; Changed=$false; Path=$Path; Replacements=0 }
-    }
-
-    if (-not $DryRun) {
-        [System.IO.File]::WriteAllText($Path, $updated, [System.Text.UTF8Encoding]::new($false))
-    }
-
-    return [pscustomobject]@{ Status='rewritten'; Changed=$true; Path=$Path; Replacements=$count }
+    # claude-code/ is now the intended provider for claude-max and claude-code plans.
+    # No normalization needed -- claude-code routes through subscription (flat-rate, $0).
+    return [pscustomobject]@{ Status='already-clean'; Changed=$false; Path=$Path; Replacements=0 }
 }
 
 function Normalize-GsdSettingsForClaudeCodeOAuth {
     param([switch]$DryRun)
 
-    $settings = Read-GsdSettingsJson
-    if ($null -eq $settings) {
-        return [pscustomobject]@{ Status='settings-missing'; Changed=$false }
-    }
-
-    $map = @{
-        'claude-code/claude-opus-4-7'   = 'anthropic/claude-opus-4-7'
-        'claude-code/claude-sonnet-4-7' = 'anthropic/claude-sonnet-4-7'
-        'claude-code/claude-opus-4-6'   = 'anthropic/claude-opus-4-6'
-        'claude-code/claude-sonnet-4-6' = 'anthropic/claude-sonnet-4-6'
-        'claude-code/claude-haiku-4-5'  = 'anthropic/claude-haiku-4-5'
-    }
-
-    $changed = $false
-    $data = [ordered]@{}
-    foreach ($prop in $settings.PSObject.Properties) {
-        $data[$prop.Name] = $prop.Value
-    }
-
-    if ($data.Contains('defaultProvider') -and [string]$data['defaultProvider'] -eq 'claude-code') {
-        $data['defaultProvider'] = 'anthropic'
-        $changed = $true
-    }
-    if ($data.Contains('defaultModel')) {
-        $current = [string]$data['defaultModel']
-        if ($map.ContainsKey($current)) {
-            $data['defaultModel'] = $map[$current]
-            $changed = $true
-        }
-    }
-
-    if (-not $changed) {
-        return [pscustomobject]@{ Status='already-clean'; Changed=$false }
-    }
-
-    if (-not $DryRun) {
-        Write-GsdSettingsJson -Data $data
-    }
-    return [pscustomobject]@{ Status='rewritten'; Changed=$true }
+    # claude-code is now the intended provider identity for claude-max and claude-code plans.
+    # No normalization needed -- keep claude-code as defaultProvider.
+    return [pscustomobject]@{ Status='already-clean'; Changed=$false }
 }
 
 function Get-GsdClaudeGlobalSettingsPath {
@@ -394,7 +325,10 @@ function Write-GsdClaudeGlobalSettingsJson {
 }
 
 function Ensure-GsdClaudeGlobalSettings {
-    param([switch]$DryRun)
+    param(
+        [switch]$DryRun,
+        [int]$CompactPct = 0
+    )
 
     $settings = Read-GsdClaudeGlobalSettingsJson
     if ($null -eq $settings) { $settings = [pscustomobject]@{} }
@@ -413,13 +347,26 @@ function Ensure-GsdClaudeGlobalSettings {
     }
 
     $desiredEnv = [ordered]@{
-        'CLAUDE_CODE_DISABLE_1M_CONTEXT' = '1'
         'DISABLE_TELEMETRY' = '1'
         'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC' = '1'
         'CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING' = '1'
+        'CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING' = '1'
     }
 
     $changed = $false
+
+    # Remove env vars that hurt more than help
+    $removeKeys = @(
+        'CLAUDE_CODE_DISABLE_1M_CONTEXT'    # forces 200K, wastes Opus 4.7's 1M window
+        'DISABLE_PROMPT_CACHING'            # caching saves tokens — never disable
+    )
+    foreach ($rk in $removeKeys) {
+        if ($envMap.Contains($rk)) {
+            $envMap.Remove($rk)
+            $changed = $true
+        }
+    }
+
     foreach ($k in $desiredEnv.Keys) {
         if (-not $envMap.Contains($k) -or [string]$envMap[$k] -ne $desiredEnv[$k]) {
             $envMap[$k] = $desiredEnv[$k]
@@ -427,9 +374,17 @@ function Ensure-GsdClaudeGlobalSettings {
         }
     }
 
-    if (-not $data.Contains('autoCompact') -or $data['autoCompact'] -ne $true) {
-        $data['autoCompact'] = $true
+    if (-not $data.Contains('autoCompact') -or $data['autoCompact'] -ne 'smart') {
+        $data['autoCompact'] = 'smart'
         $changed = $true
+    }
+
+    if ($CompactPct -gt 0) {
+        $pctStr = [string]$CompactPct
+        if (-not $envMap.Contains('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE') -or [string]$envMap['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'] -ne $pctStr) {
+            $envMap['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'] = $pctStr
+            $changed = $true
+        }
     }
 
     $data['env'] = $envMap
@@ -1163,300 +1118,6 @@ function Invoke-GsdAutoExtensionLoaderPatch {
     }
 }
 
-function Invoke-GsdModelRegistryPatch {
-    param([switch]$DryRun)
-
-    $piAiDir = Get-GsdPiAiModelsDir
-    if (-not $piAiDir) { return }
-
-    $genFile = Join-Path $piAiDir 'models.generated.js'
-    $modelsFile = Join-Path $piAiDir 'models.js'
-
-    if (-not (Test-Path $genFile)) {
-        Write-Host '  [warn]    models.generated.js not found -- skipping model registry patch' -ForegroundColor DarkYellow
-        return
-    }
-
-    # -- 1) Inject claude-opus-4-7 entry into models.generated.js (anthropic section)
-    $genRaw = Get-Content $genFile -Raw -Encoding UTF8
-    if ($genRaw -match 'claude-opus-4-7') {
-        Write-Host '  [ok]      claude-opus-4-7 already in model registry' -ForegroundColor Green
-    } else {
-        $opus47Entry = @'
-        "claude-opus-4-7": {
-            id: "claude-opus-4-7",
-            name: "Claude Opus 4.7",
-            api: "anthropic-messages",
-            provider: "anthropic",
-            baseUrl: "https://api.anthropic.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: {
-                input: 5,
-                output: 25,
-                cacheRead: 0.5,
-                cacheWrite: 6.25,
-            },
-            contextWindow: 1000000,
-            maxTokens: 128000,
-        },
-'@
-        # Insert right after the claude-opus-4-6 entry closing
-        $anchor = '"claude-opus-4-6":'
-        $anchorIdx = $genRaw.IndexOf($anchor)
-        if ($anchorIdx -ge 0) {
-            # Find the closing "}," for this entry (next "}," after the anchor block)
-            $searchFrom = $anchorIdx
-            $closingPattern = "`n        },"
-            $closingIdx = $genRaw.IndexOf($closingPattern, $searchFrom)
-            if ($closingIdx -ge 0) {
-                $insertAt = $closingIdx + $closingPattern.Length
-                if ($DryRun) {
-                    Write-Host '  [dry-run] would inject claude-opus-4-7 into models.generated.js' -ForegroundColor DarkYellow
-                } else {
-                    $genRaw = $genRaw.Insert($insertAt, "`n$opus47Entry")
-                    [System.IO.File]::WriteAllText($genFile, $genRaw, [System.Text.UTF8Encoding]::new($false))
-                    Write-Host '  [ok]      Injected claude-opus-4-7 into models.generated.js' -ForegroundColor Green
-                }
-            } else {
-                Write-Host '  [warn]    Could not locate opus-4-6 entry boundary -- skipping injection' -ForegroundColor DarkYellow
-            }
-        } else {
-            Write-Host '  [warn]    Could not find claude-opus-4-6 anchor in models.generated.js' -ForegroundColor DarkYellow
-        }
-    }
-
-    # -- 2) Add capability patch for opus-4-7 in models.js (supportsXhigh)
-    if (Test-Path $modelsFile) {
-        $modRaw = Get-Content $modelsFile -Raw -Encoding UTF8
-        if ($modRaw -match 'opus-4-7|opus-4\.7') {
-            Write-Host '  [ok]      opus-4-7 capability patch already in models.js' -ForegroundColor Green
-        } else {
-            $oldCaps = 'match: (m) => m.api === "anthropic-messages" && (m.id.includes("opus-4-6") || m.id.includes("opus-4.6")),'
-            $newCaps = 'match: (m) => m.api === "anthropic-messages" && (m.id.includes("opus-4-6") || m.id.includes("opus-4.6") || m.id.includes("opus-4-7") || m.id.includes("opus-4.7")),'
-            if ($modRaw.Contains($oldCaps)) {
-                if ($DryRun) {
-                    Write-Host '  [dry-run] would patch opus-4-7 xhigh capability in models.js' -ForegroundColor DarkYellow
-                } else {
-                    $modRaw = $modRaw.Replace($oldCaps, $newCaps)
-                    [System.IO.File]::WriteAllText($modelsFile, $modRaw, [System.Text.UTF8Encoding]::new($false))
-                    Write-Host '  [ok]      Patched opus-4-7 xhigh capability in models.js' -ForegroundColor Green
-                }
-            } else {
-                Write-Host '  [warn]    Could not find capability patch anchor in models.js' -ForegroundColor DarkYellow
-            }
-        }
-    }
-}
-
-function Get-GsdPiAiModelsDir {
-    $localRoot = Resolve-GsdPreferredRuntimeRoot
-    if ($localRoot) {
-        $localDir = Join-Path $localRoot 'packages\pi-ai\dist'
-        if (Test-Path $localDir) { return $localDir }
-    }
-
-    $gsdPiBase = $null
-    if (Test-CommandExists 'gsd') {
-        try {
-            $gsdBin = (Get-Command gsd -ErrorAction SilentlyContinue).Source
-            if ($gsdBin) {
-                $gsdPiBase = Split-Path (Split-Path $gsdBin)
-                if (-not (Test-Path (Join-Path $gsdPiBase 'packages'))) {
-                    $gsdPiBase = Join-Path (Split-Path $gsdBin) 'node_modules\gsd-pi'
-                }
-            }
-        } catch {}
-    }
-    if (-not $gsdPiBase -or -not (Test-Path $gsdPiBase)) {
-        $gsdPiBase = Join-Path $HOME 'scoop\persist\nodejs-lts\bin\node_modules\gsd-pi'
-    }
-    $dir = Join-Path $gsdPiBase 'packages\pi-ai\dist'
-    if (Test-Path $dir) { return $dir }
-    return $null
-}
-
-# Known model templates -- extend this table when new models launch
-$script:GsdModelTemplates = @{
-    'claude-opus-4-7' = @{
-        name = 'Claude Opus 4.7'; api = 'anthropic-messages'; provider = 'anthropic'
-        baseUrl = 'https://api.anthropic.com'; reasoning = $true; input = @('text','image')
-        costIn = 5; costOut = 25; cacheRead = 0.5; cacheWrite = 6.25
-        contextWindow = 1000000; maxTokens = 128000; xhigh = $true
-    }
-    'claude-sonnet-4-7' = @{
-        name = 'Claude Sonnet 4.7'; api = 'anthropic-messages'; provider = 'anthropic'
-        baseUrl = 'https://api.anthropic.com'; reasoning = $true; input = @('text','image')
-        costIn = 3; costOut = 15; cacheRead = 0.3; cacheWrite = 3.75
-        contextWindow = 1000000; maxTokens = 128000; xhigh = $true
-    }
-    'claude-opus-4-6' = @{
-        name = 'Claude Opus 4.6'; api = 'anthropic-messages'; provider = 'anthropic'
-        baseUrl = 'https://api.anthropic.com'; reasoning = $true; input = @('text','image')
-        costIn = 5; costOut = 25; cacheRead = 0.5; cacheWrite = 6.25
-        contextWindow = 1000000; maxTokens = 128000; xhigh = $true
-    }
-}
-
-function Invoke-GsdModelAdd {
-    param(
-        [string[]]$Rest,
-        [switch]$DryRun
-    )
-
-    $modelId = ($Rest | Where-Object { $_ -notlike '--*' } | Select-Object -First 1)
-    if ([string]::IsNullOrWhiteSpace($modelId)) {
-        Write-Host ''
-        Write-Host '  Usage: 8sync gsd model add <model-id>' -ForegroundColor DarkGray
-        Write-Host ''
-        Write-Host '  Available model templates:' -ForegroundColor Cyan
-        foreach ($k in $script:GsdModelTemplates.Keys | Sort-Object) {
-            $t = $script:GsdModelTemplates[$k]
-            Write-Host ("    {0,-30} {1} (${2}/{3} per 1M tokens)" -f $k, $t.name, $t.costIn, $t.costOut) -ForegroundColor Gray
-        }
-        Write-Host ''
-        Write-Host '  Or specify any model-id -- it will be added based on opus-4-6 template.' -ForegroundColor DarkGray
-        Write-Host ''
-        return
-    }
-
-    $piAiDir = Get-GsdPiAiModelsDir
-    if (-not $piAiDir) {
-        Write-Host '  [err]     Cannot locate gsd-pi models directory' -ForegroundColor Red
-        return
-    }
-
-    $genFile = Join-Path $piAiDir 'models.generated.js'
-    $modelsFile = Join-Path $piAiDir 'models.js'
-
-    if (-not (Test-Path $genFile)) {
-        Write-Host '  [err]     models.generated.js not found' -ForegroundColor Red
-        return
-    }
-
-    $genRaw = Get-Content $genFile -Raw -Encoding UTF8
-    if ($genRaw -match [regex]::Escape("`"$modelId`"")) {
-        Write-Host ("  [ok]      {0} already exists in model registry" -f $modelId) -ForegroundColor Green
-        return
-    }
-
-    # Resolve template
-    $tmpl = $script:GsdModelTemplates[$modelId]
-    if (-not $tmpl) {
-        # Infer from model ID pattern
-        if ($modelId -match 'opus') {
-            $tmpl = $script:GsdModelTemplates['claude-opus-4-6'].Clone()
-        } elseif ($modelId -match 'sonnet') {
-            $tmpl = $script:GsdModelTemplates['claude-sonnet-4-7'].Clone()
-        } else {
-            $tmpl = $script:GsdModelTemplates['claude-opus-4-6'].Clone()
-        }
-        $tmpl.name = $modelId -replace '-', ' ' -replace '(\b\w)', { $_.Value.ToUpper() }
-    }
-
-    $inputArr = ($tmpl.input | ForEach-Object { "`"$_`"" }) -join ', '
-    $entry = @"
-        "$modelId": {
-            id: "$modelId",
-            name: "$($tmpl.name)",
-            api: "$($tmpl.api)",
-            provider: "$($tmpl.provider)",
-            baseUrl: "$($tmpl.baseUrl)",
-            reasoning: $($tmpl.reasoning.ToString().ToLower()),
-            input: [$inputArr],
-            cost: {
-                input: $($tmpl.costIn),
-                output: $($tmpl.costOut),
-                cacheRead: $($tmpl.cacheRead),
-                cacheWrite: $($tmpl.cacheWrite),
-            },
-            contextWindow: $($tmpl.contextWindow),
-            maxTokens: $($tmpl.maxTokens),
-        },
-"@
-
-    # Find anchor: insert after claude-opus-4-6 or last anthropic entry
-    $anchor = '"claude-opus-4-6":'
-    $anchorIdx = $genRaw.IndexOf($anchor)
-    if ($anchorIdx -lt 0) {
-        $anchor = '"claude-opus-4-5":'
-        $anchorIdx = $genRaw.IndexOf($anchor)
-    }
-
-    if ($anchorIdx -ge 0) {
-        $closingPattern = "`n        },"
-        $closingIdx = $genRaw.IndexOf($closingPattern, $anchorIdx)
-        if ($closingIdx -ge 0) {
-            $insertAt = $closingIdx + $closingPattern.Length
-            if ($DryRun) {
-                Write-Host ("  [dry-run] would add {0} to model registry" -f $modelId) -ForegroundColor DarkYellow
-            } else {
-                $genRaw = $genRaw.Insert($insertAt, "`n$entry")
-                [System.IO.File]::WriteAllText($genFile, $genRaw, [System.Text.UTF8Encoding]::new($false))
-                Write-Host ("  [ok]      Added {0} to model registry" -f $modelId) -ForegroundColor Green
-            }
-        } else {
-            Write-Host '  [err]     Could not find entry boundary in models.generated.js' -ForegroundColor Red
-            return
-        }
-    } else {
-        Write-Host '  [err]     Could not find anchor entry in models.generated.js' -ForegroundColor Red
-        return
-    }
-
-    # Patch xhigh capability if needed
-    if ($tmpl.xhigh -and (Test-Path $modelsFile)) {
-        $modRaw = Get-Content $modelsFile -Raw -Encoding UTF8
-        $shortId = $modelId -replace 'claude-', ''
-        $dotId = $shortId -replace '-(\d)', '.$1'
-        if ($modRaw -notmatch [regex]::Escape($shortId)) {
-            # Find the anthropic capability patch line and extend it
-            $pattern = 'm.id.includes\("opus-4-6"\) \|\| m.id.includes\("opus-4\.6"\)'
-            if ($modRaw -match $pattern) {
-                $oldMatch = ($modRaw | Select-String -Pattern $pattern -AllMatches).Matches[0].Value
-                $newMatch = "$oldMatch || m.id.includes(`"$shortId`") || m.id.includes(`"$dotId`")"
-                if (-not $DryRun) {
-                    $modRaw = $modRaw.Replace($oldMatch, $newMatch)
-                    [System.IO.File]::WriteAllText($modelsFile, $modRaw, [System.Text.UTF8Encoding]::new($false))
-                    Write-Host ("  [ok]      Patched xhigh capability for {0}" -f $modelId) -ForegroundColor Green
-                }
-            }
-        }
-    }
-}
-
-function Invoke-GsdModelList {
-    $piAiDir = Get-GsdPiAiModelsDir
-    if (-not $piAiDir) {
-        Write-Host '  [err]     Cannot locate gsd-pi models directory' -ForegroundColor Red
-        return
-    }
-
-    $genFile = Join-Path $piAiDir 'models.generated.js'
-    if (-not (Test-Path $genFile)) {
-        Write-Host '  [err]     models.generated.js not found' -ForegroundColor Red
-        return
-    }
-
-    $genRaw = Get-Content $genFile -Raw -Encoding UTF8
-    $matches = [regex]::Matches($genRaw, '"(claude-[^"]+)":\s*\{[^}]*name:\s*"([^"]+)"')
-
-    Write-Host ''
-    Write-Host '  Anthropic models in GSD registry:' -ForegroundColor Cyan
-    Write-Host ''
-    $seen = @{}
-    foreach ($m in $matches) {
-        $id = $m.Groups[1].Value
-        $name = $m.Groups[2].Value
-        if (-not $seen.ContainsKey($id)) {
-            $seen[$id] = $true
-            $patched = if ($script:GsdModelTemplates.ContainsKey($id)) { ' [patched]' } else { '' }
-            Write-Host ("    {0,-35} {1}{2}" -f $id, $name, $patched) -ForegroundColor Gray
-        }
-    }
-    Write-Host ''
-}
-
 function Invoke-GsdPackageRefresh {
     param(
         [switch]$DryRun,
@@ -1892,6 +1553,25 @@ function Sync-ForgeTokenToGsdAuthJson {
             }
         }
 
+        # If claude-code CLI bridge is configured, do NOT write an anthropic OAuth entry.
+        # GSD picks the anthropic OAuth entry first and fails with "Invalid API key" once the
+        # Forge token expires; the CLI bridge is the durable path (claude.ai subscription).
+        $ccEntry = $authData['claude-code']
+        if ($ccEntry -and $ccEntry.type -eq 'cli') {
+            if ($authData.Contains('anthropic')) {
+                $authData.Remove('anthropic')
+                $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+                $json = $authData | ConvertTo-Json -Depth 10
+                [System.IO.File]::WriteAllText($authJsonPath, $json, $utf8NoBom)
+                if (-not $Quiet) {
+                    Write-Host '  [forge-sync] claude-code CLI bridge active -- removed stale anthropic OAuth entry' -ForegroundColor DarkGray
+                }
+            } elseif (-not $Quiet) {
+                Write-Host '  [forge-sync] claude-code CLI bridge active -- skipping anthropic OAuth write' -ForegroundColor DarkGray
+            }
+            return $true
+        }
+
         # Update the anthropic entry with Forge's OAuth token
         $authData['anthropic'] = [pscustomobject]@{
             type    = 'oauth'
@@ -2034,6 +1714,279 @@ function Invoke-GsdAuthFix {
 
     Write-Host ''
     Write-Host '  Next: restart GSD session and run /model to verify claude-code provider is active.' -ForegroundColor Cyan
+    Write-Host ''
+}
+
+function Invoke-GsdFixToolsCap {
+    <#
+    .SYNOPSIS
+    Fix Anthropic 128-tool-definition cap error in gsd-pi claude-code bridge.
+
+    Root cause: Anthropic API enforces a hard cap of 128 tool definitions per
+    request. With multiple MCPs (gsd-workflow + project plugins) plus built-in
+    Claude Code tools, gsd-pi exceeds the cap and gets HTTP 400:
+        "tools": maximum number of items is 128
+
+    Fix: Patches buildSdkOptions in
+        ~/.gsd/agent/extensions/claude-code-cli/stream-adapter.js
+    to inject 11 known gsd-workflow alias dupes into disallowedTools, plus a
+    user-extensible env var GSD_CLAUDE_DISALLOWED_TOOLS (CSV, supports `*`).
+
+    Marker comment [GSD-FIX-TOOLS-CAP v1] makes this idempotent. Re-run after
+    every gsd-pi upgrade that wipes node_modules.
+    #>
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-Host '  GSD fix-tools-cap (Anthropic 128-tool cap)' -ForegroundColor Cyan
+    Write-Host '  Patches stream-adapter.js to drop 11 gsd-workflow alias dupes.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $marker  = '[GSD-FIX-TOOLS-CAP v1]'
+    $adapter = Join-Path $HOME '.gsd\agent\extensions\claude-code-cli\stream-adapter.js'
+
+    if (-not (Test-Path $adapter)) {
+        Write-Host ("  [error]  stream-adapter.js not found: {0}" -f $adapter) -ForegroundColor Red
+        Write-Host '  Install gsd-pi first: 8sync gsd setup --plan claude-max' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $content = [System.IO.File]::ReadAllText($adapter)
+
+    if ($content.Contains($marker)) {
+        Write-Host ("  [ok]     Already patched (marker {0} present)" -f $marker) -ForegroundColor Green
+        Write-Host ''
+        Write-Host '  To extend the disallow list, set:' -ForegroundColor DarkGray
+        Write-Host '    $env:GSD_CLAUDE_DISALLOWED_TOOLS = "mcp__foo__bar,mcp__baz__*"' -ForegroundColor White
+        Write-Host ''
+        return
+    }
+
+    # ---- locate patch site --------------------------------------------
+    # buildSdkOptions builds an `options` object with a `disallowedTools` array.
+    # We inject right before the assignment using a stable anchor.
+
+    $anchor = 'const disallowedTools = '
+    $idx    = $content.IndexOf($anchor)
+    if ($idx -lt 0) {
+        # Fallback: try the property form `disallowedTools:` inside the options literal
+        $anchor = 'disallowedTools:'
+        $idx    = $content.IndexOf($anchor)
+    }
+    if ($idx -lt 0) {
+        Write-Host '  [error]  Could not locate disallowedTools assignment in stream-adapter.js' -ForegroundColor Red
+        Write-Host '  This may be a newer gsd-pi version. Open an issue or patch manually.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host ("  [dry-run] Would inject {0} block before offset {1} in:" -f $marker, $idx) -ForegroundColor Yellow
+        Write-Host ("    {0}" -f $adapter) -ForegroundColor Yellow
+        Write-Host ''
+        return
+    }
+
+    # ---- backup + patch ----------------------------------------------
+
+    $backup = $adapter + '.bak-toolscap-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+    try {
+        Copy-Item $adapter $backup -Force
+        Write-Host ("  [ok]     Backed up -> {0}" -f (Split-Path $backup -Leaf)) -ForegroundColor DarkGray
+    } catch {
+        Write-Host ("  [warn]   Could not backup: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+
+    $patch = @'
+// {{MARKER}} Anthropic enforces a hard cap of 128 tool definitions per
+// request. With multiple MCPs (gsd-workflow + project plugins) plus the
+// built-in Claude Code tools, the request can exceed that cap and 400 out.
+// Always strip the 11 known gsd-workflow alias dupes; users can extend the
+// list via GSD_CLAUDE_DISALLOWED_TOOLS (CSV of tool names, supports `*`
+// wildcards as accepted by the SDK).
+const __gsdDefaultDupes = [
+    "mcp__gsd-workflow__gsd_save_decision",
+    "mcp__gsd-workflow__gsd_save_requirement",
+    "mcp__gsd-workflow__gsd_update_requirement",
+    "mcp__gsd-workflow__gsd_milestone_complete",
+    "mcp__gsd-workflow__gsd_milestone_generate_id",
+    "mcp__gsd-workflow__gsd_milestone_validate",
+    "mcp__gsd-workflow__gsd_slice_complete",
+    "mcp__gsd-workflow__gsd_slice_replan",
+    "mcp__gsd-workflow__gsd_task_complete",
+    "mcp__gsd-workflow__gsd_task_plan",
+    "mcp__gsd-workflow__gsd_roadmap_reassess",
+];
+const __gsdExtraDisallow = (process.env.GSD_CLAUDE_DISALLOWED_TOOLS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+const __gsdDisallowed = Array.from(new Set([...__gsdDefaultDupes, ...__gsdExtraDisallow]));
+
+'@
+    $patch = $patch.Replace('{{MARKER}}', $marker)
+
+    # Insert immediately before the anchor line (find start of that line)
+    $lineStart = $content.LastIndexOf("`n", $idx)
+    if ($lineStart -lt 0) { $lineStart = 0 } else { $lineStart += 1 }
+
+    # Detect leading indent of the anchor line so the patch matches indentation
+    $indent = ''
+    $j = $lineStart
+    while ($j -lt $content.Length -and ($content[$j] -eq ' ' -or $content[$j] -eq "`t")) {
+        $indent += $content[$j]
+        $j++
+    }
+
+    # Indent every line of the patch
+    $indentedPatch = ($patch -split "`n" | ForEach-Object {
+        if ([string]::IsNullOrEmpty($_)) { '' } else { $indent + $_ }
+    }) -join "`n"
+
+    # Rewrite the anchor line to consume our local var instead of inline expression
+    # We splice: <patch>\n<indent>const disallowedTools = __gsdDisallowed;\n<rest>
+    $lineEnd = $content.IndexOf("`n", $idx)
+    if ($lineEnd -lt 0) { $lineEnd = $content.Length }
+
+    $before  = $content.Substring(0, $lineStart)
+    $after   = $content.Substring($lineEnd + 1)
+    $newLine = $indent + 'const disallowedTools = __gsdDisallowed;'
+
+    # If the anchor matched the property form (`disallowedTools:`), keep original
+    # and just inject the var block above it (the property can still reference
+    # __gsdDisallowed). Heuristic: if anchor starts with "const disallowedTools",
+    # we replace the line; otherwise we keep it.
+    $anchorLine = $content.Substring($lineStart, $lineEnd - $lineStart)
+    if ($anchorLine.TrimStart().StartsWith('const disallowedTools')) {
+        $patched = $before + $indentedPatch + $newLine + "`n" + $after
+    } else {
+        # Property form -- inject var block, leave existing line intact
+        $patched = $before + $indentedPatch + $anchorLine + "`n" + $after
+        Write-Host '  [info]   Property-form disallowedTools detected; injected var block only.' -ForegroundColor DarkGray
+        Write-Host '           Edit stream-adapter.js manually if dupes still leak through.' -ForegroundColor DarkGray
+    }
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($adapter, $patched, $utf8NoBom)
+
+    # ---- syntax check -------------------------------------------------
+
+    $nodeOk = $false
+    try {
+        $checkOut = & node --check $adapter 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0) { $nodeOk = $true }
+        else {
+            Write-Host '  [error]  node --check failed:' -ForegroundColor Red
+            Write-Host $checkOut -ForegroundColor Red
+        }
+    } catch {
+        Write-Host ("  [warn]   node not on PATH; skipping syntax check: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        $nodeOk = $true  # don't roll back if node is unavailable
+    }
+
+    if (-not $nodeOk) {
+        Write-Host '  [rollback] Restoring from backup.' -ForegroundColor Yellow
+        Copy-Item $backup $adapter -Force
+        Write-Host ''
+        return
+    }
+
+    Write-Host ("  [ok]     Patched: {0}" -f $adapter) -ForegroundColor Green
+    Write-Host ("  [ok]     Marker:  {0}" -f $marker) -ForegroundColor Green
+    Write-Host ''
+    Write-Host '  Next: re-run gsd from your project. If 128-cap still fires, extend disallow list:' -ForegroundColor Cyan
+    Write-Host '    $env:GSD_CLAUDE_DISALLOWED_TOOLS = "mcp__foo__bar,mcp__baz__*"' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  If still broken, nuclear option: 8sync gsd reset-auth' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Invoke-GsdResetAuth {
+    <#
+    .SYNOPSIS
+    Nuclear-option auth reset. Wipes ~/.gsd/agent/auth.json (with backup),
+    then sets claude-code: {"type": "cli"} so a fresh `claude /login` flow
+    gets picked up cleanly.
+
+    Use when fix-tools-cap + auth-fix didn't unstick the bridge.
+    #>
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-Host '  GSD reset-auth (nuclear)' -ForegroundColor Cyan
+    Write-Host '  Backs up auth.json, wipes everything, sets claude-code CLI.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $authJsonPath = Join-Path $HOME '.gsd\agent\auth.json'
+    $agentDir     = Split-Path $authJsonPath -Parent
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] Would:' -ForegroundColor Yellow
+        if (Test-Path $authJsonPath) {
+            Write-Host ("    - backup {0} -> auth.json.bak-resetauth-<ts>" -f $authJsonPath) -ForegroundColor Yellow
+        }
+        Write-Host '    - write fresh auth.json: { "claude-code": {"type":"cli"} }' -ForegroundColor Yellow
+        Write-Host ''
+        return
+    }
+
+    if (-not (Test-Path $agentDir)) {
+        $null = New-Item -Path $agentDir -ItemType Directory -Force
+    }
+
+    if (Test-Path $authJsonPath) {
+        $backup = $authJsonPath + '.bak-resetauth-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+        try {
+            Copy-Item $authJsonPath $backup -Force
+            Write-Host ("  [ok]     Backed up -> {0}" -f (Split-Path $backup -Leaf)) -ForegroundColor DarkGray
+        } catch {
+            Write-Host ("  [warn]   Could not backup: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        }
+    } else {
+        Write-Host '  [info]   auth.json does not exist yet; creating fresh.' -ForegroundColor DarkGray
+    }
+
+    $fresh = [pscustomobject]@{
+        'claude-code' = [pscustomobject]@{ type = 'cli' }
+    }
+
+    try {
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $json = $fresh | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($authJsonPath, $json, $utf8NoBom)
+        Write-Host ("  [ok]     Written: {0}" -f $authJsonPath) -ForegroundColor Green
+    } catch {
+        Write-Host ("  [error]  Could not write auth.json: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # ---- verify Claude Code CLI login state --------------------------
+
+    $claudeOk = $false
+    try {
+        $authOutput = & claude auth status 2>&1 | Out-String
+        if ($authOutput -match '"loggedIn":\s*true') {
+            $claudeOk = $true
+            Write-Host '  [ok]     claude auth status: loggedIn=true' -ForegroundColor Green
+        } else {
+            Write-Host '  [warn]   claude auth status did not confirm login' -ForegroundColor DarkYellow
+        }
+    } catch {
+        Write-Host ("  [warn]   could not run `claude auth status`: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+
+    Write-Host ''
+    Write-Host '  Next steps:' -ForegroundColor Cyan
+    if (-not $claudeOk) {
+        Write-Host '    1. Run: claude /login        (or `claude` then /login)' -ForegroundColor White
+        Write-Host '    2. Re-verify: claude auth status' -ForegroundColor White
+        Write-Host '    3. Then: 8sync gsd fix-tools-cap   (re-applies tool-cap patch)' -ForegroundColor White
+    } else {
+        Write-Host '    1. 8sync gsd fix-tools-cap   (re-applies tool-cap patch)' -ForegroundColor White
+        Write-Host '    2. Test: gsd --print "ping" --profile claude-max' -ForegroundColor White
+    }
     Write-Host ''
 }
 
