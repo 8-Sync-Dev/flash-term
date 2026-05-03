@@ -44,7 +44,7 @@ models:
 
   # ── PLANNING ────────────────────────────────────────────────────────────────
   planning:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
       - kimi-coding/k2p5
       - github-copilot/gemini-3.1-pro-preview
@@ -52,7 +52,7 @@ models:
 
   # ── RESEARCH ────────────────────────────────────────────────────────────────
   research:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
       - github-copilot/gemini-3.1-pro-preview
       - kimi-coding/k2p5
@@ -66,7 +66,7 @@ models:
       - openai-codex/gpt-5.3-codex
       - zai/glm-5-turbo
       - zai/glm-5
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── EXECUTION (simple) ──────────────────────────────────────────────────────
   execution_simple:
@@ -82,14 +82,14 @@ models:
   validation:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
       - zai/glm-5-turbo
       - kimi-coding/k2p5
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
   # ── SUBAGENT ────────────────────────────────────────────────────────────────
   subagent:
@@ -99,7 +99,7 @@ models:
       - kimi-coding/k2p5
       - zai/glm-5-turbo
       - zai/glm-4.7
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 ---
 
 # GSD Skill Preferences

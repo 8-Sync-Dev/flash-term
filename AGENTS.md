@@ -272,12 +272,13 @@ Read the relevant file from `.agents/rules/` when working on matching code.
 ## Agent Skill Library (8sync max-skill)
 
 **Rule:** Before any non-trivial task, read karpathy-guidelines first.
-Then select additional skills by task type:
+Then select additional skills by task type. These rules apply to GSD, Claude Code, Forge, and all project agents that read this file.
 
 | Task type | Skills |
 |---|---|
-| Any coding | `agents/skills/karpathy-guidelines/` (mandatory) |
-| GSD workflow | + `agents/skills/gsd-pi-guide/` |
+| Any coding | `agents/skills/karpathy-guidelines/` (mandatory, always first) |
+| GSD workflow | + `agents/skills/gsd-pi-guide/` and the GSD memory/token rules below |
+| Large repo analysis | Use `gsd_exec`/`gsd_exec_search` before reading many files |
 | Shell cmds | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |
 
 ### Skill Registry
@@ -304,6 +305,20 @@ When working in a GSD-enabled project, these files contain critical project stat
 | `.gsd/milestones/M*/` | Milestone roadmaps, slice breakdowns, validation criteria | When planning or reviewing scope |
 
 **Priority order:** PROJECT.md > CONTEXT.md > STATE.md > others as needed.
+
+### GSD Memory and Token Optimization Rules
+
+These rules are mandatory on large projects or long sessions:
+
+1. Use `gsd_resume` immediately after compaction/session resume when context may be stale.
+2. Use `memory_query` before re-reading broad project history or prior decisions.
+3. Use `gsd_exec` for analysis that would read more than 3 files or produce large output; log summaries, not raw dumps.
+4. Use `gsd_exec_search` before rerunning expensive analysis.
+5. Use `capture_thought` only for reusable project knowledge, conventions, gotchas, and architectural lessons.
+6. Use `gsd_graph` when a memory relationship matters instead of rediscovering context manually.
+7. Prefer GSD summaries and status tools over raw DB/file spelunking: `gsd_milestone_status`, `gsd_journal_query`, `gsd_summary_save`.
+8. Prefer `rtk read`, `rtk grep`, and `rtk git` for shell/file output when available.
+9. Never dump huge tool output into the model context. Summarize first, then read narrow slices with offsets/limits.
 
 ### GSD Workflow Reference
 

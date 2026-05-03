@@ -55,48 +55,48 @@ models:
 
   # ── PLANNING ────────────────────────────────────────────────────────────────
   planning:
-    model: anthropic/claude-opus-4-7
+    model: claude-code/claude-opus-4-7
     fallbacks:
-      - anthropic/claude-opus-4-6
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-opus-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── RESEARCH ────────────────────────────────────────────────────────────────
   research:
-    model: anthropic/claude-opus-4-7
+    model: claude-code/claude-opus-4-7
     fallbacks:
-      - anthropic/claude-opus-4-6
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-opus-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── EXECUTION (standard) ────────────────────────────────────────────────────
   execution:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-opus-4-6
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-opus-4-7
+      - claude-code/claude-haiku-4-5
 
   # ── EXECUTION (simple) ──────────────────────────────────────────────────────
   execution_simple:
-    model: anthropic/claude-haiku-4-5
+    model: claude-code/claude-haiku-4-5
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── VALIDATION (reviewer) ───────────────────────────────────────────────────
   validation:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-opus-4-6
+      - claude-code/claude-opus-4-7
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
   # ── SUBAGENT ────────────────────────────────────────────────────────────────
   subagent:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 ---
 
 # GSD Skill Preferences

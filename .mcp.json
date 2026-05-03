@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "gsd-workflow": {
+      "command": "C:\\Users\\Admin\\scoop\\apps\\nodejs-lts\\current\\node.exe",
+      "args": [
+        "C:\\Users\\Admin\\scoop\\apps\\nodejs-lts\\current\\bin\\node_modules\\gsd-pi\\packages\\mcp-server\\dist\\cli.js"
+      ],
+      "cwd": "C:\\Users\\Admin\\.config\\wezterm",
+      "env": {
+        "GSD_CLI_PATH": "C:\\Users\\Admin\\scoop\\apps\\nodejs-lts\\current\\bin\\node_modules\\gsd-pi\\dist\\loader.js",
+        "GSD_WORKFLOW_EXECUTORS_MODULE": "C:\\Users\\Admin\\.gsd\\agent\\extensions\\gsd\\tools\\workflow-tool-executors.js",
+        "GSD_WORKFLOW_WRITE_GATE_MODULE": "C:\\Users\\Admin\\.gsd\\agent\\extensions\\gsd\\bootstrap\\write-gate.js",
+        "GSD_PERSIST_WRITE_GATE_STATE": "1",
+        "GSD_WORKFLOW_PROJECT_ROOT": "C:\\Users\\Admin\\.config\\wezterm"
+      }
+    }
+  }
+}

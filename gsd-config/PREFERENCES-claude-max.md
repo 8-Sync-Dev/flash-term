@@ -24,15 +24,23 @@ token_profile: balanced
 
 models:
   # ══════════════════════════════════════════════════════════════════════════════
-  # PLAN: claude-max — 100% Claude Anthropic only (Opus + Sonnet + Haiku)
+  # PLAN: claude-max — 100% Claude via claude-code provider (Opus + Sonnet + Haiku)
   # ──────────────────────────────────────────────────────────────────────────────
+  # PROVIDER: claude-code (flat-rate, $0 API cost via Claude Code subscription)
+  #   Routes through Claude Code CLI bridge → subscription-based inference
+  #   All models show zero cost in GSD TUI
+  #
   # AUTH REQUIRED:
-  #   /login anthropic  → claude-opus-4-6 ($5/$25/M)
-  #                       claude-sonnet-4-6 ($3/$15/M)
-  #                       claude-haiku-4-5 ($0.8/$4/M)
+  #   8sync gsd forge-sync   (or: forge provider login claude_code)
+  #
+  # MODELS AVAILABLE:
+  #   claude-opus-4-7    (1M ctx, reasoning+planning king)
+  #   claude-opus-4-6    (1M ctx, fallback)
+  #   claude-sonnet-4-6  (1M ctx, agentic workhorse)
+  #   claude-haiku-4-5   (200K ctx, fast, low cost)
   #
   # STRATEGY:
-  #   planning/research  → Opus 4-6 (deepest reasoning, planning king)
+  #   planning/research  → Opus 4-7 (deepest reasoning, 1M ctx)
   #   execution          → Sonnet 4-6 (agentic workhorse)
   #   execution_simple   → Haiku 4-5 (fast, low cost)
   #   validation         → Sonnet 4-6 (review, same-provider consistency)
@@ -40,53 +48,55 @@ models:
   #   subagent           → Sonnet 4-6 primary, Haiku fallback
   #
   # USE WHEN:
-  #   - Có claude.ai Max subscription ($100/mo) hoặc paid Anthropic API key
-  #   - Muốn 100% Claude, zero external dependencies
+  #   - Có Claude Code subscription (Pro $20/Max $100/Team)
+  #   - Muốn 100% Claude, zero API cost (subscription covers all)
   #   - Cần deterministic behavior, chỉ một provider duy nhất
   # ══════════════════════════════════════════════════════════════════════════════
 
   # ── PLANNING ────────────────────────────────────────────────────────────────
   planning:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-7
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-opus-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── RESEARCH ────────────────────────────────────────────────────────────────
   research:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-7
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-opus-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── EXECUTION (standard) ────────────────────────────────────────────────────
   execution:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-opus-4-6
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-opus-4-7
+      - claude-code/claude-haiku-4-5
 
   # ── EXECUTION (simple) ──────────────────────────────────────────────────────
   execution_simple:
-    model: anthropic/claude-haiku-4-5
+    model: claude-code/claude-haiku-4-5
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── VALIDATION (reviewer) ───────────────────────────────────────────────────
   validation:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-opus-4-6
+      - claude-code/claude-opus-4-7
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
   # ── SUBAGENT ────────────────────────────────────────────────────────────────
   subagent:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 ---
 
 # GSD Skill Preferences

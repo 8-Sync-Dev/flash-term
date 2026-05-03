@@ -39,7 +39,7 @@ models:
   validation:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
   #   completion         → gpt-5.3-codex (precise summary)
   #   subagent           → gpt-5.3-codex primary, gpt-5.1-codex-max workers
   #

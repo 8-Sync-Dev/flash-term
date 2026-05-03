@@ -38,9 +38,9 @@ models:
 
   # -- VALIDATION (reviewer) -----------------------------------------------
   validation:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
-      - anthropic/claude-opus-4-6
+      - claude-code/claude-opus-4-6
   #   completion         → gemini-3.1-pro-preview (large-ctx summary)
   #   subagent           → gemini-3.1-pro-preview primary
   #

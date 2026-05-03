@@ -41,7 +41,7 @@ models:
   validation:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
   #   completion         → glm-5.1 + glm-5-turbo
   #   subagent           → glm-5.1 primary, full groq/zai cascade
   #

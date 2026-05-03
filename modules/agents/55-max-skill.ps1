@@ -22,13 +22,16 @@ function Get-ForceLoadSkillContent {
     [void]$sb.AppendLine('1. Read `.forge/skills/karpathy-guidelines/SKILL.md` -- no exceptions')
     [void]$sb.AppendLine('2. Identify the task type from the table below')
     [void]$sb.AppendLine('3. Read all skills listed for that type before writing code')
+    [void]$sb.AppendLine('4. For GSD work, use memory/token tools before broad reads: `memory_query`, `gsd_resume`, `gsd_exec`, `gsd_exec_search`, `capture_thought`')
+    [void]$sb.AppendLine('5. Never dump huge tool output into context; summarize first, then read narrow slices')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('## Skill Selection Guide')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('| Task type | Skills to read (in order) |')
     [void]$sb.AppendLine('|---|---|')
-    [void]$sb.AppendLine('| Any coding task | **karpathy-guidelines** (always first) |')
-    [void]$sb.AppendLine('| GSD workflow / auto mode | karpathy + **gsd-pi-guide** |')
+    [void]$sb.AppendLine('| Any coding task | **karpathy-guidelines** (always first, always mandatory) |')
+    [void]$sb.AppendLine('| GSD workflow / auto mode | karpathy + **gsd-pi-guide** + GSD memory/token discipline below |')
+    [void]$sb.AppendLine('| Large repo / broad analysis | Use `gsd_exec` to summarize, then read only narrow file slices |')
     [void]$sb.AppendLine('| Shell / CLI commands | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('## Installed Skills')
@@ -39,6 +42,20 @@ function Get-ForceLoadSkillContent {
         [void]$sb.AppendLine(('- `{0}`{1} -- {2}' -f $skill.dir, $mandatory, $skill.use_when))
     }
 
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('## GSD memory/token discipline')
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('Use these tools before broad reads or repeated rediscovery:')
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('- `gsd_resume` after compaction/session resume')
+    [void]$sb.AppendLine('- `memory_query` before re-reading history')
+    [void]$sb.AppendLine('- `gsd_exec` for multi-file analysis or large command output')
+    [void]$sb.AppendLine('- `gsd_exec_search` before rerunning expensive analysis')
+    [void]$sb.AppendLine('- `capture_thought` for reusable conventions, gotchas, and architecture lessons')
+    [void]$sb.AppendLine('- `gsd_graph` when memory relationships matter')
+    [void]$sb.AppendLine('- GSD status/summary tools instead of raw DB or huge artifact reads')
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('Never dump large tool output into context. Summarize first, then read narrow slices.')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('## Never skip karpathy-guidelines')
     [void]$sb.AppendLine()
@@ -59,12 +76,13 @@ function Get-AgentsMdSection {
     [void]$sb.AppendLine('## Agent Skill Library (8sync max-skill)')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('**Rule:** Before any non-trivial task, read karpathy-guidelines first.')
-    [void]$sb.AppendLine('Then select additional skills by task type:')
+    [void]$sb.AppendLine('Then select additional skills by task type. These rules apply to GSD, Claude Code, Forge, and all project agents that read this file.')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('| Task type | Skills |')
     [void]$sb.AppendLine('|---|---|')
-    [void]$sb.AppendLine('| Any coding | `agents/skills/karpathy-guidelines/` (mandatory) |')
-    [void]$sb.AppendLine('| GSD workflow | + `agents/skills/gsd-pi-guide/` |')
+    [void]$sb.AppendLine('| Any coding | `agents/skills/karpathy-guidelines/` (mandatory, always first) |')
+    [void]$sb.AppendLine('| GSD workflow | + `agents/skills/gsd-pi-guide/` and the GSD memory/token rules below |')
+    [void]$sb.AppendLine('| Large repo analysis | Use `gsd_exec`/`gsd_exec_search` before reading many files |')
     [void]$sb.AppendLine('| Shell cmds | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('### Skill Registry')
@@ -96,6 +114,20 @@ function Get-AgentsMdSection {
     [void]$sb.AppendLine('| `.gsd/milestones/M*/` | Milestone roadmaps, slice breakdowns, validation criteria | When planning or reviewing scope |')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('**Priority order:** PROJECT.md > CONTEXT.md > STATE.md > others as needed.')
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('### GSD Memory and Token Optimization Rules')
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('These rules are mandatory on large projects or long sessions:')
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('1. Use `gsd_resume` immediately after compaction/session resume when context may be stale.')
+    [void]$sb.AppendLine('2. Use `memory_query` before re-reading broad project history or prior decisions.')
+    [void]$sb.AppendLine('3. Use `gsd_exec` for analysis that would read more than 3 files or produce large output; log summaries, not raw dumps.')
+    [void]$sb.AppendLine('4. Use `gsd_exec_search` before rerunning expensive analysis.')
+    [void]$sb.AppendLine('5. Use `capture_thought` only for reusable project knowledge, conventions, gotchas, and architectural lessons.')
+    [void]$sb.AppendLine('6. Use `gsd_graph` when a memory relationship matters instead of rediscovering context manually.')
+    [void]$sb.AppendLine('7. Prefer GSD summaries and status tools over raw DB/file spelunking: `gsd_milestone_status`, `gsd_journal_query`, `gsd_summary_save`.')
+    [void]$sb.AppendLine('8. Prefer `rtk read`, `rtk grep`, and `rtk git` for shell/file output when available.')
+    [void]$sb.AppendLine('9. Never dump huge tool output into the model context. Summarize first, then read narrow slices with offsets/limits.')
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('### GSD Workflow Reference')
     [void]$sb.AppendLine()
@@ -250,6 +282,37 @@ function Install-AgentSkillEntry {
     return $false
 }
 
+function Invoke-AgentProjectSkill {
+    param(
+        [switch]$DryRun,
+        [string]$Only
+    )
+
+    Write-Host ''
+    Write-Host '  8SYNC AGENTS -- PROJECT SKILLS' -ForegroundColor Cyan
+    Write-Host '  Installs skill rules only into the current project (AGENTS.md + CLAUDE.md).' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $registry = Get-AgentSkillRegistry
+    $toInstall = if ($Only) { $registry | Where-Object { $_.name -eq $Only } } else { $registry }
+
+    Write-Host '  [1/2] Installing project-local skills...' -ForegroundColor Cyan
+    $ok = 0; $fail = 0
+    foreach ($skill in @($toInstall | Sort-Object { [int]($_.priority) })) {
+        $result = Install-AgentSkillEntry -Skill $skill -DryRun:$DryRun
+        if ($result) { $ok++ } else { $fail++ }
+    }
+    Write-Host ("`n  Installed: {0} skills{1}" -f $ok, $(if ($fail) { ", $fail failed" } else { '' })) -ForegroundColor $(if ($fail) { 'DarkYellow' } else { 'Green' })
+    Write-Host ''
+
+    Write-Host '  [2/2] Updating project instruction files...' -ForegroundColor Cyan
+    Write-AgentsMdSection -Registry $registry -DryRun:$DryRun -TargetPath (Join-Path (Get-Location) 'AGENTS.md')
+    Write-AgentsMdSection -Registry $registry -DryRun:$DryRun -TargetPath (Join-Path (Get-Location) 'CLAUDE.md')
+    Write-Host ''
+    Write-Host '  Done. Project AGENTS.md and CLAUDE.md now force skill + memory/token discipline.' -ForegroundColor Cyan
+    Write-Host ''
+}
+
 function Invoke-AgentMaxSkill {
     param(
         [switch]$DryRun,
@@ -298,9 +361,12 @@ function Invoke-AgentMaxSkill {
     Write-Host '  [3/4] Writing Forge force-load skill + updating AGENTS.md...' -ForegroundColor Cyan
     Write-ForceLoadSkill -Registry $registry -DryRun:$DryRun
 
-    # Inject into project AGENTS.md
+    # Inject into project AGENTS.md + CLAUDE.md
     $agentsMd = Join-Path (Get-Location) 'AGENTS.md'
     Write-AgentsMdSection -Registry $registry -DryRun:$DryRun -TargetPath $agentsMd
+
+    $projectClaudeMd = Join-Path (Get-Location) 'CLAUDE.md'
+    Write-AgentsMdSection -Registry $registry -DryRun:$DryRun -TargetPath $projectClaudeMd
 
     # Inject into ~/.claude/AGENTS.md (global Claude Code)
     $claudeAgentsMd = Join-Path (Get-ClaudeContextDir) 'AGENTS.md'
@@ -320,7 +386,7 @@ function Invoke-AgentMaxSkill {
     Write-Host '  Done. Restart Forge and GSD for skills to take effect.' -ForegroundColor Cyan
     Write-Host ''
     Write-Host '  Forge:      skills in ~/.forge/skills/ auto-load each session.' -ForegroundColor DarkGray
-    Write-Host '  GSD:        AGENTS.md skill section visible to all agents.' -ForegroundColor DarkGray
+    Write-Host '  GSD:        AGENTS.md + CLAUDE.md skill sections visible to project agents.' -ForegroundColor DarkGray
     Write-Host '  Claude Code: ~/.claude/AGENTS.md loaded globally.' -ForegroundColor DarkGray
     Write-Host '  Verify:     8sync agents list' -ForegroundColor DarkGray
     Write-Host ''
@@ -380,7 +446,8 @@ function Invoke-AgentListSkills {
     }
 
     Write-Host '  Commands:' -ForegroundColor DarkGray
-    Write-Host '    8sync agents max-skill              # install all skills' -ForegroundColor DarkGray
+    Write-Host '    8sync agents max-skill              # install all skills globally + project' -ForegroundColor DarkGray
+    Write-Host '    8sync agents project                # install only into current project' -ForegroundColor DarkGray
     Write-Host '    8sync agents max-skill --only <n>   # install one skill' -ForegroundColor DarkGray
     Write-Host '    8sync agents check                  # check all URLs' -ForegroundColor DarkGray
     Write-Host '    8sync agents list                   # this listing' -ForegroundColor DarkGray

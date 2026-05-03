@@ -38,9 +38,9 @@ models:
   #
   # TIER RANKING (coding SWE-bench):
   #   S++ : kimi-coding/k2p5                 76.8%  — coding SOTA
-  #   S+  : anthropic/claude-opus-4-6        ~72%   — reasoning + planning king
+  #   S+  : claude-code/claude-opus-4-6      ~72%   — reasoning + planning king
   #         github-copilot/gpt-5.4           frontier codex-optimized
-  #   S   : anthropic/claude-sonnet-4-6      agentic workhorse
+  #   S   : claude-code/claude-sonnet-4-6    agentic workhorse
   #         openai-codex/gpt-5.3-codex       coding specialist (OAuth free)
   #         github-copilot/gemini-3.1-pro    1M+ ctx breadth
   #   A   : zai/glm-5-turbo                  agentic-optimized, fast
@@ -57,27 +57,27 @@ models:
   validation:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
   #   completion         → Sonnet 4.6 (quality summary, không cần Opus)
   #   subagent           → kimi K2.5 primary, groq free workers
   # ══════════════════════════════════════════════════════════════════════════════
 
   # ── PLANNING ────────────────────────────────────────────────────────────────
   planning:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-6
     fallbacks:
       - kimi-coding/k2p5
       - github-copilot/gpt-5.4
       - github-copilot/gemini-3.1-pro-preview
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── RESEARCH ────────────────────────────────────────────────────────────────
   research:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-6
     fallbacks:
       - github-copilot/gemini-3.1-pro-preview
       - kimi-coding/k2p5
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── EXECUTION (standard) ────────────────────────────────────────────────────
   execution:
@@ -85,7 +85,7 @@ models:
     fallbacks:
       - openai-codex/gpt-5.3-codex
       - zai/glm-5-turbo
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── EXECUTION (simple) ──────────────────────────────────────────────────────
   execution_simple:
@@ -94,16 +94,16 @@ models:
       - groq/qwen/qwen3-32b
       - zai/glm-5-turbo
       - zai/glm-5
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
       - kimi-coding/k2p5
       - zai/glm-5-turbo
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
   # ── SUBAGENT ────────────────────────────────────────────────────────────────
   subagent:
@@ -113,7 +113,7 @@ models:
       - groq/qwen/qwen3-32b
       - zai/glm-5-turbo
       - zai/glm-5
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 ---
 
 # GSD Skill Preferences
