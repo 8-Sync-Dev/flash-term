@@ -267,40 +267,64 @@ Read the relevant file from `.agents/rules/` when working on matching code.
 
 <!-- OMA:END -->
 
-<!-- agents:max-skill:start — managed by 8sync agents max-skill -->
+<!-- agents:max-skill:start -- managed by 8sync agents max-skill -->
 
 ## Agent Skill Library (8sync max-skill)
 
 **Rule:** Before any non-trivial task, read karpathy-guidelines first.
-Then select additional skills by task type:
+Then select additional skills by task type. These rules apply to GSD, Claude Code, Forge, and all project agents that read this file.
 
 | Task type | Skills |
 |---|---|
-| Any coding | `agents/skills/karpathy-guidelines/` (mandatory) |
-| Frontend/UI | + `agents/skills/ui-ux-pro-max/` |
-| Design system | + `agents/skills/getdesign/` + `agents/skills/dembrandt/` |
-| Git/PR/CI | + `agents/skills/gitnexus/` |
-| Code review | + `agents/skills/code-review-graph/` |
-| Ruby/Rails | + `agents/skills/ba-skills/` |
+| Any coding | `agents/skills/karpathy-guidelines/` (mandatory, always first) |
+| GSD workflow | + `agents/skills/gsd-pi-guide/` and the GSD memory/token rules below |
+| Large repo analysis | Use `gsd_exec`/`gsd_exec_search` before reading many files |
 | Shell cmds | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |
 
 ### Skill Registry
 
-- **Karpathy Guidelines** **(mandatory)**: ALL coding tasks — mandatory baseline read first. Software engineering best practices by Andrej Karpathy: avoid over-engineering, test before refactor, keep it simple.  
+- **Karpathy Guidelines** **(mandatory)**: ALL coding tasks -- mandatory baseline read first. Software engineering best practices by Andrej Karpathy: avoid over-engineering, test before refactor, keep it simple.  
   Ref: https://github.com/forrestchang/andrej-karpathy-skills
-- **UI/UX Pro Max**: Frontend, UI components, design systems, React/Vue/CSS, animations, user experience, landing pages, dashboards.  
-  Ref: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
-- **Dembrandt Design**: Visual design, creative/generative coding, portfolio work, art-direction-heavy interfaces, brand identity work.  
-  Ref: https://github.com/dembrandt/dembrandt.git
-- **BA Skills (Ruby/Rails)**: Ruby/Rails development, backend API design, database schema, ActiveRecord patterns, RSpec testing.  
-  Ref: https://github.com/phong-baruby/ba-skills.git
-- **GetDesign.md**: Design tokens, typography systems, color palettes, spacing scales, component specifications. Use when establishing or auditing a design system.  
-  Ref: https://getdesign.md/
-- **GitNexus**: Git workflow automation, PR management, branch strategies, commit conventions, release management, CI/CD setup.  
-  Ref: https://github.com/abhigyanpatwari/GitNexus.git
-- **Code Review Graph**: Code review, pull request analysis, dependency impact graphs, refactoring guidance, technical debt mapping.  
-  Ref: https://github.com/tirth8205/code-review-graph.git
-- **RTK Token Optimizer**: Always active — instructs AI to use rtk commands for token efficiency (git->rtk git, cat->rtk read, etc.).  
-  Ref: built-in
+- **GSD 2 Guide**: GSD 2 workflow, auto mode, slash commands, milestone planning, slice execution, verification, cost management. Read to understand how to use /gsd commands.  
+  Ref: local
+
+### GSD Project Context (auto-injected)
+
+When working in a GSD-enabled project, these files contain critical project state.
+**Read the relevant file BEFORE making decisions** that depend on project context.
+
+| File | What it contains | When to read |
+|---|---|---|
+| `.gsd/PROJECT.md` | Project name, tech stack, goals, constraints | Start of any session |
+| `.gsd/CONTEXT.md` | Current milestone, active slice, recent decisions | Before planning or coding |
+| `.gsd/STATE.md` | Workflow state machine position, phase, blockers | Before any `/gsd` command |
+| `.gsd/CODEBASE.md` | Auto-generated codebase map (modules, entry points) | When navigating unfamiliar code |
+| `.gsd/DECISIONS.md` | Architecture decisions log (ADRs) | Before proposing arch changes |
+| `.gsd/KNOWLEDGE.md` | Learned patterns, gotchas, team conventions | Before writing new code |
+| `.gsd/PREFERENCES.md` | User coding style, tool preferences, review standards | Always (style compliance) |
+| `.gsd/milestones/M*/` | Milestone roadmaps, slice breakdowns, validation criteria | When planning or reviewing scope |
+
+**Priority order:** PROJECT.md > CONTEXT.md > STATE.md > others as needed.
+
+### GSD Memory and Token Optimization Rules
+
+These rules are mandatory on large projects or long sessions:
+
+1. Use `gsd_resume` immediately after compaction/session resume when context may be stale.
+2. Use `memory_query` before re-reading broad project history or prior decisions.
+3. Use `gsd_exec` for analysis that would read more than 3 files or produce large output; log summaries, not raw dumps.
+4. Use `gsd_exec_search` before rerunning expensive analysis.
+5. Use `capture_thought` only for reusable project knowledge, conventions, gotchas, and architectural lessons.
+6. Use `gsd_graph` when a memory relationship matters instead of rediscovering context manually.
+7. Prefer GSD summaries and status tools over raw DB/file spelunking: `gsd_milestone_status`, `gsd_journal_query`, `gsd_summary_save`.
+8. Prefer `rtk read`, `rtk grep`, and `rtk git` for shell/file output when available.
+9. Never dump huge tool output into the model context. Summarize first, then read narrow slices with offsets/limits.
+
+### GSD Workflow Reference
+
+Read `agents/skills/gsd-pi-guide/SKILL.md` for the full GSD 2 CLI reference.
+Key commands: `/gsd start`, `/gsd plan`, `/gsd auto`, `/gsd status`, `/gsd cost`.
+GSD uses a state machine: discuss > plan > execute > verify > complete.
+Never skip phases. Always verify before marking complete.
 
 <!-- agents:max-skill:end -->

@@ -233,16 +233,8 @@ function Show-GsdHelp {
     Write-Host '        List all providers grouped by type and show current status.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd status' -ForegroundColor White
     Write-Host '        Show active files, auth providers, key status, and missing setup.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd fix [--dry-run]' -ForegroundColor White
-    Write-Host '        Fast repair: restore ~/.gsd/agent/node_modules and ~/.gsd/resource-loader.js, run Claude Code fix, forge-sync, and clean stale .gsd DB sidecars.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd fix --refresh' -ForegroundColor White
-    Write-Host '        Refresh the preferred runtime. Local project runtime is used first; global install stays blocked unless --allow-global is provided.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd auth-fix' -ForegroundColor White
     Write-Host '        Fix Anthropic OAuth auth loop by resetting auth.json to CLI mode.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd fix --force' -ForegroundColor White
-    Write-Host '        Also back up and rebuild gsd.db, completed-units.json, and routing-history.json when the DB is genuinely corrupted.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd fix --allow-global' -ForegroundColor White
-    Write-Host '        Opt in to global gsd-pi refresh only when you explicitly approve machine-wide changes.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd local' -ForegroundColor White
     Write-Host '        Inspect project-local .gsd/vendor/gsd-pi/current, baseline-2.69.0, and latest paths.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd guide' -ForegroundColor White
@@ -256,21 +248,21 @@ function Show-GsdHelp {
     Write-Host '    8sync gsd combo upgrade' -ForegroundColor White
     Write-Host '        Step-by-step migration from older GSD version to 2.76 (ordered, safe).' -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host '  Model management' -ForegroundColor Cyan
-    Write-Host '    8sync gsd model add <model-id>' -ForegroundColor White
-    Write-Host '        Add a new model to GSD registry without upgrading gsd-pi.' -ForegroundColor DarkGray
-    Write-Host '        e.g. 8sync gsd model add claude-opus-4-7' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd model add' -ForegroundColor White
-    Write-Host '        Show available model templates with pricing.' -ForegroundColor DarkGray
-    Write-Host '    8sync gsd model list' -ForegroundColor White
-    Write-Host '        List all Anthropic models currently in registry.' -ForegroundColor DarkGray
-    Write-Host ''
     Write-Host '  Forge bridge' -ForegroundColor Cyan
     Write-Host '    8sync gsd forge-sync' -ForegroundColor White
     Write-Host '        Sync Forge Claude Code OAuth token to ANTHROPIC_API_KEY. Auto-refreshes expired tokens.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd auth-fix [--dry-run]' -ForegroundColor White
     Write-Host '        Fix Anthropic auth loop (gsd-build/gsd-2#4280): removes stale OAuth entry from' -ForegroundColor DarkGray
     Write-Host '        auth.json and sets claude-code: {type:"cli"} so GSD uses Claude Code CLI.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd fix-tools-cap [--dry-run]' -ForegroundColor White
+    Write-Host '        Fix Anthropic 128-tool-cap 400 error in claude-max plan. Patches' -ForegroundColor DarkGray
+    Write-Host '        ~/.gsd/agent/extensions/claude-code-cli/stream-adapter.js to drop 11 known' -ForegroundColor DarkGray
+    Write-Host '        gsd-workflow alias dupes from disallowedTools. Idempotent (marker-guarded);' -ForegroundColor DarkGray
+    Write-Host '        re-run after every gsd-pi upgrade. Extend via $env:GSD_CLAUDE_DISALLOWED_TOOLS.' -ForegroundColor DarkGray
+    Write-Host '    8sync gsd reset-auth [--dry-run]' -ForegroundColor White
+    Write-Host '        Nuclear option when fix-tools-cap + auth-fix do not unstick the bridge.' -ForegroundColor DarkGray
+    Write-Host '        Backs up auth.json, writes fresh {claude-code: {type:"cli"}}, and prints' -ForegroundColor DarkGray
+    Write-Host '        next-step `claude /login` instructions.' -ForegroundColor DarkGray
     Write-Host '    8sync gsd token-save [--dry-run] [--skip-auth-fix] [--skip-env] [--disable-caching] [--method auto|cargo|binary]' -ForegroundColor White
     Write-Host '        Install rtk (github.com/rtk-ai/rtk) + register Claude Code Bash hook so every' -ForegroundColor DarkGray
     Write-Host '        `git status`, `cat`, `grep`, `cargo test`, etc. gets compressed BEFORE hitting' -ForegroundColor DarkGray

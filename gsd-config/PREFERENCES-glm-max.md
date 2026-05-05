@@ -53,7 +53,7 @@ models:
   validation:
     model: zai/glm-5.1
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
   #   completion         → glm-5.1 → glm-5-turbo
   #   subagent           → glm-4.5 (c20) primary worker, glm-5.1 planning, full cascade
   #

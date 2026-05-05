@@ -42,7 +42,7 @@ models:
   validation:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
   #   Completion: Sonnet 4-6 (quality) → gpt-5.3-codex → gemini-3.1-pro
   #   Subagent  : gpt-5.3-codex → Sonnet 4-6 → gemini-3.1-pro
   #
@@ -61,26 +61,26 @@ models:
 
   # ── PLANNING ────────────────────────────────────────────────────────────────
   planning:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-6
     fallbacks:
       - openai-codex/gpt-5.4
       - github-copilot/gpt-5.4
       - github-copilot/gemini-3.1-pro-preview
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── RESEARCH ────────────────────────────────────────────────────────────────
   research:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-6
     fallbacks:
       - github-copilot/gemini-3.1-pro-preview
       - openai-codex/gpt-5.4
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
 
   # ── EXECUTION (standard) ────────────────────────────────────────────────────
   execution:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
       - github-copilot/gpt-5.4
       - github-copilot/gemini-3.1-pro-preview
 
@@ -89,25 +89,25 @@ models:
     model: github-copilot/gemini-3.1-pro-preview
     fallbacks:
       - openai-codex/gpt-5.1-codex-max
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
 
   # ── COMPLETION ──────────────────────────────────────────────────────────────
   completion:
-    model: anthropic/claude-sonnet-4-6
+    model: claude-code/claude-sonnet-4-6
     fallbacks:
       - openai-codex/gpt-5.3-codex
       - github-copilot/gemini-3.1-pro-preview
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 
   # ── SUBAGENT ────────────────────────────────────────────────────────────────
   subagent:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-sonnet-4-6
       - github-copilot/gemini-3.1-pro-preview
       - openai-codex/gpt-5.1-codex-max
-      - anthropic/claude-haiku-4-5
+      - claude-code/claude-haiku-4-5
 ---
 
 # GSD Skill Preferences

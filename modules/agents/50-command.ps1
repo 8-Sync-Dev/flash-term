@@ -7,9 +7,10 @@ function Show-AgentsHelp {
     Write-Host '  8SYNC AGENTS -- AI agent skill management' -ForegroundColor Cyan
     Write-Host ''
     Write-Host '  Commands:' -ForegroundColor DarkGray
-    Write-HintRow '8sync agents max-skill'               'Install all skills to Forge/.gsd/Claude Code + RTK + force-load rules'
+    Write-HintRow '8sync agents max-skill'               'Install all skills to Forge/GSD/Claude + force-load rules'
+    Write-HintRow '8sync agents project'                 'Install force-load skill rules into this project only'
     Write-HintRow '8sync agents max-skill --dry-run'     'Preview all changes, no writes'
-    Write-HintRow '8sync agents max-skill --only <name>' 'Install single skill (e.g. --only ui-ux-pro-max)'
+    Write-HintRow '8sync agents max-skill --only <name>' 'Install single skill'
     Write-HintRow '8sync agents max-skill --skip-token-save' 'Skip RTK/token-save setup'
     Write-HintRow '8sync agents list'                    'List all skills with install status and URLs'
     Write-HintRow '8sync agents check'                   'List skills + HTTP check all URLs for liveness'
@@ -45,6 +46,11 @@ function Invoke-AgentCommand {
             $onlyIdx = [Array]::IndexOf($Rest, '--only')
             $only    = if ($onlyIdx -ge 0 -and $onlyIdx + 1 -lt $Rest.Count) { $Rest[$onlyIdx + 1] } else { $null }
             Invoke-AgentMaxSkill -DryRun:$dryRun -SkipTokenSave:$skipTs -Only $only
+        }
+        'project' {
+            $onlyIdx = [Array]::IndexOf($Rest, '--only')
+            $only    = if ($onlyIdx -ge 0 -and $onlyIdx + 1 -lt $Rest.Count) { $Rest[$onlyIdx + 1] } else { $null }
+            Invoke-AgentProjectSkill -DryRun:$dryRun -Only $only
         }
         'list' {
             Invoke-AgentListSkills

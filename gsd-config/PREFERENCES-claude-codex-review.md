@@ -23,74 +23,77 @@ dynamic_routing:
 token_profile: balanced
 
 models:
-  # ══════════════════════════════════════════════════════════════════════════════
-  # PLAN: claude-codex-review — Opus/Sonnet code + Codex validates/reviews
-  # ──────────────────────────────────────────────────────────────────────────────
+  # ===========================================================================
+  # PLAN: claude-codex-review - Opus plans/researches, Codex codes/reviews
+  # ---------------------------------------------------------------------------
   # AUTH REQUIRED:
-  #   /login anthropic    → claude-opus-4-6 ($5/$25/M)
-  #                         claude-sonnet-4-6 ($3/$15/M)
-  #   /login openai-codex → gpt-5.3-codex (free via ChatGPT OAuth)
+  #   /login anthropic    -> claude-opus-4-7, claude-opus-4-6 fallback
+  #   /login openai-codex -> gpt-5.4, gpt-5.3-codex fallback (ChatGPT OAuth)
   #
   # STRATEGY:
-  #   planning/research   → Opus 4-6 (deepest reasoning, planning king)
-  #   execution           → Sonnet 4-6 (agentic workhorse)
-  #   execution_simple    → Sonnet 4-6 (consistent quality, no downgrade)
-  #   validation          → Codex (cross-model review, fresh eyes on Claude output)
-  #   completion          → Codex (summary, UAT, milestone gate)
-  #   subagent            → Codex (parallel cheap tasks)
+  #   planning/research   -> Opus 4-7 (deep architecture, scope, decisions)
+  #   execution           -> GPT-5.4 (100% Codex coding path)
+  #   execution_simple    -> gpt-5.3-codex (fast/simple Codex coding path)
+  #   validation          -> GPT-5.4 (Codex review/gate)
+  #   completion          -> GPT-5.4 (summary, UAT, milestone gate)
+  #   subagent            -> gpt-5.3-codex (parallel Codex workers)
   #
-  # WHY CODEX AS REVIEWER:
-  #   - Cross-model peer review: different model catches different blind spots
-  #   - Codex is free via OAuth, so review phase costs $0
-  #   - Fallback to Sonnet if Codex unavailable
+  # WHY THIS STACK:
+  #   - Opus stays in high-leverage planning/research where reasoning depth matters.
+  #   - Codex owns code execution so implementation stays consistent across tasks.
+  #   - GPT-5.4 reviews and completes; gpt-5.3-codex is the cheaper/faster fallback.
   #
   # USE WHEN:
-  #   - Có Claude Max + ChatGPT Plus/Pro subscription
-  #   - Muốn Claude code chính, Codex review miễn phí
-  #   - Cần cross-model validation để giảm blind spots
-  # ══════════════════════════════════════════════════════════════════════════════
+  #   - Co Claude Max + ChatGPT Plus/Pro subscription
+  #   - Muon Opus suy nghi sau nhung code 100% bang Codex
+  #   - Can cross-model planning/execution split for large projects
+  # ===========================================================================
 
-  # ── PLANNING ────────────────────────────────────────────────────────────────
+  # -- PLANNING ---------------------------------------------------------------
   planning:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-7
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-opus-4-6
+      - openai-codex/gpt-5.4
+      - openai-codex/gpt-5.3-codex
 
-  # ── RESEARCH ────────────────────────────────────────────────────────────────
+  # -- RESEARCH ---------------------------------------------------------------
   research:
-    model: anthropic/claude-opus-4-6
+    model: claude-code/claude-opus-4-7
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - claude-code/claude-opus-4-6
+      - openai-codex/gpt-5.4
+      - openai-codex/gpt-5.3-codex
 
-  # ── EXECUTION (standard) ────────────────────────────────────────────────────
+  # -- EXECUTION (standard) ---------------------------------------------------
   execution:
-    model: anthropic/claude-sonnet-4-6
+    model: openai-codex/gpt-5.4
     fallbacks:
       - openai-codex/gpt-5.3-codex
 
-  # ── EXECUTION (simple) ──────────────────────────────────────────────────────
+  # -- EXECUTION (simple) -----------------------------------------------------
   execution_simple:
-    model: anthropic/claude-sonnet-4-6
+    model: openai-codex/gpt-5.3-codex
+    fallbacks:
+      - openai-codex/gpt-5.4
+
+  # -- VALIDATION -------------------------------------------------------------
+  validation:
+    model: openai-codex/gpt-5.4
     fallbacks:
       - openai-codex/gpt-5.3-codex
 
-  # ── VALIDATION (reviewer — Codex reviews Claude's output) ───────────────────
-  validation:
-    model: openai-codex/gpt-5.3-codex
-    fallbacks:
-      - anthropic/claude-sonnet-4-6
-
-  # ── COMPLETION ──────────────────────────────────────────────────────────────
+  # -- COMPLETION -------------------------------------------------------------
   completion:
-    model: openai-codex/gpt-5.3-codex
+    model: openai-codex/gpt-5.4
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - openai-codex/gpt-5.3-codex
 
-  # ── SUBAGENT ────────────────────────────────────────────────────────────────
+  # -- SUBAGENT ---------------------------------------------------------------
   subagent:
     model: openai-codex/gpt-5.3-codex
     fallbacks:
-      - anthropic/claude-sonnet-4-6
+      - openai-codex/gpt-5.4
 ---
 
 # GSD Skill Preferences

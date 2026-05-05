@@ -149,131 +149,6 @@ function Invoke-GsdVersionCheck {
     return $true
 }
 
-function Invoke-GsdFix {
-    param(
-        [switch]$DryRun,
-        [switch]$Force,
-        [switch]$Refresh,
-        [switch]$AllowGlobal
-    )
-
-    Write-Host ''
-    Write-Host '  [gsd] Running unified repair...' -ForegroundColor Cyan
-
-    # 1) Version check -- auto sync to pinned version
-    $null = Invoke-GsdVersionCheck -DryRun:$DryRun -AllowGlobal:$AllowGlobal
-
-    if ($Refresh) {
-        Invoke-GsdPackageRefresh -DryRun:$DryRun -AllowGlobal:$AllowGlobal
-    }
-
-    # 2) Bridge repairs
-    Invoke-GsdNodeModulesBridgeFix -DryRun:$DryRun
-    Invoke-GsdResourceLoaderFix -DryRun:$DryRun
-    Invoke-GsdAutoExtensionLoaderPatch -DryRun:$DryRun
-
-    # 2.5) Claude Code native path + OAuth routing + global Claude settings
-    $claudeBundle = Invoke-GsdClaudeFix -DryRun:$DryRun
-    if ($claudeBundle.ClaudePath.Status -in @('configured','rewritten','already-correct')) {
-        Write-Host ("  [claude] native binary {0}: {1}" -f $claudeBundle.ClaudePath.Status, $claudeBundle.ClaudePath.NativePath) -ForegroundColor Green
-    } elseif ($claudeBundle.ClaudePath.Status -eq 'native-missing') {
-        Write-Host '  [claude] native binary not found; claude-code provider may fail on Windows.' -ForegroundColor DarkYellow
-    }
-    if ($claudeBundle.Settings -and $claudeBundle.Settings.Status -eq 'rewritten') {
-        Write-Host '  [claude] restored settings.json default provider/model back to anthropic' -ForegroundColor Green
-    }
-    if ($claudeBundle.GlobalClaude -and $claudeBundle.GlobalClaude.Status -eq 'written') {
-        Write-Host ("  [claude] wrote global settings: {0}" -f $claudeBundle.GlobalClaude.Path) -ForegroundColor Green
-    }
-    if ($claudeBundle.Preferences -and $claudeBundle.Preferences.Status -eq 'rewritten') {
-        Write-Host ("  [claude] restored {0} route(s) from claude-code/* back to anthropic/* in PREFERENCES.md" -f $claudeBundle.Preferences.Replacements) -ForegroundColor Green
-    }
-
-    # 3) Model registry patch (add new models without upgrading gsd-pi)
-    Invoke-GsdModelRegistryPatch -DryRun:$DryRun
-
-    # 4) DB repair for current project
-    Invoke-GsdDbRepair -DryRun:$DryRun -Force:$Force -ProjectPath $PWD.Path
-
-    # 4) Scan ALL projects with .gsd/ on all drives -- works on any machine
-    Write-Host '  [gsd] Scanning all drives for projects with .gsd/ folders...' -ForegroundColor Cyan
-
-    $projectPaths = [System.Collections.Generic.List[string]]::new()
-    $currentPath = $PWD.Path
-    if (Test-Path (Join-Path $currentPath '.gsd')) { $projectPaths.Add($currentPath) }
-
-    # Gather scan roots: every fixed-drive root + user home
-    $scanRoots = [System.Collections.Generic.List[string]]::new()
-
-    if (-not [string]::IsNullOrWhiteSpace($env:GSD_WORKSPACE_ROOT)) {
-        # Explicit override -- respect it
-        $env:GSD_WORKSPACE_ROOT -split ';' | Where-Object { Test-Path $_ } | ForEach-Object { $scanRoots.Add($_) }
-    } else {
-        # Auto: scan every fixed drive root
-        Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
-            Where-Object { $null -ne $_.Free -and (Test-Path $_.Root) } |
-            ForEach-Object { $scanRoots.Add($_.Root) }
-
-        # Also home dir in case drives missed it
-        if ($scanRoots -notcontains $HOME -and (Test-Path $HOME)) { $scanRoots.Add($HOME) }
-    }
-
-    foreach ($root in $scanRoots) {
-        try {
-            Get-ChildItem -Path $root -Directory -Recurse -Depth 5 -Filter '.gsd' -Force -ErrorAction SilentlyContinue |
-                Where-Object {
-                    $fp = $_.FullName
-                    $fp -notmatch '[\\/]node_modules[\\/]' -and
-                    $fp -notmatch '[\\/]\.npm[\\/]' -and
-                    $fp -notmatch '[\\/]scoop[\\/]' -and
-                    $fp -notmatch '[\\/]AppData[\\/]' -and
-                    $fp -notmatch '[\\/]\.cache[\\/]' -and
-                    $fp -ne (Join-Path $HOME '.gsd')           # skip global ~/.gsd (not a project)
-                } | ForEach-Object {
-                    $projPath = $_.Parent.FullName
-                    if (-not $projectPaths.Contains($projPath)) { $projectPaths.Add($projPath) }
-                }
-        } catch {}
-    }
-
-    if ($projectPaths.Count -le 1) {
-        Write-Host '  [ok]      No other projects with .gsd/ found' -ForegroundColor Green
-    } else {
-        Write-Host ("  [gsd] Found {0} project(s) -- cleaning stale sidecars:" -f $projectPaths.Count) -ForegroundColor Cyan
-        foreach ($p in $projectPaths) {
-            if ($p -eq $currentPath) { continue }   # already handled above
-
-            $dbPath   = Join-Path $p '.gsd\gsd.db'
-            $walPath  = "$dbPath-wal"
-            $shmPath  = "$dbPath-shm"
-            $lockPath = Join-Path $p '.gsd\auto.lock'
-
-            $issues = @()
-            if (Test-Path $walPath)  { $issues += 'wal' }
-            if (Test-Path $shmPath)  { $issues += 'shm' }
-            if (Test-Path $lockPath) { $issues += 'lock' }
-
-            $projName = Split-Path $p -Leaf
-            if ($issues.Count -eq 0) {
-                Write-Host ("    {0,-40} [clean]" -f $projName) -ForegroundColor Green
-            } else {
-                $tag = '[stale: {0}]' -f ($issues -join ',')
-                if ($DryRun) {
-                    Write-Host ("    {0,-40} {1} -> [dry-run] would clean" -f $projName, $tag) -ForegroundColor DarkYellow
-                } else {
-                    if (Test-Path $walPath)  { Remove-Item -LiteralPath $walPath  -Force -ErrorAction SilentlyContinue }
-                    if (Test-Path $shmPath)  { Remove-Item -LiteralPath $shmPath  -Force -ErrorAction SilentlyContinue }
-                    if (Test-Path $lockPath) { Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue }
-                    Write-Host ("    {0,-40} {1} -> cleaned" -f $projName, $tag) -ForegroundColor Green
-                }
-            }
-        }
-    }
-
-    Write-Host '  [ok]      Unified fix finished' -ForegroundColor Green
-    Write-Host ''
-}
-
 function Invoke-GsdCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -283,6 +158,7 @@ function Invoke-GsdCommand {
     $dryRun   = $Rest -contains '--dry-run'
     $pickMode = $Rest -contains '--pick'
     $autoMode = $Rest -contains '--auto'
+    $fullMode = $Rest -contains '--full'
     $force    = $Rest -contains '--force'
     $balance  = $Rest -contains '--balance'   # alias for --tier=balanced (backward compat)
     $allowGlobal = $Rest -contains '--allow-global'
@@ -367,6 +243,17 @@ function Invoke-GsdCommand {
 
     $sub = if ($Rest.Count -gt 0 -and $Rest[0] -notlike '--*') { $Rest[0].ToLowerInvariant() } else { 'setup' }
     switch ($sub) {
+        { $_ -eq 'bootstrap' -or ($_ -eq 'setup' -and $fullMode) } {
+            Write-Host ''
+            Write-Host '  [gsd] Full bootstrap: token-save + auth-fix + max-skill (karpathy global)' -ForegroundColor Cyan
+            Write-Host ''
+            Invoke-GsdTokenSave -DryRun:$dryRun
+            Write-Host ''
+            Invoke-AgentMaxSkill -DryRun:$dryRun -SkipTokenSave
+            Write-Host ''
+            Write-Host '  [done] GSD bootstrap complete.' -ForegroundColor Green
+            Write-Host ''
+        }
         'setup' {
             if ($autoMode) {
                 Invoke-GsdAutoSetup -DryRun:$dryRun
@@ -386,29 +273,8 @@ function Invoke-GsdCommand {
             }
         }
         'status' { Invoke-GsdStatus }
-        'fix'    { Invoke-GsdFix -DryRun:$dryRun -Force:$force -Refresh:($Rest -contains '--refresh') -AllowGlobal:$allowGlobal }
-        'fix-db' { Invoke-GsdFix -DryRun:$dryRun -Force:$force -AllowGlobal:$allowGlobal | Out-Null }
         'local'  { Invoke-GsdLocalCommand -Rest ($Rest | Select-Object -Skip 1) }
         'global' { Invoke-GsdGlobalCommand -Rest ($Rest | Select-Object -Skip 1) }
-        'model' {
-            $modelSub = if ($Rest.Count -gt 1) { $Rest[1].ToLowerInvariant() } else { '' }
-            switch ($modelSub) {
-                'add'  { Invoke-GsdModelAdd -Rest ($Rest | Select-Object -Skip 2) -DryRun:$dryRun }
-                'list' { Invoke-GsdModelList }
-                default { Write-Host @"
-  Usage: 8sync gsd model <command>
-
-  Commands:
-    add <model-id>     Add a new model to GSD registry (without upgrading gsd-pi)
-    list               List all patched/available models
-
-  Examples:
-    8sync gsd model add claude-opus-4-7
-    8sync gsd model add claude-sonnet-4-7
-    8sync gsd model list
-"@ -ForegroundColor DarkGray }
-            }
-        }
         'key'    { Invoke-GsdKey -Provider ($Rest | Select-Object -Skip 1 -First 1) -Key ($Rest | Select-Object -Skip 2 -First 1) }
         'keys'   { Show-GsdKeys }
         'add' {
@@ -443,6 +309,12 @@ function Invoke-GsdCommand {
         'auth-fix' {
             Invoke-GsdAuthFix -DryRun:$dryRun
         }
+        'fix-tools-cap' {
+            Invoke-GsdFixToolsCap -DryRun:$dryRun
+        }
+        'reset-auth' {
+            Invoke-GsdResetAuth -DryRun:$dryRun
+        }
         'token-save' {
             $skipAuth    = $Rest -contains '--skip-auth-fix'
             $skipEnv     = $Rest -contains '--skip-env'
@@ -452,29 +324,9 @@ function Invoke-GsdCommand {
             $forgeRemove = $Rest -contains '--remove'
             $methodIdx = [Array]::IndexOf($Rest, '--method')
             $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
-            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -ForgeShims:$forgeShims -ForgeShimsRemove:$forgeRemove -ForgeFull:$forgeFull -Method $method
-        }
-        'token-optimize' {
-            $skipAuth    = $Rest -contains '--skip-auth-fix'
-            $skipEnv     = $Rest -contains '--skip-env'
-            $incCache    = $Rest -contains '--disable-caching'
-            $forgeShims  = $Rest -contains '--forge-shims'
-            $forgeFull   = $Rest -contains '--forge-full'
-            $forgeRemove = $Rest -contains '--remove'
-            $methodIdx = [Array]::IndexOf($Rest, '--method')
-            $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
-            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -ForgeShims:$forgeShims -ForgeShimsRemove:$forgeRemove -ForgeFull:$forgeFull -Method $method
-        }
-        'rtk' {
-            $skipAuth    = $Rest -contains '--skip-auth-fix'
-            $skipEnv     = $Rest -contains '--skip-env'
-            $incCache    = $Rest -contains '--disable-caching'
-            $forgeShims  = $Rest -contains '--forge-shims'
-            $forgeFull   = $Rest -contains '--forge-full'
-            $forgeRemove = $Rest -contains '--remove'
-            $methodIdx = [Array]::IndexOf($Rest, '--method')
-            $method = if ($methodIdx -ge 0 -and $methodIdx + 1 -lt $Rest.Count) { $Rest[$methodIdx + 1] } else { 'auto' }
-            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -ForgeShims:$forgeShims -ForgeShimsRemove:$forgeRemove -ForgeFull:$forgeFull -Method $method
+            $cpIdx = [Array]::IndexOf($Rest, '--compact-pct')
+            $compactPct = if ($cpIdx -ge 0 -and $cpIdx + 1 -lt $Rest.Count) { [int]$Rest[$cpIdx + 1] } else { 70 }
+            Invoke-GsdTokenSave -DryRun:$dryRun -SkipAuthFix:$skipAuth -SkipEnv:$skipEnv -IncludeDisableCaching:$incCache -ForgeShims:$forgeShims -ForgeShimsRemove:$forgeRemove -ForgeFull:$forgeFull -Method $method -CompactPct $compactPct
         }
         'forge-sync' {
             Write-Host ''
@@ -496,7 +348,6 @@ function Invoke-GsdCommand {
             Write-Host ''
         }
         'guide'  { Show-GsdGuide }
-        'claude-code-auth' { Invoke-GsdAuthFix -DryRun:$dryRun }
         'help'   { Show-GsdHelp }
         default  { Show-GsdHelp }
     }
