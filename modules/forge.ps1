@@ -784,6 +784,360 @@ function Invoke-ForgeThinking {
     Write-Host ''
 }
 
+function Read-ForgeConfigPorcelain {
+    # Returns a hashtable section -> ordered hashtable of key=value (raw strings).
+    # Uses `forge config list --porcelain` (canonical TOML) so we always reflect
+    # the file Forge actually loads (works on both ~/forge/ and ~/.forge/ layouts).
+    [OutputType([hashtable])]
+    param()
+    $result = @{}
+    try {
+        $out = & forge config list --porcelain 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $out) { return $result }
+        $section = '_root'
+        $result[$section] = [ordered]@{}
+        foreach ($line in $out) {
+            $t = "$line".Trim()
+            if (-not $t -or $t.StartsWith('#')) { continue }
+            if ($t -match '^\[([^\]]+)\]$') {
+                $section = $Matches[1]
+                if (-not $result.ContainsKey($section)) { $result[$section] = [ordered]@{} }
+                continue
+            }
+            if ($t -match '^([A-Za-z0-9_\-\.]+)\s*=\s*(.+)$') {
+                $k = $Matches[1]
+                $v = $Matches[2].Trim()
+                # Strip surrounding quotes for display
+                if ($v -match '^"(.*)"$') { $v = $Matches[1] }
+                $result[$section][$k] = $v
+            }
+        }
+    } catch {}
+    return $result
+}
+
+function Get-ForgeConfigPath {
+    [OutputType([string])]
+    param()
+    try {
+        $p = (& forge config path 2>$null | Select-Object -First 1)
+        if ($p) { return "$p".Trim() }
+    } catch {}
+    return $null
+}
+
+function Invoke-ForgeModel {
+    # Show/set the active Forge model. Auto-detects provider login state so the
+    # user can see at a glance which provider+model+auth Forge is actually using.
+    #
+    # Forge stores active model as TWO keys: [session].provider_id + [session].model_id.
+    # `forge config set model` requires <PROVIDER> <MODEL> together.
+    #
+    # Usage:
+    #   8sync forge model                          -- show current provider+model+auth+reasoning
+    #   8sync forge model list                     -- run `forge provider list` (providers + logged-in)
+    #   8sync forge model <model>                  -- set model on CURRENT provider (keeps provider_id)
+    #   8sync forge model <provider> <model>       -- set both atomically
+    #   8sync forge model set <provider> <model>   -- explicit set form
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    Write-Host ''
+    Write-Host '  FORGE -- model & provider' -ForegroundColor Cyan
+    Write-Host ''
+
+    if (-not (Test-CommandExists 'forge')) {
+        Write-Host '  [error] forge CLI not found. Run: 8sync forge install' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    if (-not $Rest) { $Rest = @() }
+    $action = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
+
+    # Subcommand: list available providers (Forge has no `model list`; providers are the unit)
+    if ($action -eq 'list' -or $action -eq 'ls') {
+        Write-Host '  Running: forge provider list' -ForegroundColor DarkGray
+        Write-Host ''
+        try { & forge provider list } catch {
+            Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+        }
+        Write-Host ''
+        Write-Host '  Tip: providers marked [logged in yes] are ready. To switch:' -ForegroundColor DarkGray
+        Write-Host '    8sync forge model <provider_id> <model_id>' -ForegroundColor DarkGray
+        Write-Host '    e.g. 8sync forge model claude_code claude-sonnet-4-6' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # Resolve provider+model args
+    $argv = @($Rest)
+    if ($argv.Count -gt 0 -and $argv[0].ToLowerInvariant() -eq 'set') {
+        $argv = @($argv | Select-Object -Skip 1)
+    }
+    $newProvider = $null
+    $newModel    = $null
+    if ($argv.Count -ge 2) {
+        $newProvider = $argv[0]
+        $newModel    = $argv[1]
+    } elseif ($argv.Count -eq 1 -and $argv[0] -notlike '--*' -and $argv[0].ToLowerInvariant() -notin @('status','')) {
+        # Single arg -> model only; reuse current provider_id
+        $newModel = $argv[0]
+    }
+
+    $cfg = Read-ForgeConfigPorcelain
+    $tomlPath = Get-ForgeConfigPath
+    $curProvider = $null
+    $curModel    = $null
+    if ($cfg['session']) {
+        if ($cfg['session'].Contains('provider_id')) { $curProvider = $cfg['session']['provider_id'] }
+        if ($cfg['session'].Contains('model_id'))    { $curModel    = $cfg['session']['model_id'] }
+    }
+    $curEffort = '?'
+    if ($cfg['reasoning'] -and $cfg['reasoning'].Contains('effort')) { $curEffort = $cfg['reasoning']['effort'] }
+
+    if ($newModel) {
+        if (-not $newProvider) {
+            if (-not $curProvider) {
+                Write-Host '  [error] no current provider set; specify both:' -ForegroundColor Red
+                Write-Host '    8sync forge model <provider_id> <model_id>' -ForegroundColor DarkGray
+                Write-Host '  See providers:  8sync forge model list' -ForegroundColor DarkGray
+                Write-Host ''
+                return
+            }
+            $newProvider = $curProvider
+            Write-Host ('  (reusing current provider: {0})' -f $newProvider) -ForegroundColor DarkGray
+        }
+        Write-Host ('  before: provider={0}  model={1}' -f $curProvider, $curModel) -ForegroundColor DarkGray
+        Write-Host ('  applying: forge config set model {0} {1}' -f $newProvider, $newModel) -ForegroundColor Yellow
+        try {
+            $setOut = & forge config set model $newProvider $newModel 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host ('  [error] forge config set model failed:' ) -ForegroundColor Red
+                $setOut | ForEach-Object { Write-Host ('    {0}' -f $_) -ForegroundColor Red }
+                Write-Host ''
+                Write-Host '  See valid providers:  8sync forge model list' -ForegroundColor DarkGray
+                Write-Host ''
+                return
+            }
+        } catch {
+            Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+            Write-Host ''
+            return
+        }
+        $after = Read-ForgeConfigPorcelain
+        $aProv = if ($after['session'] -and $after['session'].Contains('provider_id')) { $after['session']['provider_id'] } else { '?' }
+        $aMod  = if ($after['session'] -and $after['session'].Contains('model_id'))    { $after['session']['model_id'] }    else { '?' }
+        Write-Host ('  after:  provider={0}  model={1}' -f $aProv, $aMod) -ForegroundColor Green
+        if ($tomlPath) { Write-Host ('  Written to: {0}' -f $tomlPath) -ForegroundColor DarkGray }
+        Write-Host '  Takes effect for the next Forge session.' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    # Status view
+    if ($tomlPath) { Write-Host ('  Config file:  {0}' -f $tomlPath) -ForegroundColor DarkGray }
+    Write-Host ('  Provider:     {0}' -f $(if ($curProvider) { $curProvider } else { '(unset)' })) -ForegroundColor White
+    Write-Host ('  Model:        {0}' -f $(if ($curModel)    { $curModel }    else { '(unset)' })) -ForegroundColor White
+    Write-Host ('  Reasoning:    effort = "{0}"' -f $curEffort) -ForegroundColor White
+
+    # OAuth state (only meaningful for claude_code provider)
+    $creds = Read-ForgeAnthropicCreds
+    if ($creds -and $creds.AccessToken) {
+        $remaining = if ($creds.ExpiresAt) { $creds.ExpiresAt - [datetime]::UtcNow } else { $null }
+        $humans = if (-not $remaining) { '(no expiry)' }
+                  elseif ($remaining.TotalMinutes -lt 0) { 'EXPIRED' }
+                  elseif ($remaining.TotalHours -ge 1) { ('{0:F1}h left' -f $remaining.TotalHours) }
+                  else { ('{0:F0}min left' -f $remaining.TotalMinutes) }
+        $color = if (-not $remaining -or $remaining.TotalMinutes -gt 60) { 'Green' }
+                 elseif ($remaining.TotalMinutes -gt 10) { 'DarkYellow' } else { 'Red' }
+        Write-Host ('  Auth:         claude_code OAuth -- {0}' -f $humans) -ForegroundColor $color
+    } else {
+        Write-Host '  Auth:         (no claude_code OAuth; for other providers see: 8sync forge model list)' -ForegroundColor DarkGray
+    }
+
+    Write-Host ''
+    Write-Host '  Usage:' -ForegroundColor DarkGray
+    Write-Host '    8sync forge model list                       # providers + login state' -ForegroundColor DarkGray
+    Write-Host '    8sync forge model <model>                    # change model, keep provider' -ForegroundColor DarkGray
+    Write-Host '    8sync forge model <provider> <model>         # change both atomically' -ForegroundColor DarkGray
+    Write-Host '    8sync forge config keys                      # list ALL valid config-set keys (schema)' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Invoke-ForgeConfig {
+    # Generic Forge config viewer/editor. Wraps `forge config {list|set|get|path}`.
+    #
+    # Usage:
+    #   8sync forge config                          -- show all current values
+    #   8sync forge config path                     -- print config file path
+    #   8sync forge config keys                     -- list VALID set keys w/ argument schema (from forge --help)
+    #   8sync forge config get <key>                -- forge config get <key>
+    #   8sync forge config set <key> <args...>      -- forge config set <key> <args...>
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+
+    Write-Host ''
+    Write-Host '  FORGE -- config' -ForegroundColor Cyan
+    Write-Host ''
+
+    if (-not (Test-CommandExists 'forge')) {
+        Write-Host '  [error] forge CLI not found. Run: 8sync forge install' -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    if (-not $Rest) { $Rest = @() }
+    $action = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'show' }
+
+    switch ($action) {
+        'path' {
+            $p = Get-ForgeConfigPath
+            if ($p) { Write-Host ('  {0}' -f $p) -ForegroundColor White }
+            else    { Write-Host '  [warn] could not resolve forge config path' -ForegroundColor DarkYellow }
+            Write-Host ''
+            return
+        }
+        'keys' {
+            # Live discovery of every key Forge will accept, with arg schema.
+            # This is the answer to "how do I know valid key names?" -- we ask Forge itself.
+            # Note: Forge emits ANSI escape codes even when piped, so strip them first.
+            $ansi = [regex]'\x1b\[[0-9;]*[A-Za-z]'
+            Write-Host '  Valid `forge config set` keys (live from forge --help):' -ForegroundColor DarkGray
+            Write-Host ''
+            $setHelp = & forge config set --help 2>&1
+            $keys = @()
+            $inCmds = $false
+            foreach ($line in $setHelp) {
+                $t = $ansi.Replace("$line", '')
+                if ($t -match '^Commands:') { $inCmds = $true; continue }
+                if ($inCmds) {
+                    if ($t -match '^\s*$' -or $t -match '^Options:' -or $t -match '^Usage:') { break }
+                    if ($t -match '^\s+(\S+)\s+(.+)$') {
+                        $k = $Matches[1]
+                        if ($k -eq 'help') { continue }
+                        $keys += [pscustomobject]@{ Key = $k; Desc = $Matches[2].Trim() }
+                    }
+                }
+            }
+            foreach ($k in $keys) {
+                # Pull argument shape from `forge config set <key> --help`
+                $argShape = ''
+                try {
+                    $kh = & forge config set $k.Key --help 2>&1
+                    foreach ($l in $kh) {
+                        $cl = $ansi.Replace("$l", '')
+                        if ($cl -match '^Usage:\s+(.+)$') {
+                            $u = $Matches[1]
+                            # Drop "forge config set <key> [OPTIONS]" prefix, keep the <ARGS>
+                            $argShape = ($u -replace '^.*\[OPTIONS\]\s*','').Trim()
+                            break
+                        }
+                    }
+                } catch {}
+                Write-Host ('    {0,-18} {1}' -f $k.Key, $k.Desc) -ForegroundColor White
+                if ($argShape) {
+                    Write-Host ('    {0,-18} args: {1}' -f '', $argShape) -ForegroundColor DarkGray
+                }
+            }
+            if ($keys.Count -eq 0) {
+                Write-Host '    (could not parse forge --help; falling back to known keys)' -ForegroundColor DarkYellow
+                Write-Host '    model             <PROVIDER> <MODEL>     -- active model + provider atomically' -ForegroundColor White
+                Write-Host '    commit            <PROVIDER> <MODEL>     -- model for commit message generation' -ForegroundColor White
+                Write-Host '    suggest           <PROVIDER> <MODEL>     -- model for command suggestion' -ForegroundColor White
+                Write-Host '    reasoning-effort  <EFFORT>               -- none|minimal|low|medium|high|xhigh|max' -ForegroundColor White
+            }
+            Write-Host ''
+            Write-Host '  Set any key with:' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config set <key> <args...>' -ForegroundColor DarkGray
+            Write-Host '  Examples:' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config set model claude_code claude-sonnet-4-6' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config set reasoning-effort high' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config set commit claude_code claude-haiku-4-5' -ForegroundColor DarkGray
+            Write-Host ''
+            return
+        }
+        'get' {
+            if ($Rest.Count -lt 2) {
+                Write-Host '  Usage: 8sync forge config get <key>' -ForegroundColor DarkYellow
+                Write-Host '  See valid keys:  8sync forge config keys' -ForegroundColor DarkGray
+                Write-Host ''
+                return
+            }
+            $key = $Rest[1]
+            try {
+                $out = & forge config get $key 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host ('  [error] forge config get {0} failed:' -f $key) -ForegroundColor Red
+                    $out | ForEach-Object { Write-Host ('    {0}' -f $_) -ForegroundColor Red }
+                    Write-Host '  See valid keys:  8sync forge config keys' -ForegroundColor DarkGray
+                } else {
+                    $out | ForEach-Object { Write-Host ('    {0}' -f $_) -ForegroundColor White }
+                }
+            } catch {
+                Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+            }
+            Write-Host ''
+            return
+        }
+        'set' {
+            if ($Rest.Count -lt 3) {
+                Write-Host '  Usage: 8sync forge config set <key> <args...>' -ForegroundColor DarkYellow
+                Write-Host '  See valid keys + arg shape:  8sync forge config keys' -ForegroundColor DarkGray
+                Write-Host ''
+                return
+            }
+            $key  = $Rest[1]
+            $args = @($Rest | Select-Object -Skip 2)
+            Write-Host ('  applying: forge config set {0} {1}' -f $key, ($args -join ' ')) -ForegroundColor Yellow
+            try {
+                $setOut = & forge config set $key @args 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host '  [error] forge config set failed:' -ForegroundColor Red
+                    $setOut | ForEach-Object { Write-Host ('    {0}' -f $_) -ForegroundColor Red }
+                    Write-Host ''
+                    Write-Host '  See valid keys + arg shape:  8sync forge config keys' -ForegroundColor DarkGray
+                } else {
+                    Write-Host ('  [ok] {0} {1}' -f $key, ($args -join ' ')) -ForegroundColor Green
+                    $p = Get-ForgeConfigPath
+                    if ($p) { Write-Host ('  Written to: {0}' -f $p) -ForegroundColor DarkGray }
+                }
+            } catch {
+                Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+            }
+            Write-Host ''
+            return
+        }
+        default {
+            # show / list (current values, porcelain)
+            $p = Get-ForgeConfigPath
+            if ($p) { Write-Host ('  Config file: {0}' -f $p) -ForegroundColor DarkGray }
+            Write-Host ''
+            try {
+                $out = & forge config list --porcelain 2>&1
+                if ($LASTEXITCODE -ne 0 -or -not $out) {
+                    Write-Host '  [warn] forge config list returned no output' -ForegroundColor DarkYellow
+                } else {
+                    $out | ForEach-Object { Write-Host ('    {0}' -f $_) -ForegroundColor White }
+                }
+            } catch {
+                Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+            }
+            Write-Host ''
+            Write-Host '  More:' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config keys              # list VALID set keys + arg schema' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config get <key>         # read one key' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config set <key> <args>  # write any key' -ForegroundColor DarkGray
+            Write-Host '    8sync forge config path              # config file path' -ForegroundColor DarkGray
+            Write-Host ''
+        }
+    }
+}
+
 function Get-KarpathySkillContent {
     # Latest Karpathy guidelines skill content, embedded for offline use.
     # Source: https://github.com/forrestchang/andrej-karpathy-skills
@@ -2132,6 +2486,15 @@ function Show-ForgeHelp {
     Write-HintRow '8sync forge thinking xhigh'    'Set reasoning effort=xhigh'
     Write-HintRow '8sync forge thinking max'      'Set reasoning effort=max'
     Write-HintRow '8sync forge thinking on'       'Alias for high'
+    Write-HintRow '8sync forge model'             'Show active provider+model+auth+reasoning'
+    Write-HintRow '8sync forge model list'        'List providers (forge provider list) + login state'
+    Write-HintRow '8sync forge model <model>'     'Set model on CURRENT provider (keeps provider_id)'
+    Write-HintRow '8sync forge model <prov> <m>'  'Set provider+model atomically (e.g. claude_code claude-sonnet-4-6)'
+    Write-HintRow '8sync forge config'            'Dump ALL forge config (porcelain TOML)'
+    Write-HintRow '8sync forge config keys'       'List VALID config-set keys + arg schema (live from forge --help)'
+    Write-HintRow '8sync forge config path'       'Print resolved forge config file path'
+    Write-HintRow '8sync forge config get <k>'    'Read one config key (delegates to forge config get)'
+    Write-HintRow '8sync forge config set <k> ...' 'Set ANY forge config key (forwards all args to forge config set)'
     Write-HintRow '8sync forge zsh-usage'         'How to use zsh on Windows (no exec zsh -- spawn subshell)'
     Write-HintRow '8sync forge status'            'Show installed version, binary path, dependency check'
     Write-HintRow '8sync forge login'             'Run: forge provider login (configure AI provider)'
@@ -2198,6 +2561,10 @@ function Invoke-ForgeCommand {
         'light'       { Invoke-ForgeLightMode }
         'thinking'    { Invoke-ForgeThinking -Rest ($Rest | Select-Object -Skip 1) }
         'think'       { Invoke-ForgeThinking -Rest ($Rest | Select-Object -Skip 1) }
+        'model'       { Invoke-ForgeModel  -Rest ($Rest | Select-Object -Skip 1) }
+        'models'      { Invoke-ForgeModel  -Rest ($Rest | Select-Object -Skip 1) }
+        'config'      { Invoke-ForgeConfig -Rest ($Rest | Select-Object -Skip 1) }
+        'cfg'         { Invoke-ForgeConfig -Rest ($Rest | Select-Object -Skip 1) }
         'init'        { Invoke-ForgeInit -Rest ($Rest | Select-Object -Skip 1) }
         'add-skill'   { Invoke-ForgeAddSkill -Rest ($Rest | Select-Object -Skip 1) }
         'skill'       { Invoke-ForgeAddSkill -Rest ($Rest | Select-Object -Skip 1) }
