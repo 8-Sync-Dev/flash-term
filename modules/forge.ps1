@@ -2595,6 +2595,61 @@ function Invoke-ForgeSyncToGsd {
     Write-Host ''
 }
 
+function Get-ForgeLastConversationId {
+    # Parse `forge conversation list --porcelain`; first data row is most recent.
+    # Header line: "ID  TITLE  UPDATED"
+    $forgeBin = Get-ForgeInstallPath
+    if (-not $forgeBin) { return $null }
+    try {
+        $lines = & $forgeBin conversation list --porcelain 2>$null
+    } catch { return $null }
+    if (-not $lines) { return $null }
+    foreach ($ln in $lines) {
+        $t = "$ln".Trim()
+        if (-not $t) { continue }
+        if ($t -match '^ID\b') { continue }                 # header
+        # UUID at start of row
+        if ($t -match '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b') {
+            return $matches[1]
+        }
+    }
+    return $null
+}
+
+function Invoke-ForgeContinue {
+    param([string[]]$Rest)
+
+    Ensure-ForgeHomeEnv
+    Ensure-ForgeConsoleUtf8
+
+    $forgeBin = Get-ForgeInstallPath
+    if (-not $forgeBin) {
+        Write-Host '[forge] forge is not installed. Run: 8sync forge install' -ForegroundColor Red
+        return
+    }
+
+    $showList = ($Rest -contains '--list') -or ($Rest -contains '-l')
+    if ($showList) {
+        & $forgeBin conversation list
+        return
+    }
+
+    # Allow explicit ID: `8sync forge continue <id>`
+    $explicitId = $null
+    if ($Rest -and $Rest.Count -gt 0 -and $Rest[0] -notlike '--*') {
+        $explicitId = $Rest[0]
+    }
+
+    $id = if ($explicitId) { $explicitId } else { Get-ForgeLastConversationId }
+    if (-not $id) {
+        Write-Host '[forge] No prior conversation found. Start one with: forge' -ForegroundColor DarkYellow
+        return
+    }
+
+    Write-Host ("[forge] Resuming conversation {0}" -f $id) -ForegroundColor Cyan
+    & $forgeBin --conversation-id $id @($Rest | Where-Object { $_ -ne $id -and $_ -notin @('--list','-l') })
+}
+
 function Show-ForgeHelp {
     Write-Host ''
     Write-HintSection 'FORGE -- ForgeCode AI pair programmer (tailcallhq/forgecode)'
@@ -2634,6 +2689,9 @@ function Show-ForgeHelp {
     Write-HintRow '8sync forge config set <k> ...' 'Set ANY forge config key (forwards all args to forge config set)'
     Write-HintRow '8sync forge zsh-usage'         'How to use zsh on Windows (no exec zsh -- spawn subshell)'
     Write-HintRow '8sync forge status'            'Show installed version, binary path, dependency check'
+    Write-HintRow '8sync forge continue'          'Resume the most recent conversation (alias: c, cont, resume, last)'
+    Write-HintRow '8sync forge continue <id>'     'Resume a specific conversation by ID'
+    Write-HintRow '8sync forge continue --list'   'List conversation history (passes through to `forge conversation list`)'
     Write-HintRow '8sync forge login'             'Run: forge provider login (configure AI provider)'
     Write-HintRow '8sync forge sync-to-gsd'      'Sync Forge Anthropic OAuth -> GSD custom provider (models.json)'
     Write-HintRow '8sync forge sync-to-gsd --dry-run' 'Preview models.json changes without writing'
@@ -2716,6 +2774,11 @@ function Invoke-ForgeCommand {
             Invoke-ForgeSyncToGsd -DryRun:$dryRun -Name $customName
         }
         'status'    { Invoke-ForgeStatus }
+        'continue'  { Invoke-ForgeContinue -Rest ($Rest | Select-Object -Skip 1) }
+        'cont'      { Invoke-ForgeContinue -Rest ($Rest | Select-Object -Skip 1) }
+        'c'         { Invoke-ForgeContinue -Rest ($Rest | Select-Object -Skip 1) }
+        'resume'    { Invoke-ForgeContinue -Rest ($Rest | Select-Object -Skip 1) }
+        'last'      { Invoke-ForgeContinue -Rest ($Rest | Select-Object -Skip 1) }
         'login'     { Invoke-ForgeProvider -Rest ($Rest | Select-Object -Skip 1) }
         'provider'  { Invoke-ForgeProvider -Rest ($Rest | Select-Object -Skip 1) }
         'uninstall' { Invoke-ForgeUninstall -DryRun:$dryRun }
