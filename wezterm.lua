@@ -15,6 +15,20 @@ local current_opacity_lua = config_dir .. "\\current-opacity.lua"
 local current_style_lua = config_dir .. "\\current-style.lua"
 local current_gpu_lua = config_dir .. "\\current-gpu.lua"
 
+-- Per-profile state file support: if WEZTERM_PROFILE is set and not "default",
+-- load profile-specific Lua state files (e.g. current-bg-work.lua)
+local active_profile = os.getenv("WEZTERM_PROFILE") or "default"
+if active_profile ~= "" and active_profile ~= "default" then
+  local profile_bg = config_dir .. "\\current-bg-" .. active_profile .. ".lua"
+  local profile_opacity = config_dir .. "\\current-opacity-" .. active_profile .. ".lua"
+  local profile_style = config_dir .. "\\current-style-" .. active_profile .. ".lua"
+  local profile_gpu = config_dir .. "\\current-gpu-" .. active_profile .. ".lua"
+  if file_exists(profile_bg) then current_bg_lua = profile_bg end
+  if file_exists(profile_opacity) then current_opacity_lua = profile_opacity end
+  if file_exists(profile_style) then current_style_lua = profile_style end
+  if file_exists(profile_gpu) then current_gpu_lua = profile_gpu end
+end
+
 local cursor_styles = {
   "SteadyBlock",
   "BlinkingBlock",

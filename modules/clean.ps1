@@ -1193,6 +1193,45 @@ function Invoke-EcosystemAudit {
     }
 }
 
+function Get-AntimalwareSnapshot {
+    # Returns MsMpEng working set/cpu snapshot used by clean loop guard.
+    try {
+        $p = Get-Process -Name 'MsMpEng' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $p) {
+            return [pscustomobject]@{ found = $false; mb = 0; cpu = 0.0 }
+        }
+        return [pscustomobject]@{
+            found = $true
+            mb    = [int][math]::Round($p.WorkingSet64 / 1MB)
+            cpu   = [double]$p.CPU
+        }
+    } catch {
+        return [pscustomobject]@{ found = $false; mb = 0; cpu = 0.0 }
+    }
+}
+
+function Test-DefenderLoopPressure {
+    # Guard to avoid launching extra Defender scans while Antimalware is already hot.
+    param(
+        [int]$MaxWorkingSetMb = 700
+    )
+
+    $snap = Get-AntimalwareSnapshot
+    if (-not $snap.found) {
+        return [pscustomobject]@{ allowed = $true; reason = 'MsMpEng not running'; mb = 0 }
+    }
+
+    if ($snap.mb -gt $MaxWorkingSetMb) {
+        return [pscustomobject]@{
+            allowed = $false
+            reason  = ('Antimalware RAM high ({0} MB > {1} MB)' -f $snap.mb, $MaxWorkingSetMb)
+            mb      = $snap.mb
+        }
+    }
+
+    return [pscustomobject]@{ allowed = $true; reason = 'OK'; mb = $snap.mb }
+}
+
 # ---------------------------------------------------------------------------
 #  Windows Defender quick scan
 # ---------------------------------------------------------------------------
@@ -1479,6 +1518,14 @@ public class MemUtil {
                 }
             }
 
+            $pressure = Test-DefenderLoopPressure -MaxWorkingSetMb 700
+            if (-not $pressure.allowed) {
+                $canRunDefender = $false
+                if ($Manual) {
+                    Write-Host ('  Defender scan skipped: {0}' -f $pressure.reason) -ForegroundColor DarkYellow
+                }
+            }
+
             if ($canRunDefender) {
                 if ($Manual) {
                     Write-Host ('  profile {0}: starting Defender quick scan...' -f $profileSettings.profile) -ForegroundColor Yellow
@@ -1486,7 +1533,7 @@ public class MemUtil {
                 Invoke-DefenderScan -TargetPaths @()
                 $didDefender = $true
                 $lastDeepRunUtc = [datetime]::UtcNow
-            } elseif ($Manual) {
+            } elseif ($Manual -and $pressure.allowed) {
                 Write-Host ('  Defender cooldown active ({0} min).' -f $cooldown) -ForegroundColor DarkGray
             }
         }
@@ -1611,7 +1658,7 @@ function Invoke-CleanLoopCommand {
                 Write-Host ('  deep ops:   dry-run clean preview every tick (stale>{0}d)' -f $settings.dryCleanStaleDays) -ForegroundColor DarkGray
             }
             if ($settings.runDefenderQuickScan) {
-                Write-Host '  deep ops:   Defender quick scan on cooldown' -ForegroundColor DarkGray
+                Write-Host '  deep ops:   Defender quick scan on cooldown (auto-skip when MsMpEng RAM > 700 MB)' -ForegroundColor DarkGray
             }
             Write-Host ''
         }

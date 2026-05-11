@@ -316,6 +316,15 @@ function Show-8SyncHint {
     Write-Host '  8sync  WezTerm Shell Toolkit' -ForegroundColor Cyan -NoNewline
     Write-Host ('  [missing: {0}]' -f $missingText) -ForegroundColor DarkGray
 
+    Write-HintSection 'PROFILE'
+    Write-HintRow '8sync profile list'              'List all profiles (* = active)'
+    Write-HintRow '8sync profile create <name>'     'Create new empty profile'
+    Write-HintRow '8sync profile clone <src> <dst>'  'Clone profile with all settings'
+    Write-HintRow '8sync profile switch <name>'     'Switch current tab to profile (CLI/state only)'
+    Write-HintRow '8sync profile open <name>'       'Open new window with full profile isolation'
+    Write-HintRow '8sync profile delete <name>'     'Delete a profile'
+    Write-HintRow '8sync profile help'              'Full profile help with details'
+
     Write-HintSection 'COMMANDS'
     Write-HintRow '8sync help'              'Show this help'
     Write-HintRow '8sync status'            'Installed tools + last sync time'

@@ -176,6 +176,7 @@ function Register-8SyncAlias {
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
             'remove'   { Invoke-RemoveCommand -Rest $Rest }
             'agents'   { Invoke-AgentCommand -Rest $Rest }
+            'profile'  { Invoke-ProfileCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }

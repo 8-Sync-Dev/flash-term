@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','forge','gsd','gsd-1','gguf','remove','agents')
+    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','forge','gsd','gsd-1','gguf','remove','agents','profile')
 
         # subcommands per mode
         $subMap = @{
@@ -71,6 +71,7 @@ function Register-8SyncCompleter {
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
             remove   = @('claude-code','gsd2','gsd-2','--dry-run','--keep-home','--keep-npm-cache','help')
             agents   = @('max-skill','project','list','check','help','--dry-run','--skip-token-save','--only','karpathy','gsd-pi-guide')
+            profile  = @('list','create','clone','switch','open','delete','help')
         }
 
         if ($count -le 1) {
