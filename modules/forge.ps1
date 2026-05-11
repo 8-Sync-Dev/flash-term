@@ -857,17 +857,154 @@ function Invoke-ForgeModel {
     if (-not $Rest) { $Rest = @() }
     $action = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'status' }
 
-    # Subcommand: list available providers (Forge has no `model list`; providers are the unit)
+    # Subcommand: list available models (concrete model IDs grouped by provider).
+    # Uses `forge list model --porcelain` which yields lines like:
+    #   <model_id>  <display name>  <ProviderName>  <provider_id>  <ctx>  <tools>  <vision>
+    # Flags:
+    #   --all                  include providers NOT logged in
+    #   --providers            providers-only view (legacy `forge provider list`)
+    #   --provider <id>        filter to a single provider_id
+    #   --grep <pattern>       case-insensitive substring filter on model_id+name
     if ($action -eq 'list' -or $action -eq 'ls') {
-        Write-Host '  Running: forge provider list' -ForegroundColor DarkGray
-        Write-Host ''
-        try { & forge provider list } catch {
-            Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+        $listArgs = @($Rest | Select-Object -Skip 1)
+        $showAll      = $false
+        $providersOnly= $false
+        $filterProv   = $null
+        $grep         = $null
+        for ($i = 0; $i -lt $listArgs.Count; $i++) {
+            $arg = $listArgs[$i]
+            if ($arg -eq '--all')            { $showAll = $true }
+            elseif ($arg -eq '--providers')  { $providersOnly = $true }
+            elseif ($arg -eq '--provider')   { if ($i + 1 -lt $listArgs.Count) { $filterProv = $listArgs[$i+1]; $i++ } }
+            elseif ($arg -eq '--grep')       { if ($i + 1 -lt $listArgs.Count) { $grep        = $listArgs[$i+1]; $i++ } }
         }
+
+        if ($providersOnly) {
+            Write-Host '  Running: forge list provider' -ForegroundColor DarkGray
+            Write-Host ''
+            try { & forge list provider } catch {
+                Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+            }
+            Write-Host ''
+            return
+        }
+
+        Write-Host '  Fetching models from Forge (forge list model --porcelain) ...' -ForegroundColor DarkGray
+        $raw = $null
+        try { $raw = & forge list model --porcelain 2>$null } catch {
+            Write-Host ('  [error] {0}' -f $_.Exception.Message) -ForegroundColor Red
+            Write-Host ''
+            return
+        }
+        if (-not $raw) {
+            Write-Host '  [error] no output from `forge list model`. Are you logged in to any provider?' -ForegroundColor Red
+            Write-Host '  Try: forge provider login' -ForegroundColor DarkGray
+            Write-Host ''
+            return
+        }
+
+        # Parse fixed-column-ish lines. Use a regex with named groups; split on 2+ spaces.
+        $rows = New-Object System.Collections.Generic.List[object]
+        foreach ($line in $raw) {
+            $t = "$line".Trim()
+            if (-not $t) { continue }
+            # Skip spinner / progress noise
+            if ($t -match '^[⠁-⣿]') { continue }
+            if ($t -match 'Fetching Models') { continue }
+            if ($t -match '^ID\s+MODEL\s+PROVIDER') { continue }   # porcelain header
+            $parts = [regex]::Split($t, '\s{2,}')
+            if ($parts.Count -lt 4) { continue }
+            $modelId   = $parts[0]
+            $modelName = $parts[1]
+            $provName  = $parts[2]
+            $provId    = $parts[3]
+            $ctx       = if ($parts.Count -ge 5) { $parts[4] } else { '' }
+            $tools     = if ($parts.Count -ge 6) { $parts[5] } else { '' }
+            $vision    = if ($parts.Count -ge 7) { $parts[6] } else { '' }
+            $rows.Add([pscustomobject]@{
+                ModelId      = $modelId
+                ModelName    = $modelName
+                ProviderName = $provName
+                ProviderId   = $provId
+                Context      = $ctx
+                Tools        = $tools
+                Vision       = $vision
+            }) | Out-Null
+        }
+
+        if ($rows.Count -eq 0) {
+            Write-Host '  [warn] could not parse any models.' -ForegroundColor DarkYellow
+            Write-Host ''
+            return
+        }
+
+        # Determine which providers are logged in (so default view = ready-to-use models).
+        # Porcelain format: NAME  ID  HOST  LOGGED_IN  (header row + one row per provider)
+        $loggedIn = New-Object System.Collections.Generic.HashSet[string]
+        try {
+            $provOut = & forge list provider --porcelain 2>$null
+            foreach ($pl in $provOut) {
+                $pt = "$pl".Trim()
+                if (-not $pt) { continue }
+                if ($pt -match '^NAME\s+ID\s+HOST') { continue }   # header
+                $cols = [regex]::Split($pt, '\s{2,}')
+                if ($cols.Count -ge 4) {
+                    $pid_ = $cols[1]
+                    $login = $cols[$cols.Count - 1]
+                    if ($login -match '\[yes\]') { [void]$loggedIn.Add($pid_) }
+                }
+            }
+        } catch {}
+
+        $filtered = $rows
+        if (-not $showAll) {
+            $filtered = $filtered | Where-Object { $loggedIn.Contains($_.ProviderId) }
+        }
+        if ($filterProv) {
+            $filtered = $filtered | Where-Object { $_.ProviderId -eq $filterProv }
+        }
+        if ($grep) {
+            $filtered = $filtered | Where-Object { $_.ModelId -match [regex]::Escape($grep) -or $_.ModelName -match [regex]::Escape($grep) }
+        }
+
+        $filtered = @($filtered)
+        if ($filtered.Count -eq 0) {
+            Write-Host '  [info] no matching models.' -ForegroundColor DarkYellow
+            if (-not $showAll) {
+                Write-Host '  Tip: use --all to include providers you are not logged into.' -ForegroundColor DarkGray
+            }
+            Write-Host ''
+            return
+        }
+
         Write-Host ''
-        Write-Host '  Tip: providers marked [logged in yes] are ready. To switch:' -ForegroundColor DarkGray
-        Write-Host '    8sync forge model <provider_id> <model_id>' -ForegroundColor DarkGray
-        Write-Host '    e.g. 8sync forge model claude_code claude-sonnet-4-6' -ForegroundColor DarkGray
+        $scope = if ($showAll) { 'ALL providers' } else { 'LOGGED-IN providers' }
+        Write-Host ('  Available models -- {0} (current: {1} / {2})' -f $scope, $curProvider, $curModel) -ForegroundColor Cyan
+        Write-Host ''
+
+        # Group by provider; print each model with a marker for current selection.
+        $groups = $filtered | Group-Object ProviderId | Sort-Object Name
+        foreach ($g in $groups) {
+            $provLabel = $g.Group[0].ProviderName
+            $loginMark = if ($loggedIn.Contains($g.Name)) { '[logged in]' } else { '[not logged in]' }
+            $loginColor = if ($loggedIn.Contains($g.Name)) { 'Green' } else { 'DarkYellow' }
+            Write-Host ('  {0}  ({1})  {2}' -f $provLabel, $g.Name, $loginMark) -ForegroundColor $loginColor
+            foreach ($r in ($g.Group | Sort-Object ModelId)) {
+                $isCurrent = ($r.ProviderId -eq $curProvider -and $r.ModelId -eq $curModel)
+                $marker = if ($isCurrent) { '*' } else { ' ' }
+                $color  = if ($isCurrent) { 'Green' } else { 'White' }
+                Write-Host ('   {0} {1,-50} {2,-8} {3}' -f $marker, $r.ModelId, $r.Context, $r.ModelName) -ForegroundColor $color
+            }
+            Write-Host ''
+        }
+
+        Write-Host '  Set a model:' -ForegroundColor DarkGray
+        Write-Host '    8sync forge model <model_id>                 # keep current provider' -ForegroundColor DarkGray
+        Write-Host '    8sync forge model <provider_id> <model_id>   # change both' -ForegroundColor DarkGray
+        Write-Host '    e.g.  8sync forge model claude_code claude-opus-4-7' -ForegroundColor DarkGray
+        Write-Host '          8sync forge model claude-sonnet-4-6' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host '  Filters:  --all  --providers  --provider <id>  --grep <pattern>' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
