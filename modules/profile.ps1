@@ -320,7 +320,7 @@ function Invoke-ProfileCommand {
     param([array]$Rest)
 
     $sub = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'help' }
-    $args2 = if ($Rest.Count -gt 1) { $Rest[1..($Rest.Count - 1)] } else { @() }
+    $args2 = if ($Rest.Count -gt 1) { @($Rest[1..($Rest.Count - 1)]) } else { @() }
 
     switch ($sub) {
         'list'   { Get-TerminalProfiles }
