@@ -9,18 +9,5 @@
     "mandatory": true,
     "builtin": true,
     "tags": ["baseline", "engineering", "mandatory"]
-  },
-  {
-    "name": "gsd-pi-guide",
-    "display": "GSD 2 Guide",
-    "url": "local",
-    "dir": "gsd-pi-guide",
-    "use_when": "GSD 2 workflow, auto mode, slash commands, milestone planning, slice execution, verification, cost management. Read to understand how to use /gsd commands.",
-    "priority": 2,
-    "mandatory": false,
-    "builtin": true,
-    "fetch_type": "local",
-    "local_source": ".gsd/vendor/gsd-pi/current/README.md",
-    "tags": ["gsd", "workflow", "agent", "automation"]
   }
 ]

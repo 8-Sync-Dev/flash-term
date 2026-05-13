@@ -10,12 +10,12 @@
     "~/.config/opencode/instructions/search-maximization.md"
   ],
   "plugin": [
+    "oh-my-openagent@latest",
     "opencode-supermemory@latest",
     "@tarquinen/opencode-dcp@latest",
     "./plugins/anthropic-auth.mjs",
     "./plugins/smart-compact.mjs",
-    "opencode-anthropic-oauth",
-    "oh-my-openagent@latest"
+    "opencode-anthropic-oauth"
   ],
   "provider": {
     "anthropic": {

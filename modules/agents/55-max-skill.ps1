@@ -30,9 +30,11 @@ function Get-ForceLoadSkillContent {
     [void]$sb.AppendLine('| Task type | Skills to read (in order) |')
     [void]$sb.AppendLine('|---|---|')
     [void]$sb.AppendLine('| Any coding task | **karpathy-guidelines** (always first, always mandatory) |')
-    [void]$sb.AppendLine('| GSD workflow / auto mode | karpathy + **gsd-pi-guide** + GSD memory/token discipline below |')
-    [void]$sb.AppendLine('| Large repo / broad analysis | Use `gsd_exec` to summarize, then read only narrow file slices |')
-    [void]$sb.AppendLine('| Shell / CLI commands | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |')
+    $hasGsd = [bool]($Registry | Where-Object { $_.name -eq 'gsd-pi-guide' })
+    if ($hasGsd) {
+        [void]$sb.AppendLine('| GSD workflow / auto mode | karpathy + **gsd-pi-guide** + GSD memory/token discipline below |')
+        [void]$sb.AppendLine('| Large repo / broad analysis | Use `gsd_exec` to summarize, then read only narrow file slices |')
+    }
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('## Installed Skills')
     [void]$sb.AppendLine()
@@ -42,20 +44,22 @@ function Get-ForceLoadSkillContent {
         [void]$sb.AppendLine(('- `{0}`{1} -- {2}' -f $skill.dir, $mandatory, $skill.use_when))
     }
 
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('## GSD memory/token discipline')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('Use these tools before broad reads or repeated rediscovery:')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('- `gsd_resume` after compaction/session resume')
-    [void]$sb.AppendLine('- `memory_query` before re-reading history')
-    [void]$sb.AppendLine('- `gsd_exec` for multi-file analysis or large command output')
-    [void]$sb.AppendLine('- `gsd_exec_search` before rerunning expensive analysis')
-    [void]$sb.AppendLine('- `capture_thought` for reusable conventions, gotchas, and architecture lessons')
-    [void]$sb.AppendLine('- `gsd_graph` when memory relationships matter')
-    [void]$sb.AppendLine('- GSD status/summary tools instead of raw DB or huge artifact reads')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('Never dump large tool output into context. Summarize first, then read narrow slices.')
+    if ($hasGsd) {
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('## GSD memory/token discipline')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('Use these tools before broad reads or repeated rediscovery:')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('- `gsd_resume` after compaction/session resume')
+        [void]$sb.AppendLine('- `memory_query` before re-reading history')
+        [void]$sb.AppendLine('- `gsd_exec` for multi-file analysis or large command output')
+        [void]$sb.AppendLine('- `gsd_exec_search` before rerunning expensive analysis')
+        [void]$sb.AppendLine('- `capture_thought` for reusable conventions, gotchas, and architecture lessons')
+        [void]$sb.AppendLine('- `gsd_graph` when memory relationships matter')
+        [void]$sb.AppendLine('- GSD status/summary tools instead of raw DB or huge artifact reads')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('Never dump large tool output into context. Summarize first, then read narrow slices.')
+    }
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('## Never skip karpathy-guidelines')
     [void]$sb.AppendLine()
@@ -81,9 +85,11 @@ function Get-AgentsMdSection {
     [void]$sb.AppendLine('| Task type | Skills |')
     [void]$sb.AppendLine('|---|---|')
     [void]$sb.AppendLine('| Any coding | `agents/skills/karpathy-guidelines/` (mandatory, always first) |')
-    [void]$sb.AppendLine('| GSD workflow | + `agents/skills/gsd-pi-guide/` and the GSD memory/token rules below |')
-    [void]$sb.AppendLine('| Large repo analysis | Use `gsd_exec`/`gsd_exec_search` before reading many files |')
-    [void]$sb.AppendLine('| Shell cmds | Use rtk variants: `rtk git`, `rtk read`, `rtk grep` |')
+    $hasGsd = [bool]($Registry | Where-Object { $_.name -eq 'gsd-pi-guide' })
+    if ($hasGsd) {
+        [void]$sb.AppendLine('| GSD workflow | + `agents/skills/gsd-pi-guide/` and the GSD memory/token rules below |')
+        [void]$sb.AppendLine('| Large repo analysis | Use `gsd_exec`/`gsd_exec_search` before reading many files |')
+    }
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('### Skill Registry')
     [void]$sb.AppendLine()
@@ -95,46 +101,48 @@ function Get-AgentsMdSection {
         [void]$sb.AppendLine(('  Ref: {0}' -f $urlLabel))
     }
 
-    # ---- Deep .gsd/* project context injection ----
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('### GSD Project Context (auto-injected)')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('When working in a GSD-enabled project, these files contain critical project state.')
-    [void]$sb.AppendLine('**Read the relevant file BEFORE making decisions** that depend on project context.')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('| File | What it contains | When to read |')
-    [void]$sb.AppendLine('|---|---|---|')
-    [void]$sb.AppendLine('| `.gsd/PROJECT.md` | Project name, tech stack, goals, constraints | Start of any session |')
-    [void]$sb.AppendLine('| `.gsd/CONTEXT.md` | Current milestone, active slice, recent decisions | Before planning or coding |')
-    [void]$sb.AppendLine('| `.gsd/STATE.md` | Workflow state machine position, phase, blockers | Before any `/gsd` command |')
-    [void]$sb.AppendLine('| `.gsd/CODEBASE.md` | Auto-generated codebase map (modules, entry points) | When navigating unfamiliar code |')
-    [void]$sb.AppendLine('| `.gsd/DECISIONS.md` | Architecture decisions log (ADRs) | Before proposing arch changes |')
-    [void]$sb.AppendLine('| `.gsd/KNOWLEDGE.md` | Learned patterns, gotchas, team conventions | Before writing new code |')
-    [void]$sb.AppendLine('| `.gsd/PREFERENCES.md` | User coding style, tool preferences, review standards | Always (style compliance) |')
-    [void]$sb.AppendLine('| `.gsd/milestones/M*/` | Milestone roadmaps, slice breakdowns, validation criteria | When planning or reviewing scope |')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('**Priority order:** PROJECT.md > CONTEXT.md > STATE.md > others as needed.')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('### GSD Memory and Token Optimization Rules')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('These rules are mandatory on large projects or long sessions:')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('1. Use `gsd_resume` immediately after compaction/session resume when context may be stale.')
-    [void]$sb.AppendLine('2. Use `memory_query` before re-reading broad project history or prior decisions.')
-    [void]$sb.AppendLine('3. Use `gsd_exec` for analysis that would read more than 3 files or produce large output; log summaries, not raw dumps.')
-    [void]$sb.AppendLine('4. Use `gsd_exec_search` before rerunning expensive analysis.')
-    [void]$sb.AppendLine('5. Use `capture_thought` only for reusable project knowledge, conventions, gotchas, and architectural lessons.')
-    [void]$sb.AppendLine('6. Use `gsd_graph` when a memory relationship matters instead of rediscovering context manually.')
-    [void]$sb.AppendLine('7. Prefer GSD summaries and status tools over raw DB/file spelunking: `gsd_milestone_status`, `gsd_journal_query`, `gsd_summary_save`.')
-    [void]$sb.AppendLine('8. Prefer `rtk read`, `rtk grep`, and `rtk git` for shell/file output when available.')
-    [void]$sb.AppendLine('9. Never dump huge tool output into the model context. Summarize first, then read narrow slices with offsets/limits.')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('### GSD Workflow Reference')
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine('Read `agents/skills/gsd-pi-guide/SKILL.md` for the full GSD 2 CLI reference.')
-    [void]$sb.AppendLine('Key commands: `/gsd start`, `/gsd plan`, `/gsd auto`, `/gsd status`, `/gsd cost`.')
-    [void]$sb.AppendLine('GSD uses a state machine: discuss > plan > execute > verify > complete.')
-    [void]$sb.AppendLine('Never skip phases. Always verify before marking complete.')
+    # ---- Deep .gsd/* project context injection (only when gsd-pi-guide is registered) ----
+    if ($hasGsd) {
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('### GSD Project Context (auto-injected)')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('When working in a GSD-enabled project, these files contain critical project state.')
+        [void]$sb.AppendLine('**Read the relevant file BEFORE making decisions** that depend on project context.')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('| File | What it contains | When to read |')
+        [void]$sb.AppendLine('|---|---|---|')
+        [void]$sb.AppendLine('| `.gsd/PROJECT.md` | Project name, tech stack, goals, constraints | Start of any session |')
+        [void]$sb.AppendLine('| `.gsd/CONTEXT.md` | Current milestone, active slice, recent decisions | Before planning or coding |')
+        [void]$sb.AppendLine('| `.gsd/STATE.md` | Workflow state machine position, phase, blockers | Before any `/gsd` command |')
+        [void]$sb.AppendLine('| `.gsd/CODEBASE.md` | Auto-generated codebase map (modules, entry points) | When navigating unfamiliar code |')
+        [void]$sb.AppendLine('| `.gsd/DECISIONS.md` | Architecture decisions log (ADRs) | Before proposing arch changes |')
+        [void]$sb.AppendLine('| `.gsd/KNOWLEDGE.md` | Learned patterns, gotchas, team conventions | Before writing new code |')
+        [void]$sb.AppendLine('| `.gsd/PREFERENCES.md` | User coding style, tool preferences, review standards | Always (style compliance) |')
+        [void]$sb.AppendLine('| `.gsd/milestones/M*/` | Milestone roadmaps, slice breakdowns, validation criteria | When planning or reviewing scope |')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('**Priority order:** PROJECT.md > CONTEXT.md > STATE.md > others as needed.')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('### GSD Memory and Token Optimization Rules')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('These rules are mandatory on large projects or long sessions:')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('1. Use `gsd_resume` immediately after compaction/session resume when context may be stale.')
+        [void]$sb.AppendLine('2. Use `memory_query` before re-reading broad project history or prior decisions.')
+        [void]$sb.AppendLine('3. Use `gsd_exec` for analysis that would read more than 3 files or produce large output; log summaries, not raw dumps.')
+        [void]$sb.AppendLine('4. Use `gsd_exec_search` before rerunning expensive analysis.')
+        [void]$sb.AppendLine('5. Use `capture_thought` only for reusable project knowledge, conventions, gotchas, and architectural lessons.')
+        [void]$sb.AppendLine('6. Use `gsd_graph` when a memory relationship matters instead of rediscovering context manually.')
+        [void]$sb.AppendLine('7. Prefer GSD summaries and status tools over raw DB/file spelunking: `gsd_milestone_status`, `gsd_journal_query`, `gsd_summary_save`.')
+        [void]$sb.AppendLine('8. Prefer `rtk read`, `rtk grep`, and `rtk git` for shell/file output when available.')
+        [void]$sb.AppendLine('9. Never dump huge tool output into the model context. Summarize first, then read narrow slices with offsets/limits.')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('### GSD Workflow Reference')
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine('Read `agents/skills/gsd-pi-guide/SKILL.md` for the full GSD 2 CLI reference.')
+        [void]$sb.AppendLine('Key commands: `/gsd start`, `/gsd plan`, `/gsd auto`, `/gsd status`, `/gsd cost`.')
+        [void]$sb.AppendLine('GSD uses a state machine: discuss > plan > execute > verify > complete.')
+        [void]$sb.AppendLine('Never skip phases. Always verify before marking complete.')
+    }
     [void]$sb.AppendLine()
     [void]$sb.AppendLine('<!-- agents:max-skill:end -->')
 
@@ -369,6 +377,30 @@ function Invoke-AgentMaxSkill {
     foreach ($skill in $skillList) {
         $result = Install-AgentSkillEntry -Skill $skill -DryRun:$DryRun
         if ($result) { $ok++ } else { $fail++ }
+    }
+
+    # Prune stale skill dirs that are no longer in the registry (formerly deployed)
+    # Hardcoded list = dirs that were previously managed by this command and must be
+    # cleaned up when removed from registry.json. Safe: only known names are touched.
+    $knownLegacyDirs = @('gsd-pi-guide')
+    $registryDirs = @($registry | ForEach-Object { $_.dir })
+    foreach ($legacy in $knownLegacyDirs) {
+        if ($registryDirs -contains $legacy) { continue }
+        foreach ($root in @($cloneRoot, $forgeRoot)) {
+            $stale = Join-Path $root $legacy
+            if (Test-Path $stale) {
+                if ($DryRun) {
+                    Write-Host ('  [dry-run] Would prune stale skill dir: {0}' -f $stale) -ForegroundColor Yellow
+                } else {
+                    try {
+                        Remove-Item $stale -Recurse -Force -ErrorAction Stop
+                        Write-Host ('  [ok]     Pruned stale skill dir: {0}' -f $stale) -ForegroundColor Green
+                    } catch {
+                        Write-Host ('  [warn]   Could not prune {0}: {1}' -f $stale, $_.Exception.Message) -ForegroundColor DarkYellow
+                    }
+                }
+            }
+        }
     }
 
     # Restore Defender exclusions

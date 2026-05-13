@@ -1472,6 +1472,83 @@ function Invoke-OpencodeConnectGguf {
     Write-Host ''
 }
 
+# ---------------------------------------------------------------------------
+#  Install / update the OpenCode CLI binary to the latest version.
+#  Workaround for upstream `opencode update` bug:
+#    "Failed to change directory to C:\Users\<user>\update"
+#  We bypass it by running the package manager install with @latest.
+#  Order of preference: bun -> npm  (scoop's manifest lags upstream releases)
+# ---------------------------------------------------------------------------
+function Install-OpencodeBinary {
+    param([switch]$DryRun)
+
+    Write-Host ''
+    Write-Host '  OPENCODE -- install / update CLI to latest' -ForegroundColor Cyan
+
+    $current = $null
+    $existing = Get-Command opencode -ErrorAction SilentlyContinue
+    if ($existing) {
+        try { $current = (& opencode --version 2>$null | Select-Object -First 1).Trim() } catch {}
+        if ($current) {
+            Write-Host ("  current: {0}  ({1})" -f $current, $existing.Source) -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host '  current: (not installed)' -ForegroundColor DarkGray
+    }
+
+    $bun = Get-Command bun -ErrorAction SilentlyContinue
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $bun -and -not $npm) {
+        Write-Host '  [error] neither bun nor npm found in PATH.' -ForegroundColor Red
+        Write-Host '    Install bun:  powershell -c "irm bun.sh/install.ps1 | iex"' -ForegroundColor DarkGray
+        Write-Host '    or scoop:     scoop install bun' -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+
+    $cmd = if ($bun) { 'bun install -g opencode-ai@latest' } else { 'npm install -g opencode-ai@latest' }
+    Write-Host ("  running: {0}" -f $cmd) -ForegroundColor Yellow
+
+    if ($DryRun) {
+        Write-Host '  [dry-run] no changes made.' -ForegroundColor DarkYellow
+        Write-Host ''
+        return
+    }
+
+    try {
+        if ($bun) {
+            & bun install -g 'opencode-ai@latest' 2>&1 | Out-Host
+        } else {
+            & npm install -g 'opencode-ai@latest' 2>&1 | Out-Host
+        }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ("  [error] installer exited with code {0}" -f $LASTEXITCODE) -ForegroundColor Red
+            Write-Host ''
+            return
+        }
+    } catch {
+        Write-Host ("  [error] install failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ''
+        return
+    }
+
+    # Re-resolve binary (it may now live in a new PATH entry)
+    $after = Get-Command opencode -ErrorAction SilentlyContinue
+    $newVer = $null
+    if ($after) {
+        try { $newVer = (& opencode --version 2>$null | Select-Object -First 1).Trim() } catch {}
+    }
+    if ($newVer) {
+        $verb = if ($current -and $current -ne $newVer) { 'updated' }
+                elseif ($current -eq $newVer)          { 'already up-to-date' }
+                else                                    { 'installed' }
+        Write-Host ('  [ok] opencode {0}: {1}' -f $verb, $newVer) -ForegroundColor Green
+    } else {
+        Write-Host '  [ok] installer ran. Restart shell if `opencode` is not yet on PATH.' -ForegroundColor Green
+    }
+    Write-Host ''
+}
+
 function Invoke-OpencodeCommand {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -1517,7 +1594,9 @@ function Invoke-OpencodeCommand {
             Invoke-OpencodeReinstall -BundleDir $bundleDir -DryRun:$dryRun -Stable:$stable
             Invoke-OhMyOpenagentInstall -DryRun:$dryRun -Claude $omaFlags.Claude -OpenAI $omaFlags.OpenAI -Gemini $omaFlags.Gemini -Copilot $omaFlags.Copilot
         }
-        'install'   { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
+        'install'   { Install-OpencodeBinary -DryRun:$dryRun }
+        'update'    { Install-OpencodeBinary -DryRun:$dryRun }
+        'export'    { Invoke-OpencodeExport -BundleDir $bundleDir -DryRun:$dryRun }
         'setup'     { Invoke-OpencodeSetup -Rest ($Rest | Select-Object -Skip 1) }
         '--dry-run' { Invoke-OpencodeExport -BundleDir 'oc-bundle' -DryRun }
         'status'    { Invoke-OpencodeStatus }
