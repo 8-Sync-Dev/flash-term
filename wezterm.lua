@@ -2,6 +2,7 @@ local wezterm = require("wezterm")
 local config = wezterm.config_builder()
 
 local function file_exists(path)
+  if not path or path == "" then return false end
   local ok, _, code = os.rename(path, path)
   return ok or code == 13
 end
