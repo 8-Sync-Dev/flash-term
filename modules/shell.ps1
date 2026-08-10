@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','opencode','forge','jcode','gsd','gsd-1','gguf','remove','agents','profile')
+    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','gguf','up','harness','skill','ai','profile')
 
         # subcommands per mode
         $subMap = @{
@@ -64,14 +64,11 @@ function Register-8SyncCompleter {
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--envs','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
-            opencode = @('export','apply','reinstall','fresh-install','deep-clean','uninstall-claude','install','setup','status','connect','help','cli','--cli','--dry-run','--force','--stable','--model','--plan','--claude=yes','--claude=max20','--claude=no','--openai=yes','--openai=no','--gemini=yes','--gemini=no','--copilot=yes','--copilot=no','claude-max','codex-max','gemini-max','glm-max','claude-codex-gemini','claude','codex','gemini','glm','groq','gguf')
-            forge    = @('install','update','init','add-skill','skill','karpathy','zsh','enter','zsh-enter','zsh-usage','usage','lightmode','light-mode','light','thinking','think','model','models','config','cfg','list','ls','get','set','path','keys','reasoning-effort','commit','suggest','claude_code','anthropic','codex','openai','gemini','bedrock','azure','sync-to-gsd','sync','status','continue','cont','c','resume','last','login','provider','uninstall','remove','help','--force','--dry-run','--with-zsh','--skip-omz','--name','--path','--global','--agents','--project','--list','low','medium','high','off','on','minimal','xhigh','max','none')
-            jcode    = @('setup','auto','install','update','reinstall','status','launch','open','smoke','test','auth-test','auth','login','browser','help','--force','--dry-run','-h','--help','claude','copilot','openai','gemini','azure','fireworks','minimax','alibaba-coding-plan','openrouter','anthropic')
-            gsd = @('setup','bootstrap','key','keys','status','local','global','model','add','connect','remove','nuke','auth-fix','fix-tools-cap','reset-auth','token-save','--skip-auth-fix','--skip-env','--disable-caching','--forge-shims','--forge-full','--remove','--method','auto','cargo','binary','help','init','baseline','add-submodule','use','install','build','enter','leave','latest','promote','rollback','forge-sync','combo','--dry-run','--yes','--keep-home','--project-only','--auto','--pick','--full','--force','--balance','--plan','--model','--tier','--only','--planning','--exec','--use-model','--ref','--version','--from','--backup','--skip-submodule','--skip-enter','--compact-pct','--no-auto','--here','--project','opus+sonnet+haiku','opus+sonnet','sonnet+haiku','sonnet','light','balanced','heavy','max','pro','normal','claude-max','claude-code','claude-codex-review','codex-max','gemini-max','claude-codex-gemini','glm-max','claude','codex','gemini','glm','kimi','groq','copilot','gguf','--port','--name','zai','kimi-coding','groq','google','anthropic','openai','tavily','brave','ollama','context7','jina')
-            'gsd-1' = @('help','status','guide','setup','--dry-run','--model','--plan','claude','codex','claude-codex')
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
-            remove   = @('claude-code','gsd2','gsd-2','--dry-run','--keep-home','--keep-npm-cache','help')
-            agents   = @('max-skill','project','list','check','help','--dry-run','--skip-token-save','--only','karpathy','gsd-pi-guide')
+            up       = @('self','scoop','omp','skills','wezterm','--check','--dry-run','help')
+            harness  = @('init','up','global','status','help')
+            skill    = @('list','add','update','remove','deploy','help')
+            ai       = @('--print','-p')
             profile  = @('list','create','clone','switch','open','delete','help')
         }
 

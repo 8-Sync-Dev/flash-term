@@ -37,19 +37,6 @@ function Get-AgentInstallRoot {
     Join-Path $PSScriptRoot '..\..\agents\skills'
 }
 
-function Get-ForgeGlobalSkillsDir {
-    Join-Path $HOME '.forge\skills'
-}
-
-function Get-GsdSkillsDir {
-    # GSD project skills directory (current working directory).
-    Join-Path (Get-Location) '.gsd\skills'
-}
-
-function Get-ClaudeContextDir {
-    Join-Path $HOME '.claude'
-}
-
 function Get-RealGitExe {
     # Resolve the REAL git.exe path, bypassing any .bat shims in PATH
     # (rtk-forge-shims/git.bat would redirect to `rtk git` which can't clone).

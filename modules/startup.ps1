@@ -135,8 +135,8 @@ function Register-8SyncAlias {
                 # PSScriptRoot inside the dispatcher closure is the startup.ps1 dir (modules/)
                 $modulesDir = $bootstrapDir
                 $moduleFiles = @(
-                    'core.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
-                    'clean.ps1','theme.ps1','gpu.ps1','opencode.ps1','forge.ps1','jcode.ps1','gsd.ps1','gsd1.ps1','gguf.ps1','agents.ps1'
+                    'core.ps1','agents\00-shared.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
+                    'clean.ps1','theme.ps1','gpu.ps1','gguf.ps1','up.ps1','skill.ps1','harness.ps1'
                 )
                 $ok = 0; $fail = 0
                 foreach ($f in $moduleFiles) {
@@ -169,14 +169,12 @@ function Register-8SyncAlias {
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
             'theme'  { Invoke-ThemeCommand -Rest $Rest }
-            'opencode' { Invoke-OpencodeCommand -Rest $Rest }
-            'forge'    { Invoke-ForgeCommand -Rest $Rest }
-            'jcode'    { Invoke-JcodeCommand -Rest $Rest }
-            'gsd'      { Invoke-GsdCommand -Rest $Rest }
-            'gsd-1'    { Invoke-Gsd1Command -Rest $Rest }
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
-            'remove'   { Invoke-RemoveCommand -Rest $Rest }
-            'agents'   { Invoke-AgentCommand -Rest $Rest }
+            'up'       { Invoke-UpCommand -Rest $Rest }
+            'harness'  { Invoke-HarnessCommand -Rest $Rest }
+            'skill'    { Invoke-SkillCommand -Rest $Rest }
+            '.'        { Invoke-OmpSession -Name $(if ($Rest) { $Rest[0] }) }
+            'ai'       { Invoke-AiCommand -Rest $Rest }
             'profile'  { Invoke-ProfileCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }

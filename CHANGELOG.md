@@ -1,74 +1,58 @@
 # Changelog
 
-All notable stability-oriented changes for this repo are tracked here.
+All notable changes to flash-term are tracked here.
+
+## [Unreleased] — omp harness pivot + cleanup
+
+### Added
+- **omp AI harness** (port of the `su-code` model to Windows/PowerShell):
+  - `8sync .` / `8sync . <name>` — resume or create an isolated omp session in the current repo.
+  - `8sync ai "<prompt>"` — omp one-shot or interactive (`-p` for stdout).
+  - `8sync harness [init|up|global|status]` — deploy skills to `~/.omp/skills`, seed project memory
+    (`8sync/PROJECT.md`, `STATE.md`, `KNOWLEDGE.md`), manage `.gitignore`, and report readiness
+    (omp / skills / codegraph / MCP / gitleaks).
+- **`8sync skill [list|add|update|remove|deploy]`** — manage the omp skill registry (`agents/registry.json`);
+  skills are cloned and deployed to `~/.omp/skills` where omp auto-discovers them.
+- **`8sync up` (update-all)** — update the config repo (git ff-only), Scoop tools, omp, installed skills,
+  and report the WezTerm version. Supports `--check` (dry-run) and selective targets
+  (`self|scoop|omp|skills|wezterm`).
+- WezTerm keybindings: AI leader shortcuts (`Leader .`/`o`/`h`/`k`/`u`/`b`), `Alt+1..9` tab jumps,
+  `Ctrl+Tab` / `Ctrl+Shift+Tab` tab cycling, `Leader r` reload.
+
+### Removed (lean pivot — single omp engine)
+- `8sync forge` (ForgeCode), `8sync jcode`, `8sync opencode`, `8sync gsd`, `8sync gsd-1`,
+  `8sync remove`, and `8sync agents` (folded into `8sync skill` + `8sync harness`).
+- Modules: `modules/forge.ps1`, `modules/jcode.ps1`, `modules/opencode.ps1`, `modules/gsd.ps1`,
+  `modules/gsd/`, `modules/gsd1.ps1`, `modules/agents/50-command.ps1`, `modules/agents/55-max-skill.ps1`.
+- Repo cruft: `.gsd/`, `.planning/`, `.claude/`, `.mcp.json`, `gsd-config/`, `oc-bundle/`,
+  `stable-patches/`, `remove-gsd2-deep.ps1`, dated plan/issue/guide docs.
+- `.gitignore`: dropped obsolete GSD/Forge entries.
+
+### Changed
+- `wezterm-bootstrap.ps1` dot-sources the lean module set + `agents/00-shared.ps1` (skill clone backend).
+- `agents/00-shared.ps1` rewired to deploy skills to `~/.omp/skills` (was `.forge`/`.gsd`/`.claude`).
+- `Show-8SyncHint`, `Invoke-8Sync` dispatcher, and `Register-8SyncCompleter` reflect the new command surface.
+- Docs (`CLAUDE.md`, `AGENTS.md`, `README.md`) rewritten to match the real structure.
 
 ## [v2026.04.20-anthropic-restore] - 2026-04-20
-
 ### Added
 - `8sync gsd local` command suite: project-scoped gsd-pi runtime vendoring
-  - `init` scaffold `.gsd/vendor/` layout with README, PATCHES, UPGRADE docs
-  - `baseline` seed immutable 2.69.0 snapshot from global or clone upstream tag
-  - `add-submodule` add `gsd-build/gsd-2` as submodule at `latest/` for upstream tracking
-  - `use <baseline|latest>` seed `current/` from chosen source + auto install + fix
-  - `install` run `npm install` inside `current/` (never `-g`)
-  - `build` run `npm run build:core` inside `current/`
-  - `apply-anthropic-patch` restore Anthropic OAuth removed upstream
-  - `fix [--stable]` apply known-good patches to `current/`
-  - `enter` / `leave` activate or revert local runtime scope
-  - `status` show layout and preferred runtime
-  - `setup [--version latest|baseline|X.Y.Z]` one-shot full setup
-- `modules/gsd/patches/anthropic-oauth.ts` saved OAuth module source extracted from upstream parent of `c2acb1fb4`
-- `modules/gsd/patches/oauth-index-with-anthropic.ts` saved OAuth registry with `anthropicOAuthProvider` re-registered
-- `modules/gsd/patches/README.md` documenting the restore procedure
+  (init, baseline, add-submodule, use, install, build, apply-anthropic-patch, fix, enter/leave, status, setup).
+- Anthropic OAuth restoration patches under `modules/gsd/patches/`.
 
 ### Fixed
-- Anthropic OAuth login restored for gsd-pi >= 2.70.0 where upstream removed the OAuth module for TOS compliance (commit `c2acb1fb4`)
-- Local runtime builds correctly from upstream `main` source tree with full workspace package compilation
-- OAuth `#145` system prompt fix now applied at source level (`.ts`) so it survives `npm run build:core`
-- Provider label `anthropic-api` -> `anthropic` normalized in both baseline and latest runtimes
-
-### Changed
-- Global `gsd-pi` install is no longer refreshed by default — requires `--allow-global` on `8sync gsd fix --refresh`
-- `Resolve-GsdResourceLoaderTarget` and `Resolve-GsdNodeModulesTarget` now prefer project-local `.gsd/vendor/gsd-pi/current/` before falling back to global
-- `.gitignore` excludes `test/` directory so sandbox environments never pollute the config repo
-
-### Safety contract
-- No `npm install -g`, no `bun add -g`, no scoop changes from any `local` command
-- Global `~/.gsd/agent/` is never touched by local operations
-- Sandbox environments under `test/baseline/` and `test/latest/` are fully isolated (own auth.json, DB, sessions, runtime)
-- API keys set via `8sync gsd key` remain in Windows User env vars and are intentionally shared across global and local scopes
+- Anthropic OAuth login restored for gsd-pi >= 2.70.0 (upstream removed the OAuth module).
+- OAuth `#145` system prompt fix applied at source level (`.ts`).
+- Provider label `anthropic-api` -> `anthropic` normalized.
 
 ### Notes
-- Verified on Windows 10 with Node 22.14.0
-  - `test/baseline/` runs gsd-pi `2.69.0` with OAuth `#145` fix
-  - `test/latest/` runs gsd-pi `2.76.0` (upstream `main` at `4c866b677`) with Anthropic OAuth restored + OAuth `#145` fix
-  - Global `gsd --version` still returns original pinned install, untouched
+- Verified on Windows 10 with Node 22.14.0.
 
 ## [v2026.04.10-stable-1] - 2026-04-10
-
 ### Added
-- `stable-patches/README.md` to describe the stable patch profile strategy
-- `stable-patches/opencode/STABLE.md` documenting the known-good OpenCode recovery flow
-- `stable-patches/gsd/STABLE.md` documenting the known-good GSD Anthropic OAuth runtime fix
-- `8sync gsd fix` to force-apply the GSD runtime patch without re-running setup
-- `--stable` support for the documented stable recovery flows
-- runtime patch status to `8sync gsd status`
-
-### Changed
-- `8sync opencode reinstall` now purges auth/plugin cache before force re-apply
-- `8sync opencode fresh-install` now goes through the reinstall flow so it inherits the same plugin/auth fix path
-- `8sync gsd setup` now auto-applies the Anthropic OAuth runtime fix after writing routing
-- help text and completion entries now surface the stable repair commands
+- `stable-patches/` stable recovery profiles (OpenCode, GSD Anthropic OAuth).
+- `8sync gsd fix` to force-apply the runtime patch; `--stable` support.
 
 ### Fixed
-- OpenCode Claude OAuth recovery path using the plugin-file workaround derived from issue `#145`
-- OpenCode bundle/config generation now preserves the working Anthropic auth plugin behavior
-- GSD Anthropic OAuth runtime now strips the extra appended system prompt and keeps only the Claude Code identity prefix
-- GSD provider label normalization from `anthropic-api` to `anthropic`
-
-### Notes
-- Stable recovery commands:
-  - `8sync opencode reinstall --stable`
-  - `8sync opencode fresh-install --stable --claude=yes --openai=yes`
-  - `8sync gsd fix --stable`
-  - `8sync gsd setup --model claude+codex --stable`
+- OpenCode Claude OAuth recovery path (issue `#145`).
+- GSD Anthropic OAuth runtime system-prompt normalization.

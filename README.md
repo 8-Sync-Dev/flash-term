@@ -1,128 +1,80 @@
-# WezTerm Config + 8sync Shell Toolkit
+# flash-term
 
-A batteries-included WezTerm configuration for Windows 11 with an integrated shell toolkit for tool management, wallpaper switching, and Helix editor configuration.
+A **WezTerm** terminal configuration + **omp AI coding harness** for Windows 11.
+Beautiful out of the box (Catppuccin Mocha, glass presets, Mica backdrop, GPU-aware rendering) and a
+strong agent harness on top of [omp](https://github.com/) — the same engine model as
+[`su-code`](https://github.com/8-Sync-Dev/su-code), ported to Windows + PowerShell.
 
 ## Features
 
-- **Catppuccin Mocha** color scheme with acrylic backdrop and background image overlay
-- **8sync** — shell toolkit that auto-manages CLI tools via [Scoop](https://scoop.sh)
-- **Wallpaper system** — search [Wallhaven](https://wallhaven.cc), pick with fzf, apply live
-- **Helix editor management** — theme picker, word-wrap toggle, transparency control, language server install
-- **JetBrainsMono Nerd Font** with fallback chain
-- **Starship prompt** + zoxide + fzf history search
-- **tmux-style leader key** (`Ctrl+a`) for workspace and pane management
+- **WezTerm** — many keybindings (leader `Ctrl+a`, pane splits, tabs, copy mode, command palette).
+- **omp harness** — `8sync .` resumes an AI coding session; skills auto-discovered from `~/.omp/skills`.
+- **Skill registry** — `8sync skill add/list/update/deploy` manages a portable skill library.
+- **update-all** — `8sync up` updates the config, Scoop tools, omp, skills, and checks WezTerm.
+- **Project memory** — `8sync harness` seeds `8sync/PROJECT.md`, `STATE.md`, `KNOWLEDGE.md` + a managed `.gitignore`.
+- **Tool sync** — managed CLI tools (fzf, zoxide, ripgrep, eza, helix, lazygit, …) via Scoop.
+- **Local models** — `8sync gguf` runs llama.cpp presets on your GPU.
+- **UX toolkit** — backgrounds (Wallhaven), glass themes, GPU policy, deep clean, profiles.
 
-## Prerequisites
+## Install
 
-- [WezTerm](https://wezfurlong.org/wezterm/) (Windows build)
-- [Scoop](https://scoop.sh) package manager
+1. Install [WezTerm](https://wezfurlong.org/wezterm/installation) and [Scoop](https://scoop.sh).
+2. Clone this repo to your WezTerm config dir:
+   ```powershell
+   git clone https://github.com/8-Sync-Dev/flash-term.git "$env:USERPROFILE\.config\wezterm"
+   ```
+3. Launch WezTerm. The bootstrap (`wezterm-bootstrap.ps1`) sources on every tab: sets PATH, aliases,
+   PSReadLine, and triggers a one-time tool sync (Scoop) in the background.
+4. Install the AI engine and deploy the harness:
+   ```powershell
+   scoop install omp        # or your omp install path
+   8sync harness            # deploy skills + seed project memory + readiness check
+   ```
 
-## Installation
+Type `8sync help` for the full menu.
 
-```powershell
-# Clone to WezTerm config directory
-git clone https://github.com/8-Sync-Dev/wezterm-config.git "$HOME\.config\wezterm"
-
-# Open WezTerm — 8sync will auto-detect missing tools on first launch
-# Then install everything with:
-8sync sync
-```
-
-## Quick Start
-
-```
-8sync help          # Show all commands and aliases
-8sync status        # Show installed tools and sync state
-8sync sync          # Install/update all managed tools via scoop
-```
-
-## Stable Recovery Profiles
-
-Use the pinned stable profiles when upstream updates or local runtime drift break OpenCode or GSD.
-
-### OpenCode
+## Daily flow
 
 ```powershell
-8sync opencode reinstall --stable
+8sync .              # resume the latest omp session in this repo
+8sync . feat-login   # a NAMED, isolated session for a feature
+8sync ai "refactor this"      # omp one-shot (add -p for stdout)
+8sync skill add https://github.com/<owner>/<skill-repo>   # add a skill
+8sync up             # update everything (config, tools, omp, skills)
 ```
 
-Full clean rebuild:
+## Keybindings (excerpt)
 
-```powershell
-8sync opencode fresh-install --stable --claude=yes --openai=yes
-```
-
-### GSD
-
-Force runtime patch only:
-
-```powershell
-8sync gsd fix --stable
-```
-
-Setup plus patch:
-
-```powershell
-8sync gsd setup --model claude+codex --stable
-```
-
-See:
-
-- `stable-patches/README.md`
-- `stable-patches/opencode/STABLE.md`
-- `stable-patches/gsd/STABLE.md`
-- `CHANGELOG.md`
-
-## Documentation
-
-| Guide | Description |
+| Action | Binding |
 |---|---|
-| [docs/CLAUDE.md](docs/CLAUDE.md) | Documentation hub and folder conventions |
-| [docs/guides/20260322-8sync-commands.md](docs/guides/20260322-8sync-commands.md) | Canonical 8sync CLI reference |
-| [docs/guides/20260320-keybindings.md](docs/guides/20260320-keybindings.md) | WezTerm + shell keybinding reference |
-| [docs/guides/20260322-troubleshooting.md](docs/guides/20260322-troubleshooting.md) | Common issues and fixes |
-| [docs/architecture/20260320-architecture.md](docs/architecture/20260320-architecture.md) | Config loading and state architecture |
-| [docs/plans/CLAUDE.md](docs/plans/CLAUDE.md) | Versioned implementation plan index |
+| Leader | `Ctrl+a` |
+| Resume omp session | `Leader → .` |
+| omp one-shot prompt | `Leader → o` |
+| Harness readiness | `Leader → h` |
+| Split right / down | `Ctrl+Shift+\|` / `Ctrl+Shift+_` |
+| Navigate panes | `Ctrl+Shift+Arrow` |
+| Tabs | `Ctrl+Tab` / `Alt+1..9` |
+| Command palette | `Ctrl+Shift+p` or `Leader → x` |
+| Copy mode | `Leader → c` |
+| Reload config | `Leader → r` |
 
-### Documentation Layout
+Full list: `docs/KEYBINDINGS.md`.
 
-```text
-docs/
-├── CLAUDE.md
-├── guides/
-├── architecture/
-└── plans/
+## Repository layout
+
 ```
-
-Project-level Claude guidance and rules live in:
-
-- `CLAUDE.md`
-- `.claude/CLAUDE.md`
-- `.claude/rules/core/*.md`
-
-## Managed Tools
-
-All tools are installed and updated via Scoop with `8sync sync`:
-
-| Tool | Alias | Purpose |
-|---|---|---|
-| [fzf](https://github.com/junegunn/fzf) | `Ctrl+r` | Fuzzy finder, history search |
-| [zoxide](https://github.com/ajeetdsouza/zoxide) | `cdi` | Smart directory jumper |
-| [ripgrep](https://github.com/BurntSushi/ripgrep) | `ff` | Fast file search |
-| [fd](https://github.com/sharkdp/fd) | — | Fast find alternative |
-| [bat](https://github.com/sharkdp/bat) | `catn` | Syntax-highlighted cat |
-| [eza](https://github.com/eza-community/eza) | `ll`, `lt` | Modern ls with icons |
-| [starship](https://starship.rs) | — | Cross-shell prompt |
-| [helix](https://helix-editor.com) | `e` | Terminal editor with LSP |
-| [yazi](https://github.com/sxyazi/yazi) | `y` | Terminal file manager |
-| [lazygit](https://github.com/jesseduffield/lazygit) | `lg` | Git TUI |
-| [delta](https://github.com/dandavison/delta) | `git diff` | Syntax-highlighted diffs |
-| [tokei](https://github.com/XAMPPRocky/tokei) | `tokei` | Code line counter |
-| [hyperfine](https://github.com/sharkdp/hyperfine) | `hyperfine` | Command benchmarker |
-| [dust](https://github.com/bootandy/dust) | `du` | Disk usage visualizer |
-| [procs](https://github.com/dalance/procs) | `pss` | Modern process viewer |
-| [bottom](https://github.com/ClementTsang/bottom) | `top` | System monitor TUI |
+wezterm.lua · keys.lua          WezTerm config
+wezterm-bootstrap.ps1           shell bootstrap + module loader
+modules/                        the 8sync command toolkit (one module per concern)
+  core · shell · startup        hint, completer, dispatcher, shell startup
+  sync · up                     tool sync + update-all
+  harness · skill · agents/     omp AI harness + skill registry
+  bg · theme · gpu · helix      WezTerm UX commands
+  clean · profile · gguf        cleanup, profiles, local models
+agents/registry.json            skill registry
+gguf-config/                    llama.cpp presets/profiles
+```
 
 ## License
 
-MIT
+MIT.

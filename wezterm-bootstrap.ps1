@@ -86,6 +86,7 @@ $script:LangServers = [ordered]@{
 $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 
 . (Join-Path $script:ModulesDir 'core.ps1')
+. (Join-Path $script:ModulesDir 'agents\00-shared.ps1')
 . (Join-Path $script:ModulesDir 'sync.ps1')
 . (Join-Path $script:ModulesDir 'shell.ps1')
 . (Join-Path $script:ModulesDir 'bg.ps1')
@@ -93,14 +94,11 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'clean.ps1')
 . (Join-Path $script:ModulesDir 'theme.ps1')
 . (Join-Path $script:ModulesDir 'gpu.ps1')
-. (Join-Path $script:ModulesDir 'opencode.ps1')
-. (Join-Path $script:ModulesDir 'forge.ps1')
-. (Join-Path $script:ModulesDir 'jcode.ps1')
-. (Join-Path $script:ModulesDir 'startup.ps1')
-. (Join-Path $script:ModulesDir 'gsd.ps1')
-. (Join-Path $script:ModulesDir 'gsd1.ps1')
 . (Join-Path $script:ModulesDir 'gguf.ps1')
-. (Join-Path $script:ModulesDir 'agents.ps1')
+. (Join-Path $script:ModulesDir 'up.ps1')
+. (Join-Path $script:ModulesDir 'skill.ps1')
+. (Join-Path $script:ModulesDir 'harness.ps1')
+. (Join-Path $script:ModulesDir 'startup.ps1')
 . (Join-Path $script:ModulesDir 'profile.ps1')
 
 try {
