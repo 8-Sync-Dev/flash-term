@@ -64,7 +64,7 @@ function Show-SetupHelp {
     Write-Host ''
     Write-Host '  8SYNC SETUP -- one-command bootstrap' -ForegroundColor Cyan
     Write-Host ''
-    Write-HintRow '8sync setup'             'PATH + Scoop + managed tools + harness deploy + doctor'
+    Write-HintRow '8sync setup'             'PATH + Scoop + tools + harness + omp subagents + doctor'
     Write-HintRow '8sync setup --check'     'Dry-run: report what is missing, change nothing'
     Write-HintRow '8sync setup --no-tools'  'Skip tool sync'
     Write-HintRow '8sync setup --no-harness''Skip skill/memory deploy'
@@ -111,6 +111,13 @@ function Invoke-SetupCommand {
         if (Get-Command Invoke-HarnessInit -ErrorAction SilentlyContinue) {
             Invoke-HarnessInit -DryRun:$dryRun
         }
+    }
+    # omp-native: deploy bundled subagents (designer/librarian/reviewer/scout/...)
+    $omp = Find-OmpExe
+    if ($omp -and -not $dryRun) {
+        Write-Host '  omp subagents (unpack)' -ForegroundColor Cyan
+        & $omp agents unpack 2>&1 | Out-Null
+        Write-Host '  [ok]    bundled subagents -> ~/.omp/agent/agents' -ForegroundColor Green
     }
 
     Write-Host ''

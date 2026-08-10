@@ -214,6 +214,7 @@ function Invoke-DoctorCommand {
     $git = Get-RealGitExe; Row 'git' ([bool]$git) $(if($git){$git}else{'not found'})
     Row 'pwsh'     ($PSVersionTable.PSVersion.Major -ge 5) ('PS ' + $PSVersionTable.PSVersion)
     Row 'skills'   ($r.SkillCount -gt 0) ("$($r.SkillCount) in ~/.omp/skills")
+    Row 'agents'   ($r.AgentsCount -gt 0) ("$($r.AgentsCount) omp subagents")
     Row 'codegraph' $r.Codegraph $(if($r.Codegraph){'available'}else{'optional'})
     Row 'gitleaks' $r.Gitleaks  $(if($r.Gitleaks){'available'}else{'optional'})
     $mem = Get-ProjectHarnessDir; Row 'memory' (Test-Path (Join-Path $mem 'PROJECT.md')) $(if(Test-Path $mem){$mem}else{'run: 8sync harness'})
@@ -331,9 +332,11 @@ function Get-HarnessReadiness {
     $codegraph = [bool](Get-Command codegraph -ErrorAction SilentlyContinue)
     $gitleaks  = [bool](Get-Command gitleaks -ErrorAction SilentlyContinue)
 
-    # MCP servers: omp config lists them; detect by config presence.
-    $mcpConfig = Join-Path (Get-OmpHome) 'config.yml'
-    $mcp = (Test-Path $mcpConfig)
+    # omp native state: config at ~/.omp/agent/config.yml; subagents at ~/.omp/agent/agents
+    $agentDir    = Join-Path (Get-OmpHome) 'agent'
+    $configPath  = Join-Path $agentDir 'config.yml'
+    $agentsDir   = Join-Path $agentDir 'agents'
+    $agentsCount = if (Test-Path $agentsDir) { @(Get-ChildItem $agentsDir -Filter '*.md' -ErrorAction SilentlyContinue).Count } else { 0 }
 
     return [pscustomobject]@{
         Omp         = if ($omp) { $ompVer } else { 'not installed' }
@@ -341,7 +344,9 @@ function Get-HarnessReadiness {
         SkillsDir   = $skillsDir
         SkillCount  = $skillCount
         Codegraph   = $codegraph
-        McpConfig   = $mcp
+        ConfigPath  = $configPath
+        ConfigFound = (Test-Path $configPath)
+        AgentsCount = $agentsCount
         Gitleaks    = $gitleaks
     }
 }
@@ -390,9 +395,10 @@ function Show-HarnessStatus {
     $ompColor = if ($r.OmpFound) { 'Green' } else { 'Red' }
     Write-Host ("  omp:        {0}" -f $r.Omp) -ForegroundColor $ompColor
     Write-Host ("  skills:     {0} in {1}" -f $r.SkillCount, $r.SkillsDir) -ForegroundColor DarkGray
+    Write-Host ("  agents:     {0} omp subagent(s) (~/.omp/agent/agents)" -f $r.AgentsCount) -ForegroundColor DarkGray
     $cgColor = if ($r.Codegraph) { 'Green' } else { 'DarkYellow' }
     Write-Host ("  codegraph:  {0}" -f $(if ($r.Codegraph) { 'available' } else { 'not found (optional)' })) -ForegroundColor $cgColor
-    Write-Host ("  mcp config: {0}" -f $(if ($r.McpConfig) { 'present' } else { 'absent (run omp once)' })) -ForegroundColor DarkGray
+    Write-Host ("  omp config: {0}" -f $(if ($r.ConfigFound) { $r.ConfigPath } else { 'absent (run omp once)' })) -ForegroundColor DarkGray
     Write-Host ("  gitleaks:   {0}" -f $(if ($r.Gitleaks) { 'available' } else { 'not found (optional pre-commit)' })) -ForegroundColor DarkGray
 
     $mem = Get-ProjectHarnessDir
