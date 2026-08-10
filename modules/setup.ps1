@@ -141,6 +141,15 @@ function Invoke-SetupCommand {
         Write-Host '  [ok]    JetBrainsMono Nerd Font installed' -ForegroundColor Green
     }
 
+    # PowerShell 7 (pwsh) -- WezTerm prefers it; enables PSReadLine typing predictions.
+    if (-not (Test-Path (Join-Path $HOME 'scoop\shims\pwsh.exe')) -and $scoopOk -and -not $dryRun) {
+        Write-Host '  PowerShell 7 (pwsh) -- installing via Scoop' -ForegroundColor Cyan
+        scoop install pwsh 2>&1 | Out-Null
+        if (Test-Path (Join-Path $HOME 'scoop\shims\pwsh.exe')) {
+            Write-Host '  [ok]    PowerShell 7 installed (typing predictions enabled)' -ForegroundColor Green
+        }
+    }
+
     if (-not $noTools) {
         Write-Host '  [3/4] managed tools (Scoop)' -ForegroundColor Cyan
         if ($scoopOk -and (Get-Command Invoke-ToolSync -ErrorAction SilentlyContinue)) {

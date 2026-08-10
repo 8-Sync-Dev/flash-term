@@ -6,11 +6,11 @@ Agent guidance for the flash-term WezTerm + omp harness repository.
 
 A WezTerm terminal configuration + **omp AI coding harness** for Windows 11.
 
-- `wezterm.lua` / `keys.lua` Ã¢â‚¬â€ Lua config (appearance, fonts, keybindings, glass presets, background).
-- `wezterm-bootstrap.ps1` Ã¢â‚¬â€ PowerShell bootstrap sourced on every new shell tab.
-- `modules/*.ps1` Ã¢â‚¬â€ the `8sync` command toolkit (AI harness, skills, update-all, sync, themes, GPU, clean, GGUF).
-- `agents/registry.json` Ã¢â‚¬â€ the omp skill registry.
-- `gguf-config/` Ã¢â‚¬â€ llama.cpp server presets/profiles.
+- `wezterm.lua` / `keys.lua` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Lua config (appearance, fonts, keybindings, glass presets, background).
+- `wezterm-bootstrap.ps1` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â PowerShell bootstrap sourced on every new shell tab.
+- `modules/*.ps1` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the `8sync` command toolkit (AI harness, skills, update-all, sync, themes, GPU, clean, GGUF).
+- `agents/registry.json` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the omp skill registry.
+- `gguf-config/` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â llama.cpp server presets/profiles.
 
 Generated at runtime (gitignored, never commit): `current-{bg,opacity,style,gpu}.lua`, `.state/`, `bg/`, `fonts/`, `agents/skills/`.
 
@@ -41,19 +41,19 @@ No unit tests. Validate a change by sourcing the bootstrap in a fresh `pwsh` ses
 
 ```
 WezTerm start
-  Ã¢â€â€Ã¢â€â‚¬ wezterm.lua: reads current-{bg,opacity,style,gpu}.lua, sets config
-       Ã¢â€â€Ã¢â€â‚¬ launches PowerShell: ". wezterm-bootstrap.ps1"
-            Ã¢â€Å“Ã¢â€â‚¬ Ensure-PreferredPaths   (prepend scoop/shims to PATH)
-            Ã¢â€Å“Ã¢â€â‚¬ Set-HistoryExperience   (PSReadLine + fzf Ctrl+r)
-            Ã¢â€Å“Ã¢â€â‚¬ Set-ToolAliases         (ll, e, lg, y, cdi, 8sync Ã¢â‚¬Â¦)
-            Ã¢â€â€š    Ã¢â€â€Ã¢â€â‚¬ Register-8SyncCompleter  (Tab/inline completion for 8sync)
-            Ã¢â€â€Ã¢â€â‚¬ Start-AutoSync          (hidden background process if stale)
+  ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ wezterm.lua: reads current-{bg,opacity,style,gpu}.lua, sets config
+       ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ launches PowerShell: ". wezterm-bootstrap.ps1"
+            ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Ensure-PreferredPaths   (prepend scoop/shims to PATH)
+            ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Set-HistoryExperience   (PSReadLine + fzf Ctrl+r)
+            ÃƒÂ¢Ã¢â‚¬ÂÃ…â€œÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Set-ToolAliases         (ll, e, lg, y, cdi, 8sync ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦)
+            ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬Å¡    ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Register-8SyncCompleter  (Tab/inline completion for 8sync)
+            ÃƒÂ¢Ã¢â‚¬ÂÃ¢â‚¬ÂÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Start-AutoSync          (hidden background process if stale)
 ```
 
 State is shared between the Lua layer and the PowerShell layer via small generated `.lua` files;
 PowerShell writes them, Lua reads them on reload. `wezterm cli reload` is called after each write.
 
-## Code Style Ã¢â‚¬â€ Lua (`wezterm.lua`, `keys.lua`)
+## Code Style ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Lua (`wezterm.lua`, `keys.lua`)
 
 - 2-space indentation. No tabs. Trailing commas in multi-line tables.
 - `require` at the top before any logic. Only `wezterm` is required.
@@ -61,12 +61,12 @@ PowerShell writes them, Lua reads them on reload. `wezterm cli reload` is called
 - `snake_case` locals; PascalCase WezTerm API objects. Hex colors match the Catppuccin Mocha palette.
 - All keybindings live in `keys.lua` (returned as a table). Leader is `Ctrl+a` (900ms).
 
-## Code Style Ã¢â‚¬â€ PowerShell (`wezterm-bootstrap.ps1`, `modules/`)
+## Code Style ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â PowerShell (`wezterm-bootstrap.ps1`, `modules/`)
 
 - 4-space indentation. `Verb-Noun` PascalCase for public functions; `$script:CamelCase` for script scope; `$camelCase` for locals.
-- `$ErrorActionPreference = 'Continue'` at script scope Ã¢â‚¬â€ never change it. `try/catch` around all external calls.
-- Guard every tool integration: `if (Test-CommandExists 'eza') { Ã¢â‚¬Â¦ }`. Never assume a tool is present.
-- `$null = Ã¢â‚¬Â¦` to suppress output (not `| Out-Null` for assignments). `Write-Host -ForegroundColor` for all user output; never `Write-Output` for messages.
+- `$ErrorActionPreference = 'Continue'` at script scope ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â never change it. `try/catch` around all external calls.
+- Guard every tool integration: `if (Test-CommandExists 'eza') { ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ }`. Never assume a tool is present.
+- `$null = ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦` to suppress output (not `| Out-Null` for assignments). `Write-Host -ForegroundColor` for all user output; never `Write-Output` for messages.
 - State files in `.state/`; `ConvertTo-Json`/`ConvertFrom-Json` with `-Encoding UTF8`; wrap reads in `try/catch`.
 - Generated Lua files: always call `Try-ReloadWezTerm` after writing.
 - Help rendered by `Show-8SyncHint` via `Write-HintRow`/`Write-HintSection`. New commands must be added to `Show-8SyncHint` AND `Register-8SyncCompleter`.
@@ -84,7 +84,7 @@ PowerShell writes them, Lua reads them on reload. `wezterm cli reload` is called
 - Do not add `Set-StrictMode` (breaks dynamic alias creation).
 - Do not use `exit` in the bootstrap (closes the terminal tab).
 - Do not commit generated state or `agents/skills/`.
-- Do not add a hard dependency on a tool that may be missing Ã¢â‚¬â€ always guard with `Test-CommandExists`.
+- Do not add a hard dependency on a tool that may be missing ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â always guard with `Test-CommandExists`.
 - Treat visual appearance (Catppuccin/glass/Mica) as stable unless explicitly asked to redesign.
 
 <!-- agents:max-skill:start -- managed by 8sync skill deploy -->
@@ -111,6 +111,8 @@ Read the relevant file BEFORE making decisions that depend on project context:
 Never dump huge tool output into context. Summarize first, then read narrow slices.
 
 <!-- agents:max-skill:end -->
+
+
 
 
 
