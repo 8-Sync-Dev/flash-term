@@ -779,7 +779,7 @@ config.integrated_title_button_style = "Gnome"
 config.integrated_title_button_alignment = "Right"
 config.integrated_title_button_color = "#d9f9ff"
 
-config.hide_tab_bar_if_only_one_tab = true
+config.hide_tab_bar_if_only_one_tab = false  -- keep tab bar (buttons + labels) visible even with 1 tab
 config.use_fancy_tab_bar = true
 config.tab_bar_at_bottom = true
 config.show_new_tab_button_in_tab_bar = false
