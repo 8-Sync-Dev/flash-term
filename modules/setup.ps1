@@ -60,6 +60,31 @@ function Ensure-PathForCore {
     if ($extra.Count -gt 0) { $env:PATH = (($extra -join ';') + ";$env:PATH") }
 }
 
+function Set-DefaultWallpaper {
+    # Best-effort: if the user has no wallpaper yet, fetch a tasteful dark one.
+    param([string]$ConfigDir)
+    $bgLua = Join-Path $ConfigDir 'current-bg.lua'
+    if (Test-Path $bgLua) { return }
+    if ($dryRun) { return }
+    $bgDir = Join-Path $ConfigDir 'bg'
+    $null = New-Item -ItemType Directory -Force -Path $bgDir
+    $out = Join-Path $bgDir 'default-wallpaper.jpg'
+    $url = $null
+    try {
+        $r = Invoke-RestMethod -Uri 'https://wallhaven.cc/api/v1/search?q=dark+minimal+abstract&categories=100&purity=100&atleast=1920x1080&sorting=toplist' -Headers @{ 'User-Agent' = 'flash-term' } -TimeoutSec 20 -ErrorAction Stop
+        $url = ($r.data | Select-Object -First 1).path
+    } catch {}
+    if (-not $url) { return }
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+        $b = [System.IO.File]::ReadAllBytes($out)
+        if ($b.Length -gt 20000 -and $b[0] -eq 0xFF -and $b[2] -eq 0xFF) {
+            [System.IO.File]::WriteAllText($bgLua, "return [[$out]]`n", [System.Text.UTF8Encoding]::new($false))
+            Write-Host '  [ok]    default wallpaper set (change: 8sync bg search <kw>)' -ForegroundColor Green
+        }
+    } catch {}
+}
+
 function Show-SetupHelp {
     Write-Host ''
     Write-Host '  8SYNC SETUP -- one-command bootstrap' -ForegroundColor Cyan
@@ -106,6 +131,16 @@ function Invoke-SetupCommand {
         }
     }
 
+    # Nerd Font (icons/glyphs for the prompt, tabs, eza, starship) -- install if missing
+    $needFont = $true
+    if (Get-Command Test-NerdFontInstalled -ErrorAction SilentlyContinue) { $needFont = -not (Test-NerdFontInstalled) }
+    if ($needFont -and $scoopOk -and -not $dryRun) {
+        Write-Host '  Nerd Font (JetBrainsMono) -- installing via Scoop' -ForegroundColor Cyan
+        scoop bucket add nerd-fonts 2>&1 | Out-Null
+        scoop install JetBrainsMono-NF 2>&1 | Out-Null
+        Write-Host '  [ok]    JetBrainsMono Nerd Font installed' -ForegroundColor Green
+    }
+
     if (-not $noTools) {
         Write-Host '  [3/4] managed tools (Scoop)' -ForegroundColor Cyan
         if ($scoopOk -and (Get-Command Invoke-ToolSync -ErrorAction SilentlyContinue)) {
@@ -128,6 +163,8 @@ function Invoke-SetupCommand {
         & $omp agents unpack 2>&1 | Out-Null
         Write-Host '  [ok]    bundled subagents -> ~/.omp/agent/agents' -ForegroundColor Green
     }
+    # Default wallpaper (best-effort, only if user has none)
+    Set-DefaultWallpaper -ConfigDir (Split-Path $PSScriptRoot -Parent)
 
     Write-Host ''
     if (Get-Command Invoke-DoctorCommand -ErrorAction SilentlyContinue) { Invoke-DoctorCommand }

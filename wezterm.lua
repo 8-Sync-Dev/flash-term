@@ -466,6 +466,27 @@ local function truncate_text(text, max_len)
   end
   return text:sub(1, max_len - 1) .. "…"
 end
+-- Detect current git branch by reading .git/HEAD up the tree (no git spawn).
+local function git_branch_for(cwd)
+  if not cwd or cwd == "" then return nil end
+  local dir = cwd
+  for _ = 1, 16 do
+    local f = io.open(dir .. "\\.git\\HEAD", "r")
+    if f then
+      local line = f:read("*l")
+      f:close()
+      if line then
+        local b = line:match("^ref: refs/heads/(.+)$")
+        if b and b ~= "" then return b end
+        return line:sub(1, 7)  -- detached HEAD: short sha
+      end
+    end
+    local parent = dir:match("^(.*)\\[^\\]+$")
+    if not parent or parent == dir then break end
+    dir = parent
+  end
+  return nil
+end
 
 local status_line_cache = wezterm.GLOBAL.status_line_cache
 if not status_line_cache then
@@ -524,6 +545,7 @@ wezterm.on("update-status", function(window, pane)
   local process = basename(pane:get_foreground_process_name() or "")
   local ws      = truncate_text(window:active_workspace(), 12)
   local cwd_lbl = truncate_text(cwd ~= "" and basename(cwd) or "~", 18)
+  local branch  = git_branch_for(cwd)
   local proc_lbl = truncate_text(process, 16)
   local cursor_style = cursor_styles[wezterm.GLOBAL.cursor_style_index or 2] or "BlinkingBlock"
   local cursor_lbl = cursor_style_labels[cursor_style] or cursor_style
@@ -539,7 +561,7 @@ wezterm.on("update-status", function(window, pane)
   items[7].Background.Color = status_colors.base_bg
   items[9].Background.Color = status_colors.cwd_bg
   items[10].Foreground.Color = status_colors.cwd_fg
-  items[11].Text = " " .. cwd_lbl .. " "
+  items[11].Text = " " .. cwd_lbl .. (branch and ("  " .. branch .. " ") or " ")
   items[12].Background.Color = status_colors.base_bg
   items[14].Background.Color = status_colors.proc_bg
   items[15].Foreground.Color = status_colors.proc_fg
