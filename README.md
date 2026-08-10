@@ -36,17 +36,19 @@ Re-run either command anytime to **update** flash-term (it pulls `origin/main`).
 git clone https://github.com/8-Sync-Dev/flash-term.git "$env:USERPROFILE\.config\wezterm"
 ```
 
-The installer (`install.ps1`) drops flash-term at `%USERPROFILE%\.config\wezterm` (WezTerm's config
-dir), detects WezTerm, and is idempotent. Optional flags: `-ConfigDir <path>`, `-Update`.
+The one-liner does **full auto-setup**: clones flash-term to `%USERPROFILE%\.config\wezterm`, then
+runs `8sync setup` — which installs Scoop + WezTerm (if missing) + the managed CLI tools, deploys
+the omp harness (skills + project memory), and unpacks omp's subagents. Flags: `-ConfigDir <path>`,
+`-Update` (pull only, skip setup), `-NoSetup` (config only).
 
 ## After install
 
-Install [WezTerm](https://wezfurlong.org/wezterm/installation) and [Scoop](https://scoop.sh) if missing,
-then launch WezTerm. The bootstrap (`wezterm-bootstrap.ps1`) sources on every tab: PATH, aliases,
-PSReadLine, and a one-time tool sync (Scoop) in the background. Then deploy the AI harness:
+Launch WezTerm (Start Menu → WezTerm). The bootstrap (`wezterm-bootstrap.ps1`) sources on every tab:
+PATH, aliases, PSReadLine, and a background update check. Then:
 ```powershell
-8sync up        # update-all: tools + omp + skills + self + wezterm
-8sync harness   # deploy skills + seed project memory + readiness check
+8sync .            # start/resume an omp AI session
+8sync doctor       # health check (omp/wezterm/scoop/skills/agents)
+8sync autoupdate on   # banner when a new release is available
 ```
 
 Type `8sync help` for the full menu.

@@ -21,6 +21,7 @@
 param(
     [string]$ConfigDir,
     [switch]$Update,
+    [switch]$NoSetup,
     [string]$Repo = 'https://github.com/8-Sync-Dev/flash-term',
     [string]$Branch = 'main'
 )
@@ -115,31 +116,26 @@ if (-not (Test-Path (Join-Path $target 'wezterm.lua'))) {
     exit 1
 }
 
-# ── 4. WezTerm present? ─────────────────────────────────────────────────────
-$wt = Get-Command wezterm -ErrorAction SilentlyContinue
-if (-not $wt) {
-    foreach ($p in @(
-        'C:\Program Files\WezTerm\wezterm.exe',
-        (Join-Path $env:LOCALAPPDATA 'Programs\WezTerm\wezterm-gui.exe')
-    )) { if (Test-Path $p) { $wt = @{ Source = $p }; break } }
-}
-if ($wt) { Write-Ok "WezTerm found: $($wt.Source)" }
-else {
-    Write-Warn2 'WezTerm not found. Install it:'
-    Write-Host '    winget install wez.wezterm   OR   scoop install wezterm' -ForegroundColor DarkGray
+# ── 4. full bootstrap (8sync setup) unless skipped/update-only ─────────────
+if (-not $NoSetup -and -not $Update) {
+    Write-Host ''
+    Write-Host '  == Full bootstrap: 8sync setup ==' -ForegroundColor Magenta
+    Write-Host '  (PATH + Scoop + WezTerm + tools + harness + omp subagents)' -ForegroundColor DarkGray
+    $env:PATH = "$env:windir\System32;$env:windir;$target;$env:PATH"
+    & powershell -NoProfile -ExecutionPolicy Bypass -Command ". (Join-Path '$target' 'wezterm-bootstrap.ps1') -Task Status 2>`$null; Invoke-SetupCommand"
+} else {
+    $wt = Get-Command wezterm -ErrorAction SilentlyContinue
+    if ($wt) { Write-Ok "WezTerm found: $($wt.Source)" }
+    else { Write-Warn2 'WezTerm not found -- run: scoop install wezterm' }
 }
 
-# ── 5. next steps ───────────────────────────────────────────────────────────
+# ── 5. done ────────────────────────────────────────────────────────────────
 Write-Host ''
-Write-Host '  Installed.' -ForegroundColor Green
-Write-Host '  Launch WezTerm -> the bootstrap sources automatically on each tab.' -ForegroundColor DarkGray
-Write-Host '  Then deploy the AI harness:' -ForegroundColor DarkGray
-Write-Host '    8sync up       # install/update managed tools (Scoop)' -ForegroundColor DarkGray
-Write-Host '    8sync harness  # deploy skills + project memory + readiness' -ForegroundColor DarkGray
-if (-not $cloned -and -not $Update) {
-    Write-Host '  Re-run this installer anytime to UPDATE flash-term (it pulls origin/main).' -ForegroundColor DarkGray
+Write-Host '  Done.' -ForegroundColor Green
+if ($Update) {
+    Write-Host '  flash-term updated. Reload in WezTerm: 8sync reload' -ForegroundColor DarkGray
+} else {
+    Write-Host '  Launch WezTerm -> 8sync . to start an omp AI session.' -ForegroundColor DarkGray
+    Write-Host '  Update anytime: re-run this installer (or 8sync up self / 8sync autoupdate on).' -ForegroundColor DarkGray
 }
-Write-Host ''
-$env:WEZTERM_CONFIG_FILE = Join-Path $target 'wezterm.lua'
-Write-Host "  Tip: set `$env:WEZTERM_CONFIG_FILE = '$env:WEZTERM_CONFIG_FILE'" -ForegroundColor DarkGray
 Write-Host ''

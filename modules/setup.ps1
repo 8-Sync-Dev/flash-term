@@ -97,6 +97,15 @@ function Invoke-SetupCommand {
     Write-Host '  [2/4] Scoop' -ForegroundColor Cyan
     $scoopOk = Ensure-ScoopInstalled -DryRun:$dryRun
 
+    # WezTerm (the terminal app) -- install via scoop if missing
+    if (-not (Get-Command wezterm -ErrorAction SilentlyContinue) -and $scoopOk) {
+        Write-Host '  WezTerm (terminal) -- installing via Scoop' -ForegroundColor Cyan
+        if (-not $dryRun) { scoop install wezterm 2>&1 | Out-Null }
+        if (Get-Command wezterm -ErrorAction SilentlyContinue) {
+            Write-Host '  [ok]    WezTerm installed (Start Menu shortcut created)' -ForegroundColor Green
+        }
+    }
+
     if (-not $noTools) {
         Write-Host '  [3/4] managed tools (Scoop)' -ForegroundColor Cyan
         if ($scoopOk -and (Get-Command Invoke-ToolSync -ErrorAction SilentlyContinue)) {
