@@ -8,7 +8,7 @@ end
 
 local home = wezterm.home_dir
 local config_dir = wezterm.config_dir or (home .. "\\.config\\wezterm")
-local fallback_bg_path = config_dir .. "\\assets\\default-bg.jpg"
+local fallback_bg_path = nil  -- no shipped default image; solid dark glass by default
 local current_bg_lua = config_dir .. "\\current-bg.lua"
 local bootstrap_path = config_dir .. "\\wezterm-bootstrap.ps1"
 local current_opacity_lua = config_dir .. "\\current-opacity.lua"
@@ -165,7 +165,7 @@ local style_presets = {
       brightness = 0.26,
       saturation = 0.88,
       overlay_color = "#0b1220",
-      overlay_opacity_default = 0.72,
+      overlay_opacity_default = 0.55,
     },
     frame = {
       active_titlebar_bg = "#0b1220",
@@ -312,7 +312,7 @@ local scene_presets = {
   focus = {
     window_background_opacity = 0.93,
     text_background_opacity = 0.90,
-    overlay_opacity = 0.75,
+    overlay_opacity = 0.55,
     adaptive_overlay_strength = 0.10,
   },
   cinematic = {
@@ -422,7 +422,7 @@ local function build_background(mode)
       source = {
         Gradient = {
           orientation = { Linear = { angle = 28.0 } },
-          colors = { "#070b10", "#081018", "#0a0d17", "#070b10" },
+          colors = { "#15121f", "#1b1729", "#221c34", "#15121f" },
         },
       },
       width = "100%",
