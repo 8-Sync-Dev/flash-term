@@ -150,6 +150,16 @@ function Invoke-SetupCommand {
         }
     }
 
+    # CompletionPredictor -- fish-style inline path/command predictions (PSGallery)
+    $pwshShim = Join-Path $HOME 'scoop\shims\pwsh.exe'
+    if ((Test-Path $pwshShim) -and -not (Get-Module -ListAvailable CompletionPredictor -ErrorAction SilentlyContinue) -and -not $dryRun) {
+        Write-Host '  CompletionPredictor (fish-style inline) -- installing' -ForegroundColor Cyan
+        & $pwshShim -NoProfile -Command "Set-PSRepository PSGallery -InstallationPolicy Trusted -EA SilentlyContinue; Install-Module CompletionPredictor -Scope CurrentUser -Force -AllowClobber -EA SilentlyContinue" 2>&1 | Out-Null
+        if (Get-Module -ListAvailable CompletionPredictor -ErrorAction SilentlyContinue) {
+            Write-Host '  [ok]    CompletionPredictor installed (inline path predictions)' -ForegroundColor Green
+        }
+    }
+
     if (-not $noTools) {
         Write-Host '  [3/4] managed tools (Scoop)' -ForegroundColor Cyan
         if ($scoopOk -and (Get-Command Invoke-ToolSync -ErrorAction SilentlyContinue)) {

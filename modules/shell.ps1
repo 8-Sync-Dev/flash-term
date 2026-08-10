@@ -6,8 +6,16 @@
     try {
         # Basic readline options -- fast path, no module scan needed
         Set-PSReadLineOption -EditMode Windows -ErrorAction Stop
-        Set-PSReadLineOption -PredictionSource History -ErrorAction Stop
-        Set-PSReadLineOption -PredictionViewStyle ListView -ErrorAction Stop
+        # fish-style inline: use CompletionPredictor plugin (real completions) + history
+        if (-not (Get-Module CompletionPredictor -ErrorAction SilentlyContinue)) {
+            Import-Module CompletionPredictor -ErrorAction SilentlyContinue
+        }
+        if (Get-Module CompletionPredictor -ErrorAction SilentlyContinue) {
+            Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction Stop
+        } else {
+            Set-PSReadLineOption -PredictionSource History -ErrorAction Stop
+        }
+        Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction Stop
         Set-PSReadLineOption -BellStyle None -ErrorAction Stop
         Set-PSReadLineOption -HistoryNoDuplicates -ErrorAction Stop
         Set-PSReadLineOption -MaximumHistoryCount 20000 -ErrorAction Stop
