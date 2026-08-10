@@ -402,8 +402,8 @@ local function build_background(mode)
     return {
       {
         source = { File = optimized_bg_path },
-        width = "100%",
-        height = "100%",
+        width = "Cover",
+        height = "Cover",
         hsb = {
           brightness = active_style.background.brightness,
           saturation = active_style.background.saturation,
