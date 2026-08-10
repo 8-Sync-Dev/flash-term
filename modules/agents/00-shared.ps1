@@ -1,5 +1,5 @@
 # =============================================================================
-# 8sync agents -- shared functions, skill registry helpers
+# 8sync skill backend -- clone/registry helpers (used by skill.ps1 + harness.ps1)
 # =============================================================================
 
 function Get-AgentRegistryPath {
@@ -334,58 +334,3 @@ function Fetch-SkillFromUrl {
     }
 }
 
-function Deploy-SkillToForge {
-    # Copy/link installed skill content into ~/.forge/skills/<dir>/.
-    # Forge loads all .md files in that dir automatically.
-    param(
-        [string]$SourceDir,
-        [string]$SkillDir,
-        [switch]$DryRun
-    )
-
-    $forgeSkills = Get-ForgeGlobalSkillsDir
-    $target      = Join-Path $forgeSkills $SkillDir
-
-    if ($DryRun) {
-        Write-Host ('  [dry-run] Would deploy to {0}' -f $target) -ForegroundColor Yellow
-        return
-    }
-
-    if (-not (Test-Path $SourceDir)) {
-        Write-Host ('  [warn]   Source not found: {0}' -f $SourceDir) -ForegroundColor DarkYellow
-        return
-    }
-
-    if (-not (Test-Path $forgeSkills)) {
-        $null = New-Item -Path $forgeSkills -ItemType Directory -Force
-    }
-
-    # Copy source dir -> forge skills dir (overwrite)
-    try {
-        if (Test-Path $target) {
-            Remove-Item $target -Recurse -Force
-        }
-        Copy-Item $SourceDir $target -Recurse -Force
-        Write-Host ('  [ok]     Deployed to ~/.forge/skills/{0}/' -f $SkillDir) -ForegroundColor Green
-    } catch {
-        Write-Host ('  [error]  Deploy failed: {0}' -f $_.Exception.Message) -ForegroundColor Red
-    }
-}
-
-function Find-SkillMd {
-    # Locate the primary SKILL.md (or README.md) inside a cloned skill dir.
-    param([string]$Dir)
-
-    foreach ($candidate in @('SKILL.md', 'skill.md', 'README.md', 'readme.md')) {
-        $p = Join-Path $Dir $candidate
-        if (Test-Path $p) { return $p }
-    }
-    # Recursive search
-    $found = Get-ChildItem -Path $Dir -Filter 'SKILL.md' -Recurse -File -ErrorAction SilentlyContinue |
-             Select-Object -First 1
-    if ($found) { return $found.FullName }
-    $found = Get-ChildItem -Path $Dir -Filter 'README.md' -Recurse -File -ErrorAction SilentlyContinue |
-             Select-Object -First 1
-    if ($found) { return $found.FullName }
-    return $null
-}

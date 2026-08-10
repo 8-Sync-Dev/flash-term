@@ -512,10 +512,9 @@ function Show-GgufHelp {
     Write-HintRow '8sync gguf chat --profile <n>'       'Load saved profile to start chat'
     Write-HintRow '8sync gguf chat --temp 0.7 --ctx 8192 --system <txt>' 'Extra chat options'
     Write-Host ''
-    Write-Host '  -- Connect to GSD ------------------------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync gsd connect gguf'              'Register running server as GSD provider in models.json'
-    Write-HintRow '8sync gsd remove gguf'               'Remove gguf-local-* providers from models.json'
-    Write-Host ''
+    Write-Host '  -- Use with omp --------------------------------------------------------' -ForegroundColor DarkGray
+    Write-Host '  Server exposes an OpenAI-compatible /v1 endpoint (http://localhost:<port>/v1).' -ForegroundColor DarkGray
+    Write-Host '  Point omp at it: add a provider with that baseUrl in your omp config, then 8sync . --model <local>.' -ForegroundColor DarkGray
     Write-Host '  -- Quick example -------------------------------------------------------' -ForegroundColor DarkGray
     Write-Host '  8sync gguf serve \' -ForegroundColor Yellow
     Write-Host '    --engine-path "C:\Users\Admin\Documents\llamacpp\run" \' -ForegroundColor Yellow

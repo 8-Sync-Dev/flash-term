@@ -173,8 +173,13 @@ function Register-8SyncAlias {
             'up'       { Invoke-UpCommand -Rest $Rest }
             'harness'  { Invoke-HarnessCommand -Rest $Rest }
             'skill'    { Invoke-SkillCommand -Rest $Rest }
-            '.'        { Invoke-OmpSession -Name $(if ($Rest) { $Rest[0] }) }
+            '.'        { Invoke-OmpSession -Rest $Rest }
             'ai'       { Invoke-AiCommand -Rest $Rest }
+            'find'     { Invoke-FindCommand -Rest $Rest }
+            'note'     { Invoke-NoteCommand -Rest $Rest }
+            'run'      { Invoke-RunCommand -Rest $Rest }
+            'ship'     { Invoke-ShipCommand -Rest $Rest }
+            'doctor'   { Invoke-DoctorCommand }
             'profile'  { Invoke-ProfileCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }

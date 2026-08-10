@@ -18,18 +18,36 @@ strong agent harness on top of [omp](https://github.com/) — the same engine mo
 
 ## Install
 
-1. Install [WezTerm](https://wezfurlong.org/wezterm/installation) and [Scoop](https://scoop.sh).
-2. Clone this repo to your WezTerm config dir:
-   ```powershell
-   git clone https://github.com/8-Sync-Dev/flash-term.git "$env:USERPROFILE\.config\wezterm"
-   ```
-3. Launch WezTerm. The bootstrap (`wezterm-bootstrap.ps1`) sources on every tab: sets PATH, aliases,
-   PSReadLine, and triggers a one-time tool sync (Scoop) in the background.
-4. Install the AI engine and deploy the harness:
-   ```powershell
-   scoop install omp        # or your omp install path
-   8sync harness            # deploy skills + seed project memory + readiness check
-   ```
+**One-liner** (PowerShell `irm`):
+```powershell
+irm https://8-sync-dev.github.io/flash-term/install.ps1 | iex
+```
+…or with `curl`:
+```sh
+curl -fsSL https://raw.githubusercontent.com/8-Sync-Dev/flash-term/main/install.ps1 | pwsh -
+```
+Re-run either command anytime to **update** flash-term (it pulls `origin/main`).
+
+> The public one-liners need the repo **public** (or reachable). For a **private** checkout use
+> `gh repo clone 8-Sync-Dev/flash-term "$env:USERPROFILE\.config\wezterm"` or `git clone`.
+
+**From source:**
+```powershell
+git clone https://github.com/8-Sync-Dev/flash-term.git "$env:USERPROFILE\.config\wezterm"
+```
+
+The installer (`install.ps1`) drops flash-term at `%USERPROFILE%\.config\wezterm` (WezTerm's config
+dir), detects WezTerm, and is idempotent. Optional flags: `-ConfigDir <path>`, `-Update`.
+
+## After install
+
+Install [WezTerm](https://wezfurlong.org/wezterm/installation) and [Scoop](https://scoop.sh) if missing,
+then launch WezTerm. The bootstrap (`wezterm-bootstrap.ps1`) sources on every tab: PATH, aliases,
+PSReadLine, and a one-time tool sync (Scoop) in the background. Then deploy the AI harness:
+```powershell
+8sync up        # update-all: tools + omp + skills + self + wezterm
+8sync harness   # deploy skills + seed project memory + readiness check
+```
 
 Type `8sync help` for the full menu.
 

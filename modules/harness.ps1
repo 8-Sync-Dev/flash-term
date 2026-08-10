@@ -43,30 +43,47 @@ function Get-RepoSlug {
 
 # ── 8sync .  /  8sync ai  -- omp session launcher ───────────────────────────
 
+function Split-OmpArgs {
+    # Separate args into omp flags (--key / --key=val / -p) and positionals.
+    param([string[]]$Rest)
+    $flags = @(); $pos = @()
+    foreach ($a in $Rest) {
+        if ($a -like '--*' -or $a -in @('-p','-c','-r','-e')) { $flags += $a } else { $pos += $a }
+    }
+    return @{ Flags = $flags; Positional = $pos }
+}
+
 function Invoke-OmpSession {
-    # `8sync .` and `8sync . <name>` -- resume/create an omp session in cwd.
-    param([string]$Name)
+    # `8sync .` / `8sync . <name>` -- resume/create an omp session in cwd.
+    # Trailing --model/--smol/--slow/--plan/--thinking/etc. pass through to omp.
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
     $omp = Find-OmpExe
     if (-not $omp) {
         Write-Host '  omp not found.' -ForegroundColor Red
         Write-Host '  Install omp first, then run: 8sync harness' -ForegroundColor DarkGray
         return
     }
-
-    if ($Name) {
+    $s = Split-OmpArgs -Rest $Rest
+    $name = if ($s.Positional.Count -gt 0) { $s.Positional[0] } else { $null }
+    if ($name) {
         $root = Get-HarnessSessionsRoot
-        $dir = Join-Path $root (Join-Path (Get-RepoSlug) ($Name -replace '[^A-Za-z0-9._-]', '_'))
+        $dir = Join-Path $root (Join-Path (Get-RepoSlug) ($name -replace '[^A-Za-z0-9._-]', '_'))
         $null = New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue
-        Write-Host ("  omp session [{0}] -> {1}" -f $Name, $dir) -ForegroundColor DarkGray
-        & $omp --session-dir="$dir"
+        Write-Host ("  omp session [{0}] -> {1}" -f $name, $dir) -ForegroundColor DarkGray
+        & $omp @($s.Flags + @("--session-dir=$dir"))
     } else {
         Write-Host '  omp: resuming latest session in this repo...' -ForegroundColor DarkGray
-        & $omp --continue
+        & $omp @($s.Flags + @('--continue'))
     }
 }
 
 function Invoke-AiCommand {
     # `8sync ai [prompt]` -- one-shot or interactive. Pass-through model flags.
+    #   8sync ai "fix the bug" --model glm --thinking high
+    #   8sync ai "summarize" -p            # one-shot print mode
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
         [string[]]$Rest
@@ -76,24 +93,133 @@ function Invoke-AiCommand {
         Write-Host '  omp not found. Install omp first, then: 8sync harness' -ForegroundColor Red
         return
     }
-
     $printMode = $Rest -contains '--print' -or $Rest -contains '-p'
-    $args = @()
-    foreach ($a in $Rest) {
-        if ($a -in @('--print', '-p')) { continue }
-        $args += $a
-    }
-    $prompt = ($args -join ' ').Trim()
-
+    $s = Split-OmpArgs -Rest $Rest
+    $flags = @($s.Flags | Where-Object { $_ -notin @('--print', '-p') })
+    $prompt = ($s.Positional -join ' ').Trim()
     if ($printMode) {
         if (-not $prompt) { Write-Host '  --print requires a prompt.' -ForegroundColor DarkYellow; return }
-        & $omp -p $prompt
+        & $omp @($flags + @('-p', $prompt))
     } elseif ($prompt) {
-        & $omp $prompt
+        & $omp @($flags + @($prompt))
     } else {
         Write-Host '  omp: resuming latest session...' -ForegroundColor DarkGray
-        & $omp --continue
+        & $omp @($flags + @('--continue'))
     }
+}
+
+# ── workflow verbs (port of su-code daily flow) ────────────────────────────
+
+function Invoke-FindCommand {
+    # `8sync find [kw]` -- rg/fd + fzf -> open in $EDITOR (fallback hx/helix/vi).
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+    $kw = ($Rest -join ' ').Trim()
+    $files = $null
+    if (Test-CommandExists 'rg') {
+        if ($kw) {
+            $files = rg --files 2>$null | Where-Object { $_ -like "*$kw*" }
+        } else {
+            $files = rg --files 2>$null
+        }
+    } else {
+        $files = Get-ChildItem -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+    }
+    if (-not $files -or $files.Count -eq 0) { Write-Host '  no files matched.' -ForegroundColor DarkYellow; return }
+    $pick = if ((Test-CommandExists 'fzf') -and $files.Count -gt 1) {
+        $files | fzf --height=45% --layout=reverse --prompt='Open> '
+    } else { $files | Select-Object -First 1 }
+    if (-not $pick) { return }
+    $ed = $env:EDITOR; if (-not $ed) { foreach ($c in @('hx','helix','vi','code')) { if (Test-CommandExists $c) { $ed = $c; break } } }
+    if ($ed) { & $ed $pick } else { Write-Host "  no editor found. File: $pick" -ForegroundColor DarkYellow }
+}
+
+function Invoke-NoteCommand {
+    # `8sync note "msg" [-t tag]` -- append to 8sync/NOTES.md.
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+    $tag = $null
+    $tagIdx = [Array]::IndexOf($Rest, '-t'); if ($tagIdx -lt 0) { $tagIdx = [Array]::IndexOf($Rest, '--tag') }
+    if ($tagIdx -ge 0 -and $tagIdx + 1 -lt $Rest.Count) { $tag = $Rest[$tagIdx + 1] }
+    $msg = @($Rest | Where-Object { $_ -notin @('-t','--tag',$tag) }) -join ' '
+    if (-not $msg) { Write-Host '  Usage: 8sync note "your message" [-t tag]' -ForegroundColor DarkYellow; return }
+    $dir = Get-ProjectHarnessDir; $null = New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue
+    $f = Join-Path $dir 'NOTES.md'
+    $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+    $line = "- [$ts]$(if ($tag) { " #$tag" }) $msg"
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::AppendAllText($f, ($line + "`n"), $utf8NoBom)
+    Write-Host "  noted -> 8sync/NOTES.md" -ForegroundColor Green
+}
+
+function Invoke-RunCommand {
+    # `8sync run [dev|build|test|fmt|lint]` -- detect project type + run recipe.
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+    $verb = if ($Rest.Count -gt 0) { $Rest[0].ToLowerInvariant() } else { 'dev' }
+    $recipe = $null
+    if     (Test-Path 'package.json')  { $recipe = @{ dev='npm run dev'; build='npm run build'; test='npm test'; fmt='npm run fmt'; lint='npm run lint' } }
+    elseif (Test-Path 'Cargo.toml')    { $recipe = @{ dev='cargo run'; build='cargo build'; test='cargo test'; fmt='cargo fmt'; lint='cargo clippy' } }
+    elseif (Test-Path 'go.mod')        { $recipe = @{ dev='go run .'; build='go build'; test='go test ./...'; fmt='gofmt -w .'; lint='go vet ./...' } }
+    elseif (Test-Path 'pyproject.toml' -or (Test-Path '*.py')) { $recipe = @{ dev='python .'; build='pip install -e .'; test='pytest'; fmt='black .'; lint='ruff check .' } }
+    if (-not $recipe -or -not $recipe.Contains($verb)) {
+        Write-Host "  no recipe for '$verb' (detected: $(if($recipe){'project'}else{'none'}))." -ForegroundColor DarkYellow
+        return
+    }
+    Write-Host "  > $($recipe[$verb])" -ForegroundColor Cyan
+    Invoke-Expression $recipe[$verb]
+}
+
+function Invoke-ShipCommand {
+    # `8sync ship "msg"` -- git add -A && commit && push (+ optional gh pr create with --pr).
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+    $git = Get-RealGitExe
+    if (-not $git -or -not (Test-Path '.git')) { Write-Host '  not a git repo.' -ForegroundColor DarkYellow; return }
+    $msg = ($Rest | Where-Object { $_ -ne '--pr' }) -join ' '
+    $wantPr = $Rest -contains '--pr'
+    if (-not $msg) { Write-Host '  Usage: 8sync ship "commit message" [--pr]' -ForegroundColor DarkYellow; return }
+    & $git add -A
+    & $git commit -m $msg
+    if ($LASTEXITCODE -ne 0) { Write-Host '  commit failed (nothing to commit?).' -ForegroundColor DarkYellow; return }
+    & $git push
+    if ($wantPr -and (Test-CommandExists 'gh')) {
+        $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
+        & $gh pr create --fill 2>&1 | Out-Host
+    }
+}
+
+function Invoke-DoctorCommand {
+    # `8sync doctor` -- health: omp, wezterm, scoop, git, tools, skills, memory.
+    $r = Get-HarnessReadiness
+    Write-Host ''
+    Write-Host '  8SYNC DOCTOR' -ForegroundColor Cyan
+    Write-Host ''
+    function Row($label, $ok, $detail) {
+        $mark = if ($ok) { '[ok]   ' } else { '[miss] ' }
+        $color = if ($ok) { 'Green' } else { 'DarkYellow' }
+        Write-Host ("  $mark{0,-10} {1}" -f $label, $detail) -ForegroundColor $color
+    }
+    Row 'omp'      $r.OmpFound   $r.Omp
+    Row 'wezterm'  ([bool](Get-Command wezterm -ErrorAction SilentlyContinue)) 'terminal'
+    Row 'scoop'    ([bool](Get-ScoopCommand)) 'tool manager'
+    $git = Get-RealGitExe; Row 'git' ([bool]$git) $(if($git){$git}else{'not found'})
+    Row 'pwsh'     ($PSVersionTable.PSVersion.Major -ge 5) ('PS ' + $PSVersionTable.PSVersion)
+    Row 'skills'   ($r.SkillCount -gt 0) ("$($r.SkillCount) in ~/.omp/skills")
+    Row 'codegraph' $r.Codegraph $(if($r.Codegraph){'available'}else{'optional'})
+    Row 'gitleaks' $r.Gitleaks  $(if($r.Gitleaks){'available'}else{'optional'})
+    $mem = Get-ProjectHarnessDir; Row 'memory' (Test-Path (Join-Path $mem 'PROJECT.md')) $(if(Test-Path $mem){$mem}else{'run: 8sync harness'})
+    Write-Host ''
+    Write-Host '  8sync . to start coding.' -ForegroundColor Green
+    Write-Host ''
 }
 
 # ── project memory + managed .gitignore ─────────────────────────────────────

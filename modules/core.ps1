@@ -351,6 +351,11 @@ function Show-8SyncHint {
     Write-HintRow '8sync skill deploy'       'Deploy all skills to ~/.omp/skills (omp auto-discovers)'
     Write-HintRow '8sync up'                 'Update all: self, scoop tools, omp, skills, wezterm'
     Write-HintRow '8sync up --check'         'Dry-run: report what would update, change nothing'
+    Write-HintRow '8sync find [kw]'           'Fuzzy-find a file (rg+fzf) and open in $EDITOR'
+    Write-HintRow '8sync note "msg" [-t tag]' 'Append a timestamped note to 8sync/NOTES.md'
+    Write-HintRow '8sync run [dev|build|test|fmt|lint]' 'Run the detected project recipe'
+    Write-HintRow '8sync ship "msg" [--pr]'   'git add + commit + push (+ optional gh pr create)'
+    Write-HintRow '8sync doctor'              'Health check: omp/wezterm/scoop/git/skills/memory'
 
     Write-HintSection 'GGUF'
     Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
