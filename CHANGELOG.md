@@ -2,7 +2,7 @@
 
 All notable changes to flash-term are tracked here.
 
-## [Unreleased] — omp harness pivot + cleanup
+## [v2026.08.10] - 2026-08-10 — omp harness release
 
 ### Added
 - **omp AI harness** (port of the `su-code` model to Windows/PowerShell):
