@@ -136,7 +136,7 @@ function Register-8SyncAlias {
                 $modulesDir = $bootstrapDir
                 $moduleFiles = @(
                     'core.ps1','agents\00-shared.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
-                    'clean.ps1','theme.ps1','gpu.ps1','gguf.ps1','up.ps1','skill.ps1','harness.ps1'
+                    'clean.ps1','theme.ps1','gpu.ps1','gguf.ps1','up.ps1','autoupdate.ps1','skill.ps1','harness.ps1','setup.ps1'
                 )
                 $ok = 0; $fail = 0
                 foreach ($f in $moduleFiles) {
@@ -170,7 +170,8 @@ function Register-8SyncAlias {
             'hx'     { Invoke-HxCommand -Rest $Rest }
             'theme'  { Invoke-ThemeCommand -Rest $Rest }
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
-            'up'       { Invoke-UpCommand -Rest $Rest }
+            'setup'    { Invoke-SetupCommand -Rest $Rest }
+            'autoupdate' { Invoke-AutoupdateCommand -Rest $Rest }
             'harness'  { Invoke-HarnessCommand -Rest $Rest }
             'skill'    { Invoke-SkillCommand -Rest $Rest }
             '.'        { Invoke-OmpSession -Rest $Rest }
@@ -299,6 +300,7 @@ function Start-WezTermShell {
             Start-AutoSync
             Start-BgRotateCheck
             Start-CleanLoopCheck
+            Start-AutoupdateCheck
             & $markPhase 'background-checks(full)'
         }
     } else {
@@ -317,6 +319,7 @@ function Start-WezTermShell {
 
     $boot.Stop()
     Write-StartupProfile -Mode $startupMode -Phases $phaseMs -TotalMs $boot.Elapsed.TotalMilliseconds
+    Show-AutoupdateNotice
 
     if ($env:WEZTERM_BOOT_TRACE -eq '1') {
         Write-Host ('[8sync] startup {0}ms ({1})' -f [math]::Round($boot.Elapsed.TotalMilliseconds, 1), $startupMode) -ForegroundColor DarkGray

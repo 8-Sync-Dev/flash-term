@@ -299,7 +299,7 @@ function Initialize-ManagedGitignore {
     # Add a managed block to the project .gitignore (idempotent).
     param([switch]$DryRun)
     $gi = Join-Path (Get-Location) '.gitignore'
-    $marker = '# ── 8sync harness (managed) ──'
+    $marker = '# -- 8sync harness (managed) --'
     $block = @"
 $marker
 .codegraph/
@@ -308,7 +308,7 @@ $marker
 .env
 .env.*
 !.env.example
-# ── /8sync harness ──
+# -- /8sync harness --
 "@
     $existing = if (Test-Path $gi) { Get-Content -Raw $gi } else { '' }
     if ($existing -match [regex]::Escape($marker)) {

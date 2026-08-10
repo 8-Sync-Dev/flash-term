@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync', 'BgRotate', 'CleanLoop')]
+    [ValidateSet('Shell', 'Hint', 'Status', 'SyncQuiet', 'Sync', 'BgRotate', 'CleanLoop', 'AutoupdateCheck')]
     [string]$Task = 'Shell'
 )
 
@@ -96,8 +96,10 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'gpu.ps1')
 . (Join-Path $script:ModulesDir 'gguf.ps1')
 . (Join-Path $script:ModulesDir 'up.ps1')
+. (Join-Path $script:ModulesDir 'autoupdate.ps1')
 . (Join-Path $script:ModulesDir 'skill.ps1')
 . (Join-Path $script:ModulesDir 'harness.ps1')
+. (Join-Path $script:ModulesDir 'setup.ps1')
 . (Join-Path $script:ModulesDir 'startup.ps1')
 . (Join-Path $script:ModulesDir 'profile.ps1')
 
@@ -125,6 +127,10 @@ try {
         }
         'CleanLoop' {
             Invoke-CleanLoopTick
+            break
+        }
+        'AutoupdateCheck' {
+            Invoke-AutoupdateCheck -Quiet
             break
         }
         default {

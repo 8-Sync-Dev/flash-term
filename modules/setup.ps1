@@ -1,0 +1,120 @@
+# =============================================================================
+# 8sync setup -- one-command bootstrap (PATH + Scoop + tools + harness + doctor)
+# =============================================================================
+# Usage:
+#   8sync setup            Ensure PATH, install Scoop, sync managed tools, deploy harness, doctor
+#   8sync setup --check    Dry-run: report what's missing, change nothing
+#   8sync setup --no-tools     Skip tool sync
+#   8sync setup --no-harness   Skip skill/memory deploy
+# =============================================================================
+
+function Get-ScoopShimsDir { Join-Path $HOME 'scoop\shims' }
+
+function Ensure-ScoopInstalled {
+    param([switch]$DryRun)
+    if (Get-Command scoop -ErrorAction SilentlyContinue) { return $true }
+    $shims = Get-ScoopShimsDir
+    if (Test-Path (Join-Path $shims 'scoop.cmd')) {
+        # Installed but not on this process PATH -- wire it in-process
+        if ($env:PATH -notlike "*$shims*") { $env:PATH = "$shims;$env:PATH" }
+        return $true
+    }
+    Write-Host '  [setup] installing Scoop (window may take a minute)...' -ForegroundColor Cyan
+    if ($DryRun) { Write-Host '  [dry-run] would install scoop' -ForegroundColor Yellow; return $false }
+    try {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction SilentlyContinue
+        $env:PATH = "$env:windir\System32;$env:windir;$env:USERPROFILE\scoop\shims;$env:PATH"
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        $inst = Join-Path ([System.IO.Path]::GetTempPath()) 'scoop-inst.ps1'
+        Invoke-WebRequest -Uri 'https://get.scoop.sh' -UseBasicParsing -OutFile $inst -ErrorAction Stop
+        Unblock-File -Path $inst -ErrorAction SilentlyContinue
+        & $inst -RunAsAdmin
+        # scoop adds ~/scoop/shims to the USER path (registry); mirror it into this process
+        if ($env:PATH -notlike "*$shims*") { $env:PATH = "$shims;$env:PATH" }
+        if (Get-Command scoop -ErrorAction SilentlyContinue) {
+            Write-Host '  [ok]    Scoop installed' -ForegroundColor Green
+            return $true
+        }
+        # Fallback: invoke the shim directly
+        $scoopExe = Join-Path $shims 'scoop.cmd'
+        if (Test-Path $scoopExe) { return $true }
+        Write-Host '  [warn]  Scoop install may need a new shell to take effect' -ForegroundColor DarkYellow
+        return $false
+    } catch {
+        Write-Host "  [error] Scoop install failed: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+}
+
+function Ensure-PathForCore {
+    # Best-effort: make git/omp/wezterm resolvable in this process if they are on disk.
+    $extra = @()
+    foreach ($p in @(
+        (Join-Path $env:LOCALAPPDATA 'bin\git\cmd'),
+        (Join-Path $env:LOCALAPPDATA 'omp'),
+        (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'bin\wezterm') -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'WezTerm-windows-*' } | Select-Object -First 1).FullName
+    )) {
+        if ($p -and (Test-Path $p) -and ($env:PATH -notlike "*$p*")) { $extra += $p }
+    }
+    if ($extra.Count -gt 0) { $env:PATH = (($extra -join ';') + ";$env:PATH") }
+}
+
+function Show-SetupHelp {
+    Write-Host ''
+    Write-Host '  8SYNC SETUP -- one-command bootstrap' -ForegroundColor Cyan
+    Write-Host ''
+    Write-HintRow '8sync setup'             'PATH + Scoop + managed tools + harness deploy + doctor'
+    Write-HintRow '8sync setup --check'     'Dry-run: report what is missing, change nothing'
+    Write-HintRow '8sync setup --no-tools'  'Skip tool sync'
+    Write-HintRow '8sync setup --no-harness''Skip skill/memory deploy'
+    Write-Host ''
+}
+
+function Invoke-SetupCommand {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Rest
+    )
+    if ($Rest -contains '--help' -or $Rest -contains 'help' -or $Rest -contains '-h') { Show-SetupHelp; return }
+    $dryRun    = $Rest -contains '--check' -or $Rest -contains '--dry-run'
+    $noTools   = $Rest -contains '--no-tools'
+    $noHarness = $Rest -contains '--no-harness'
+
+    Write-Host ''
+    Write-Host '  8SYNC SETUP' -ForegroundColor Magenta
+    if ($dryRun) { Write-Host '  (dry-run -- no changes)' -ForegroundColor Yellow }
+    Write-Host ''
+
+    Ensure-PathForCore
+    Write-Host '  [1/4] core tools on PATH' -ForegroundColor Cyan
+    foreach ($t in 'git','omp','wezterm') {
+        $src = (Get-Command $t -ErrorAction SilentlyContinue).Source
+        if ($src) { Write-Host ("    [ok]    {0}: {1}" -f $t, $src) -ForegroundColor Green }
+        else      { Write-Host ("    [miss]  {0} (install separately)" -f $t) -ForegroundColor DarkYellow }
+    }
+
+    Write-Host '  [2/4] Scoop' -ForegroundColor Cyan
+    $scoopOk = Ensure-ScoopInstalled -DryRun:$dryRun
+
+    if (-not $noTools) {
+        Write-Host '  [3/4] managed tools (Scoop)' -ForegroundColor Cyan
+        if ($scoopOk -and (Get-Command Invoke-ToolSync -ErrorAction SilentlyContinue)) {
+            Invoke-ToolSync
+        } else {
+            Write-Host '    [skip]  Scoop unavailable -- run `8sync sync` after installing Scoop' -ForegroundColor DarkYellow
+        }
+    }
+
+    if (-not $noHarness) {
+        Write-Host '  [4/4] harness deploy' -ForegroundColor Cyan
+        if (Get-Command Invoke-HarnessInit -ErrorAction SilentlyContinue) {
+            Invoke-HarnessInit -DryRun:$dryRun
+        }
+    }
+
+    Write-Host ''
+    if (Get-Command Invoke-DoctorCommand -ErrorAction SilentlyContinue) { Invoke-DoctorCommand }
+    Write-Host '  Setup complete. Run `8sync .` to start an omp session.' -ForegroundColor Green
+    Write-Host ''
+}

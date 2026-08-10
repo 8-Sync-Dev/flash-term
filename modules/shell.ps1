@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','status','reload','sync','clean','gpu','bg','hx','theme','gguf','up','harness','skill','ai','find','note','run','ship','doctor','profile')
+    $modes = @('help','setup','status','reload','sync','autoupdate','clean','gpu','bg','hx','theme','gguf','up','harness','skill','ai','find','note','run','ship','doctor','profile')
 
         # subcommands per mode
         $subMap = @{
@@ -74,7 +74,7 @@ function Register-8SyncCompleter {
             run      = @('dev','build','test','fmt','lint')
             ship     = @('--pr')
             doctor   = @()
-            profile  = @('list','create','clone','switch','open','delete','help')
+            autoupdate = @('on','off','auto','now','status','help')
         }
 
         if ($count -le 1) {

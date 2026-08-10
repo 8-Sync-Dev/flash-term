@@ -327,6 +327,7 @@ function Show-8SyncHint {
 
     Write-HintSection 'COMMANDS'
     Write-HintRow '8sync help'              'Show this help'
+    Write-HintRow '8sync setup'             'One-command bootstrap: PATH + Scoop + tools + harness + doctor'
     Write-HintRow '8sync status'            'Installed tools + last sync time'
     Write-HintRow '8sync reload'            'Hot-reload all modules in current session (no new tab needed)'
     Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
@@ -356,6 +357,7 @@ function Show-8SyncHint {
     Write-HintRow '8sync run [dev|build|test|fmt|lint]' 'Run the detected project recipe'
     Write-HintRow '8sync ship "msg" [--pr]'   'git add + commit + push (+ optional gh pr create)'
     Write-HintRow '8sync doctor'              'Health check: omp/wezterm/scoop/git/skills/memory'
+    Write-HintRow '8sync autoupdate [on|off|auto|now]' 'Background update + release notifier (notify mode by default)'
 
     Write-HintSection 'GGUF'
     Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'

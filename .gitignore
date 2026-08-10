@@ -55,3 +55,11 @@ coverage/
 tmp/
 
 .DS_Store
+
+# -- 8sync harness (managed) --
+.codegraph/
+8sync/
+.env
+.env.*
+!.env.example
+# -- /8sync harness --
