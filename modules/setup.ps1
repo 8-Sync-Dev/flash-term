@@ -182,8 +182,6 @@ function Invoke-SetupCommand {
         & $omp agents unpack 2>&1 | Out-Null
         Write-Host '  [ok]    bundled subagents -> ~/.omp/agent/agents' -ForegroundColor Green
     }
-    # Default wallpaper (best-effort, only if user has none)
-    Set-DefaultWallpaper -ConfigDir (Split-Path $PSScriptRoot -Parent)
 
     Write-Host ''
     if (Get-Command Invoke-DoctorCommand -ErrorAction SilentlyContinue) { Invoke-DoctorCommand }

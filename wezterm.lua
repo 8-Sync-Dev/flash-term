@@ -8,7 +8,7 @@ end
 
 local home = wezterm.home_dir
 local config_dir = wezterm.config_dir or (home .. "\\.config\\wezterm")
-local fallback_bg_path = config_dir .. "\\bg\\your-name-couple-3840x2160-25439.jpg"
+local fallback_bg_path = config_dir .. "\\assets\\default-bg.jpg"
 local current_bg_lua = config_dir .. "\\current-bg.lua"
 local bootstrap_path = config_dir .. "\\wezterm-bootstrap.ps1"
 local current_opacity_lua = config_dir .. "\\current-opacity.lua"
@@ -764,10 +764,10 @@ config.window_frame = {
   border_right_width = "4px",
   border_bottom_height = "4px",
   border_top_height = "4px",
-  border_left_color = "#14c8ff",
-  border_right_color = "#14c8ff",
-  border_bottom_color = "#14c8ff",
-  border_top_color = "#14c8ff",
+  border_left_color = "#a855f7",
+  border_right_color = "#a855f7",
+  border_bottom_color = "#a855f7",
+  border_top_color = "#a855f7",
   button_fg = "#f3feff",
   button_bg = "#0e2748",
   button_hover_fg = "#f4ffff",

@@ -6,7 +6,7 @@ strong agent harness on top of [omp](https://github.com/) — the same engine mo
 [`su-code`](https://github.com/8-Sync-Dev/su-code), ported to Windows + PowerShell.
 
 ## Features
-
+- **Look** — dark gentle glass (Catppuccin Mocha + Mica), **purple neon border**, **default anime wallpaper** (`assets/default-bg.jpg`, shipped), git branch in the status bar.
 - **WezTerm** — many keybindings (leader `Ctrl+a`, pane splits, tabs, copy mode, command palette).
 - **omp harness** — `8sync .` resumes an AI coding session; skills auto-discovered from `~/.omp/skills`.
 - **Skill registry** — `8sync skill add/list/update/deploy` manages a portable skill library.
