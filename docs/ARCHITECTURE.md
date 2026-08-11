@@ -36,8 +36,12 @@ The harness is omp-centric (single engine), mirroring `su-code`:
 
 - **Skills** live in `~/.omp/skills/<name>/SKILL.md`. omp auto-discovers them; the registry is `agents/registry.json`.
   `8sync skill deploy` clones each registry skill and copies it into `~/.omp/skills`.
-- **Sessions** — `8sync .` runs `omp --continue` (resume latest). `8sync . <name>` runs omp with
-  `--session-dir=~/.8sync/sessions/<repo>/<name>` for isolated per-feature sessions.
+- **Sessions** — full per-project session management under `8sync .`, mirroring `su-code`:
+  `8sync .` resumes the latest; `8sync . <name>` create-or-resumes a named isolated session;
+  `8sync . new <name> [--worktree]` starts a fresh session (with an optional git worktree + branch
+  `8sync/<name>`); `8sync . ls`/`--json` lists them; `8sync . rm`/`mv`/`merge` remove, rename, and
+  land branches. Each named session is an omp conversation under
+  `--session-dir=~/.8sync/sessions/<repo>/<name>`, tracked in `~/.8sync/sessions/<repo>/index.json`.
 - **Project memory** — `8sync harness` seeds `8sync/{PROJECT,STATE,KNOWLEDGE}.md` and a managed
   `.gitignore` block (ignores `.codegraph/`, `.cache/`, `.env*`, `8sync/skills/`; keeps `8sync/`).
 - **AGENTS.md** — `8sync skill deploy` injects an omp-tuned skill-library + memory section into the

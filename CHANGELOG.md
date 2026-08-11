@@ -2,6 +2,42 @@
 
 All notable changes to flash-term are tracked here.
 
+## [v2026.08.11] - 2026-08-11 — full omp session management
+
+### Added
+- **Full per-project omp session management under `8sync .`** — port of the `su-code`
+  `here.rs` / `session.rs` model, closing the gap vs. the su-code harness:
+  - `8sync . new <name> [--worktree]` — create a FRESH named session (`--worktree` =
+    isolated git worktree + branch `8sync/<name>`). Previously `8sync . new` wrongly
+    treated `new` as a session *name*.
+  - `8sync . <name>` — create-or-resume a named, isolated omp session.
+  - `8sync .` — resume the latest session (registry-tracked `last_used`, else omp default).
+  - `8sync . ls` (aliases: `--list`, `--ls`, `list`, `--json`) — list this repo's sessions
+    (★ latest, branch, dirty, omp auto-title).
+  - `8sync . ls --all` (or `8sync . --all`) — list EVERY session across all repos.
+  - `8sync . rm <name> [--force]` — remove a session (`--force` also deletes the transcript).
+  - `8sync . mv <old> <new>` — rename a session (registry + dir + worktree/branch).
+  - `8sync . merge <a> [b...]` — land session branches into the current branch
+    (`git merge-tree` preflight → rebase-to-unblock → merge → cleanup).
+  - Registry at `~/.8sync/sessions/<repo-slug>/index.json`; omp pinned via `--cwd`;
+    model flags (`--model`/`--smol`/`--slow`/`--plan`/`--thinking`) pass through.
+
+### Fixed
+- `8sync . new <name>` no longer creates a session literally named "new" —
+  `new`/`ls`/`rm`/`mv`/`merge` are now reserved verbs.
+- `8sync . --ls` and `8sync . --all` no longer fall through to `omp --continue`
+  (which errored `unknown flag: --list`/`--ls`/`--all`).
+- Empty-repo `ls` now reports sessions that exist in other repos and points to `--all`.
+- Session-name path-traversal guard: reject `.`/`..`.
+
+### Changed
+- `Invoke-OmpSession` (harness.ps1) rewritten as a verb dispatcher; full session layer
+  ported from `su-code` `session.rs`.
+- `Show-8SyncHint` (core.ps1) + `Register-8SyncCompleter` (shell.ps1): `.` mode added to
+  `$modes`; `new`/`ls`/`rm`/`mv`/`merge`/`--worktree`/`--force`/`--list`/`--ls`/`--all`/`--json`
+  tab-completions.
+- Docs (`CLAUDE.md`, `docs/ARCHITECTURE.md`) updated for the session surface.
+
 ## [v2026.08.10] - 2026-08-10 — omp harness release
 
 ### Added

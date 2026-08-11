@@ -36,7 +36,7 @@ PowerShell writes them, Lua reads them on reload. `wezterm cli reload` is called
 
 ## Command Surface (`8sync`)
 
-- **AI harness (omp):** `8sync .` · `8sync . <name>` · `8sync ai "<prompt>"` · `8sync harness [init|up|global|status]` · `8sync skill [list|add|update|remove|deploy]`
+- **AI harness (omp):** `8sync .` (resume latest) · `8sync . <name>` (create/resume named) · `8sync . new <name> [--worktree]` (fresh session) · `8sync . ls` · `8sync . rm <name> [--force]` · `8sync . mv <old> <new>` · `8sync . merge <a> [b...]` · `8sync ai "<prompt>"` · `8sync harness [init|up|global|status]` · `8sync skill [list|add|update|remove|deploy]`
 - **Update:** `8sync up [self|scoop|omp|skills|wezterm] [--check]`
 - **Tools/UX:** `8sync sync` · `8sync status` · `8sync reload` · `8sync clean` · `8sync gpu` · `8sync theme` · `8sync bg` · `8sync hx` · `8sync profile`
 - **Local models:** `8sync gguf`

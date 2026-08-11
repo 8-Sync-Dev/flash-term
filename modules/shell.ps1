@@ -62,7 +62,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','setup','status','reload','sync','autoupdate','clean','gpu','bg','hx','theme','gguf','up','harness','skill','ai','find','note','run','ship','doctor','profile')
+    $modes = @('help','setup','status','reload','sync','autoupdate','clean','gpu','bg','hx','theme','gguf','up','harness','skill','ai','find','note','run','ship','doctor','profile','.')
 
         # subcommands per mode
         $subMap = @{
@@ -77,6 +77,7 @@ function Register-8SyncCompleter {
             harness  = @('init','up','global','status','help')
             skill    = @('list','add','update','remove','deploy','help')
             ai       = @('--print','-p','--model','--smol','--slow','--plan','--thinking')
+            '.'      = @('new','ls','list','rm','mv','merge','--worktree','--force','--keep-worktree','--list','--ls','--all','--json','--model','--smol','--slow','--plan','--thinking')
             find     = @('--help')
             note     = @('-t','--tag')
             run      = @('dev','build','test','fmt','lint')

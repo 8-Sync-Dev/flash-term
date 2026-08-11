@@ -1,14 +1,18 @@
 # =============================================================================
 # 8sync harness -- omp AI coding harness for Windows (port of su-code model)
 # =============================================================================
-# Usage:
-#   8sync .                  Resume the latest omp session in this repo
-#   8sync . <name>           Create/resume a NAMED omp session (isolated)
-#   8sync ai "<prompt>"      omp one-shot or interactive (add --print for stdout)
-#   8sync harness            Deploy skills + project memory + AGENTS.md + readiness
-#   8sync harness up         Light refresh (re-deploy skills + consolidate memory)
-#   8sync harness global     Deploy skills to ~/.omp (every omp project benefits)
-#   8sync harness status     Health: omp, skills, codegraph, MCP, memory
+#   8sync .                       Resume the latest omp session in this repo
+#   8sync . <name>                Create/resume a NAMED omp session (isolated)
+#   8sync . new <name> [--worktree]  Create a fresh session (--worktree = git worktree)
+#   8sync . ls   (or --list/--json)  List this repo's named sessions
+#   8sync . mv <old> <new>        Rename a session
+#   8sync . rm <name> [--force]   Remove a session (--force deletes transcript too)
+#   8sync . merge <a> <b> ...     Land session branches into the current branch
+#   8sync ai "<prompt>"           omp one-shot or interactive (add --print for stdout)
+#   8sync harness                 Deploy skills + project memory + AGENTS.md + readiness
+#   8sync harness up              Light refresh (re-deploy skills + consolidate memory)
+#   8sync harness global          Deploy skills to ~/.omp (every omp project benefits)
+#   8sync harness status          Health: omp, skills, codegraph, MCP, memory
 # =============================================================================
 
 # ── omp discovery ────────────────────────────────────────────────────────────
@@ -41,7 +45,7 @@ function Get-RepoSlug {
     return ($base -replace '[^A-Za-z0-9._-]', '_')
 }
 
-# ── 8sync .  /  8sync ai  -- omp session launcher ───────────────────────────
+# ── session registry + omp launch  (port of su-code here.rs / session.rs) ───
 
 function Split-OmpArgs {
     # Separate args into omp flags (--key / --key=val / -p) and positionals.
@@ -53,8 +57,508 @@ function Split-OmpArgs {
     return @{ Flags = $flags; Positional = $pos }
 }
 
+# ── registry (~/.8sync/sessions/<repo-slug>/index.json) ─────────────────────
+
+function Get-SessionKeyDir    { Join-Path (Get-HarnessSessionsRoot) (Get-RepoSlug) }
+function Get-SessionIndexPath { Join-Path (Get-SessionKeyDir) 'index.json' }
+
+function Read-SessionRegistry {
+    $p = Get-SessionIndexPath
+    if (Test-Path $p) {
+        try {
+            $reg = Get-Content -Raw $p -Encoding UTF8 | ConvertFrom-Json
+            if ($null -eq $reg.sessions) {
+                $reg | Add-Member -NotePropertyName sessions -NotePropertyValue @() -Force
+            }
+            return $reg
+        } catch {}
+    }
+    return [pscustomobject]@{ last_used = $null; sessions = @() }
+}
+
+function Write-SessionRegistry {
+    param($Reg)
+    $dir = Get-SessionKeyDir
+    $null = New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue
+    $sessions = @($Reg.sessions | ForEach-Object {
+        $o = [ordered]@{ name = $_.name; session_dir = $_.session_dir; created = $_.created; last_active = $_.last_active }
+        if ($_.worktree -and $_.worktree.path) {
+            $o['worktree'] = [ordered]@{ path = $_.worktree.path; branch = $_.worktree.branch; base_branch = $_.worktree.base_branch }
+        }
+        [pscustomobject]$o
+    })
+    $payload = [ordered]@{ last_used = $Reg.last_used; sessions = $sessions }
+    [System.IO.File]::WriteAllText((Get-SessionIndexPath), ($payload | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
+}
+
+function Test-ValidSessionName {
+    # Mirror su-code valid_name (letters, digits, '-', '_', '.'; <=64 chars),
+    # plus a path-traversal guard: reject '.'/'..' so session_dir can't escape its key dir.
+    param([string]$Name)
+    if ($Name -eq '.' -or $Name -eq '..') { return $false }
+    return ($Name -match '^[A-Za-z0-9._-]{1,64}$')
+}
+
+function Get-SessionByName {
+    param($Reg, [string]$Name)
+    @($Reg.sessions) | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+}
+
+function Update-SessionTouch {
+    # Bump last_active + set last_used, then persist.
+    param($Reg, [string]$Name)
+    $t = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $s = Get-SessionByName -Reg $Reg -Name $Name
+    if ($s) { $s.last_active = $t }
+    $Reg.last_used = $Name
+    Write-SessionRegistry -Reg $Reg
+}
+
+# ── omp launch ───────────────────────────────────────────────────────────────
+
+function Invoke-OmpLaunch {
+    # Launch omp pinned to $Cwd with --session-dir $Dir.
+    # $Fresh = start a NEW conversation (no --continue); otherwise resume.
+    # $Flags = passthrough omp flags (--model/--smol/--slow/--plan/--thinking/...).
+    # Pinning --cwd matters: omp `/new` inherits the launch root and does not
+    # re-detect cwd, so a drifting cwd would land a child session in the wrong project.
+    param([string]$Cwd, [string]$Dir, [switch]$Fresh, [string[]]$Flags)
+    $omp = Find-OmpExe
+    if (-not $omp) {
+        Write-Host '  omp not found.' -ForegroundColor Red
+        Write-Host '  Install omp first, then run: 8sync harness' -ForegroundColor DarkGray
+        return
+    }
+    if ($Dir) { $null = New-Item -ItemType Directory -Force -Path $Dir -ErrorAction SilentlyContinue }
+    $launch = @()
+    if ($Flags) { $launch += $Flags }
+    $launch += @('--cwd', $Cwd)
+    if ($Dir)  { $launch += @('--session-dir', $Dir) }
+    if (-not $Fresh) { $launch += '--continue' }
+    & $omp @launch
+}
+
+# ── session title + relative time ───────────────────────────────────────────
+
+function Get-SessionTitle {
+    # Best-effort omp auto-title: first line of the newest *.jsonl in the dir is
+    # {"type":"title","title":"..."}.
+    param([string]$SessionDir)
+    if (-not (Test-Path $SessionDir)) { return $null }
+    $newest = $null; $newestTime = [datetime]::MinValue
+    try {
+        Get-ChildItem -Path $SessionDir -Filter '*.jsonl' -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.LastWriteTime -gt $newestTime) { $newestTime = $_.LastWriteTime; $newest = $_ }
+        }
+    } catch {}
+    if (-not $newest) { return $null }
+    try {
+        $first = Get-Content $newest.FullName -TotalCount 1 -ErrorAction SilentlyContinue
+        if ($first) {
+            $v = $first | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($v -and $v.title) { return [string]$v.title }
+        }
+    } catch {}
+    return $null
+}
+
+function Get-AgoString {
+    param([long]$Secs)
+    $d = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $Secs
+    if ($d -lt 0) { $d = 0 }
+    if     ($d -lt 60)    { return ("{0}s ago" -f $d) }
+    elseif ($d -lt 3600)  { return ("{0}m ago" -f [int]($d / 60)) }
+    elseif ($d -lt 86400) { return ("{0}h ago" -f [int]($d / 3600)) }
+    else                  { return ("{0}d ago" -f [int]($d / 86400)) }
+}
+
+# ── git helpers ──────────────────────────────────────────────────────────────
+
+function Invoke-GitCapture {
+    param([string]$Dir, [string[]]$GitArgs)
+    $git = Get-RealGitExe
+    if (-not $git) { return [pscustomobject]@{ Ok = $false; Output = 'git not found' } }
+    try {
+        $output = & $git -C $Dir @GitArgs 2>&1 | Out-String
+        return [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Output = $output.Trim() }
+    } catch {
+        return [pscustomobject]@{ Ok = $false; Output = $_.Exception.Message }
+    }
+}
+
+function Get-CurrentBranch {
+    param([string]$Root)
+    $r = Invoke-GitCapture -Dir $Root -GitArgs @('rev-parse','--abbrev-ref','HEAD')
+    if (-not $r.Ok) { return $null }
+    $b = $r.Output.Trim()
+    if ($b -eq 'HEAD') {
+        $r2 = Invoke-GitCapture -Dir $Root -GitArgs @('rev-parse','HEAD')
+        if ($r2.Ok -and $r2.Output) { return $r2.Output.Trim().Substring(0, [Math]::Min(7,$r2.Output.Trim().Length)) }
+        return $null
+    }
+    return $b
+}
+
+function Test-WorktreeDirty {
+    param([string]$Dir)
+    $r = Invoke-GitCapture -Dir $Dir -GitArgs @('status','--porcelain')
+    return ($r.Ok -and $r.Output.Trim() -ne '')
+}
+
+function New-SessionWorktree {
+    # Create a git worktree + branch 8sync/<name> off the current HEAD.
+    param([string]$Root, [string]$Name)
+    $wtPath = Join-Path (Get-SessionKeyDir) (Join-Path 'worktrees' $Name)
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path $wtPath) -ErrorAction SilentlyContinue
+    $branch = "8sync/$Name"
+    $base = Get-CurrentBranch -Root $Root
+    $exists = Invoke-GitCapture -Dir $Root -GitArgs @('show-ref','--verify','--quiet',"refs/heads/$branch")
+    if ($exists.Ok) {
+        $r = Invoke-GitCapture -Dir $Root -GitArgs @('worktree','add',$wtPath,$branch)
+    } else {
+        $r = Invoke-GitCapture -Dir $Root -GitArgs @('worktree','add','-b',$branch,$wtPath,'HEAD')
+    }
+    if (-not $r.Ok) {
+        Write-Host ("  worktree create failed: {0}" -f $r.Output) -ForegroundColor Red
+        return $null
+    }
+    Write-Host ("  worktree {0} -> branch {1} (base {2})" -f $wtPath, $branch, $base) -ForegroundColor DarkGray
+    return [pscustomobject]@{ path = $wtPath; branch = $branch; base_branch = $base }
+}
+
+# ── session commands ─────────────────────────────────────────────────────────
+
+function Resume-LatestSession {
+    param([string[]]$Flags)
+    $reg = Read-SessionRegistry
+    if ($reg.last_used) {
+        $s = Get-SessionByName -Reg $reg -Name $reg.last_used
+        if ($s) {
+            $cwd = if ($s.worktree -and $s.worktree.path) { $s.worktree.path } else { (Get-Location).Path }
+            Write-Host ("  -> resume session '{0}' (latest)" -f $s.name) -ForegroundColor Green
+            Update-SessionTouch -Reg $reg -Name $s.name
+            Invoke-OmpLaunch -Cwd $cwd -Dir $s.session_dir -Flags $Flags
+            return
+        }
+    }
+    # No named session yet — omp default store (legacy 8sync . behavior).
+    Write-Host '  omp: resuming latest session...' -ForegroundColor DarkGray
+    Invoke-OmpLaunch -Cwd (Get-Location).Path -Dir '' -Flags $Flags
+}
+
+function Resume-NamedSession {
+    param([string]$Name, [string[]]$Flags)
+    if (-not (Test-ValidSessionName -Name $Name)) {
+        Write-Host ("  invalid session name '{0}' (use letters, digits, '-', '_', '.'; <=64 chars)" -f $Name) -ForegroundColor Red
+        return
+    }
+    $reg = Read-SessionRegistry
+    $s = Get-SessionByName -Reg $reg -Name $Name
+    if ($s) {
+        $cwd = if ($s.worktree -and $s.worktree.path) { $s.worktree.path } else { (Get-Location).Path }
+        Write-Host ("  -> resume session '{0}'" -f $Name) -ForegroundColor Green
+        Update-SessionTouch -Reg $reg -Name $Name
+        Invoke-OmpLaunch -Cwd $cwd -Dir $s.session_dir -Flags $Flags
+    } else {
+        Write-Host ("  no session '{0}' yet -- creating it" -f $Name) -ForegroundColor Cyan
+        New-NamedSession -Name $Name -Worktree:$false -Flags $Flags
+    }
+}
+
+function New-NamedSession {
+    param([string]$Name, [switch]$Worktree, [string[]]$Flags)
+    if (-not (Test-ValidSessionName -Name $Name)) {
+        Write-Host ("  invalid session name '{0}' (use letters, digits, '-', '_', '.'; <=64 chars)" -f $Name) -ForegroundColor Red
+        return
+    }
+    $reg = Read-SessionRegistry
+    if (Get-SessionByName -Reg $reg -Name $Name) {
+        Write-Host ("  session '{0}' already exists -- resume with: 8sync . {0}" -f $Name) -ForegroundColor Yellow
+        return
+    }
+    $dir = Join-Path (Get-SessionKeyDir) ($Name -replace '[^A-Za-z0-9._-]','_')
+    $null = New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue
+    $wt = $null
+    if ($Worktree) {
+        if (-not (Test-Path '.git')) {
+            Write-Host '  --worktree needs a git repo (no .git here)' -ForegroundColor Red
+            return
+        }
+        $wt = New-SessionWorktree -Root (Get-Location).Path -Name $Name
+        if (-not $wt) { return }   # worktree failed — abort session create
+    }
+    $t = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $reg.sessions = @(@($reg.sessions) + [pscustomobject]@{ name=$Name; session_dir=$dir; worktree=$wt; created=$t; last_active=$t })
+    Write-Host ("  created session '{0}'" -f $Name) -ForegroundColor Green
+    Update-SessionTouch -Reg $reg -Name $Name
+    $cwd = if ($wt -and $wt.path) { $wt.path } else { (Get-Location).Path }
+    Invoke-OmpLaunch -Cwd $cwd -Dir $dir -Fresh -Flags $Flags
+}
+
+function Get-OtherRepoSessionCount {
+    # Sessions stored under OTHER repo slugs (helps the "where are my sessions?" case).
+    $root = Get-HarnessSessionsRoot
+    if (-not (Test-Path $root)) { return 0 }
+    $count = 0
+    Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $idx = Join-Path $_.FullName 'index.json'
+        if (Test-Path $idx) {
+            try { $r = Get-Content -Raw $idx -Encoding UTF8 | ConvertFrom-Json; if ($r.sessions) { $count += @($r.sessions).Count } } catch {}
+        }
+    }
+    return $count
+}
+
+function Show-AllSessions {
+    # List every named session across all repo slugs under ~/.8sync/sessions.
+    param([switch]$Json)
+    $root = Get-HarnessSessionsRoot
+    if (-not (Test-Path $root)) {
+        Write-Host '  no sessions anywhere -- create one: 8sync . new <name>' -ForegroundColor Cyan
+        return
+    }
+    $all = @()
+    Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $idx = Join-Path $_.FullName 'index.json'
+        if (Test-Path $idx) {
+            try {
+                $r = Get-Content -Raw $idx -Encoding UTF8 | ConvertFrom-Json
+                $repoSlug = $_.Name
+                foreach ($s in $r.sessions) {
+                    $all += [pscustomobject]@{
+                        repo = $repoSlug; name = $s.name; last_active = $s.last_active
+                        last_used = ($r.last_used -eq $s.name)
+                        title = (Get-SessionTitle -SessionDir $s.session_dir)
+                        branch = $(if ($s.worktree) { $s.worktree.branch } else { $null })
+                        session_dir = $s.session_dir
+                    }
+                }
+            } catch {}
+        }
+    }
+    if ($Json) {
+        $all | ForEach-Object {
+            [ordered]@{ repo=$_.repo; name=$_.name; last_active=$_.last_active; last_used=$_.last_used; title=$_.title; branch=$_.branch; session_dir=$_.session_dir }
+        } | ConvertTo-Json -Depth 5
+        return
+    }
+    if ($all.Count -eq 0) {
+        Write-Host '  no sessions anywhere -- create one: 8sync . new <name>' -ForegroundColor Cyan
+        return
+    }
+    $repoCount = @($all | ForEach-Object { $_.repo } | Select-Object -Unique).Count
+    Write-Host ''
+    Write-Host '  all sessions (--all)' -ForegroundColor Cyan
+    $all | Sort-Object last_active -Descending | ForEach-Object {
+        $star = if ($_.last_used) { '*' } else { ' ' }
+        $title = if ($_.title) { $_.title } else { '(no messages yet)' }
+        Write-Host ("  {0} {1,-16}/{2,-16} {3,-9} {4}" -f $star, $_.repo, $_.name, (Get-AgoString -Secs $_.last_active), $title) -ForegroundColor DarkGray
+    }
+    Write-Host ''
+    Write-Host ("  total: {0} session(s) across {1} repo(s)   |   resume by name: cd into the repo, then 8sync . <name>" -f $all.Count, $repoCount) -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Show-SessionList {
+    param([switch]$Json, [switch]$All)
+    if ($All) { Show-AllSessions -Json:$Json; return }
+    $reg = Read-SessionRegistry
+    if ($Json) {
+        $arr = @($reg.sessions | ForEach-Object {
+            [ordered]@{
+                name       = $_.name
+                last_used  = ($reg.last_used -eq $_.name)
+                last_active= $_.last_active
+                title      = (Get-SessionTitle -SessionDir $_.session_dir)
+                branch     = $(if ($_.worktree) { $_.worktree.branch } else { $null })
+                dirty      = $(if ($_.worktree) { Test-WorktreeDirty -Dir $_.worktree.path } else { $null })
+                worktree   = $(if ($_.worktree) { $_.worktree.path } else { $null })
+                session_dir= $_.session_dir
+            }
+        })
+        $arr | ConvertTo-Json -Depth 5
+        return
+    }
+    if (-not $reg.sessions -or @($reg.sessions).Count -eq 0) {
+        Write-Host ("  no named sessions in this repo ({0})" -f (Get-RepoSlug)) -ForegroundColor Cyan
+        $other = Get-OtherRepoSessionCount
+        if ($other -gt 0) {
+            Write-Host ("  {0} session(s) exist in OTHER repos -- see all: 8sync . ls --all" -f $other) -ForegroundColor DarkYellow
+        } else {
+            Write-Host '  create one: 8sync . new <name>' -ForegroundColor DarkGray
+        }
+        return
+    }
+    Write-Host ''
+    Write-Host ('  sessions . ' + (Get-Location).Path) -ForegroundColor Cyan
+    foreach ($s in $reg.sessions) {
+        $star = if ($reg.last_used -eq $s.name) { '*' } else { ' ' }
+        $title = Get-SessionTitle -SessionDir $s.session_dir
+        if (-not $title) { $title = '(no messages yet)' }
+        if ($s.worktree) {
+            $dirtyMark = if (Test-WorktreeDirty -Dir $s.worktree.path) { ' *dirty' } else { '' }
+            $loc = "$($s.worktree.branch)$dirtyMark"
+        } else { $loc = '-' }
+        Write-Host ("  {0} {1,-18} {2,-9} {3,-24} {4}" -f $star, $s.name, (Get-AgoString -Secs $s.last_active), $loc, $title) -ForegroundColor DarkGray
+    }
+    Write-Host ''
+    Write-Host '  resume: 8sync . <name>   new: 8sync . new <name> [--worktree]   rm: 8sync . rm <name> [--force]   all: 8sync . ls --all' -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Remove-Session {
+    param([string]$Name, [switch]$Force)
+    $reg = Read-SessionRegistry
+    $idx = -1
+    $list = [System.Collections.ArrayList]@($reg.sessions)
+    for ($i = 0; $i -lt $list.Count; $i++) { if ($list[$i].name -eq $Name) { $idx = $i; break } }
+    if ($idx -lt 0) {
+        Write-Host ("  no session '{0}' in this repo" -f $Name) -ForegroundColor Yellow
+        return
+    }
+    $s = $list[$idx]
+    if ($s.worktree -and $s.worktree.path) {
+        if ((Test-WorktreeDirty -Dir $s.worktree.path) -and -not $Force) {
+            Write-Host ("  session '{0}' worktree has uncommitted changes at {1} -- commit/merge first, or: 8sync . rm {0} --force" -f $Name, $s.worktree.path) -ForegroundColor Red
+            return
+        }
+        $wtArgs = [System.Collections.ArrayList]@('worktree','remove',$s.worktree.path)
+        if ($Force) { $null = $wtArgs.Add('--force') }
+        $r = Invoke-GitCapture -Dir (Get-Location).Path -GitArgs $wtArgs
+        if ($r.Ok) { Write-Host ("  removed worktree {0}" -f $s.worktree.path) -ForegroundColor Green }
+        else { Write-Host ("  could not remove worktree {0} (unregistering anyway)" -f $s.worktree.path) -ForegroundColor DarkYellow }
+        $del = if ($Force) { '-D' } else { '-d' }
+        $rb = Invoke-GitCapture -Dir (Get-Location).Path -GitArgs @('branch',$del,$s.worktree.branch)
+        if ($rb.Ok) { Write-Host ("  deleted branch {0}" -f $s.worktree.branch) -ForegroundColor Green }
+        else { Write-Host ("  branch {0} kept (unmerged?) -- git branch -D {0} to force" -f $s.worktree.branch) -ForegroundColor DarkYellow }
+    }
+    if (-not $Force) {
+        Write-Host ("  unregistering '{0}' but KEEPING its transcript at {1} -- use --force to delete it too" -f $Name, $s.session_dir) -ForegroundColor DarkYellow
+    } else {
+        Remove-Item -Recurse -Force $s.session_dir -ErrorAction SilentlyContinue
+        Write-Host ("  deleted transcript store {0}" -f $s.session_dir) -ForegroundColor Green
+    }
+    $list.RemoveAt($idx)
+    $reg.sessions = $list.ToArray()
+    if ($reg.last_used -eq $Name) { $reg.last_used = $null }
+    Write-SessionRegistry -Reg $reg
+    Write-Host ("  removed session '{0}'" -f $Name) -ForegroundColor Green
+}
+
+function Rename-Session {
+    param([string]$Old, [string]$New)
+    if (-not (Test-ValidSessionName -Name $New)) {
+        Write-Host ("  invalid session name '{0}' (use letters, digits, '-', '_', '.'; <=64 chars)" -f $New) -ForegroundColor Red
+        return
+    }
+    $reg = Read-SessionRegistry
+    if (Get-SessionByName -Reg $reg -Name $New) {
+        Write-Host ("  session '{0}' already exists" -f $New) -ForegroundColor Yellow
+        return
+    }
+    $idx = -1
+    for ($i = 0; $i -lt @($reg.sessions).Count; $i++) { if ($reg.sessions[$i].name -eq $Old) { $idx = $i; break } }
+    if ($idx -lt 0) {
+        Write-Host ("  no session '{0}' in this repo" -f $Old) -ForegroundColor Yellow
+        return
+    }
+    $s = $reg.sessions[$idx]
+    $newDir = Join-Path (Get-SessionKeyDir) ($New -replace '[^A-Za-z0-9._-]','_')
+    if (Test-Path $s.session_dir) {
+        try { Move-Item -Path $s.session_dir -Destination $newDir -Force }
+        catch { Write-Host ("  rename dir failed: {0}" -f $_.Exception.Message) -ForegroundColor Red; return }
+    }
+    $s.name = $New
+    $s.session_dir = $newDir
+    if ($s.worktree -and $s.worktree.path) {
+        $newBranch = "8sync/$New"
+        $newWt = Join-Path (Get-SessionKeyDir) (Join-Path 'worktrees' $New)
+        $rm = Invoke-GitCapture -Dir (Get-Location).Path -GitArgs @('worktree','move',$s.worktree.path,$newWt)
+        if ($rm.Ok) { $s.worktree.path = $newWt }
+        else { Write-Host ("  could not move worktree {0}" -f $s.worktree.path) -ForegroundColor DarkYellow }
+        $rb = Invoke-GitCapture -Dir (Get-Location).Path -GitArgs @('branch','-m',$s.worktree.branch,$newBranch)
+        if ($rb.Ok) { $s.worktree.branch = $newBranch }
+        else { Write-Host ("  could not rename branch {0}" -f $s.worktree.branch) -ForegroundColor DarkYellow }
+    }
+    if ($reg.last_used -eq $Old) { $reg.last_used = $New }
+    Write-SessionRegistry -Reg $reg
+    Write-Host ("  renamed session '{0}' -> '{1}'" -f $Old, $New) -ForegroundColor Green
+}
+
+function Merge-SessionBranches {
+    # Land session branches into the current branch, ECC-style: read-only
+    # merge-tree preflight -> rebase-to-unblock -> merge -> cleanup.
+    param([string[]]$Names, [switch]$KeepWorktree)
+    if (-not $Names -or $Names.Count -eq 0) {
+        Write-Host '  usage: 8sync . merge <name> [<name>...]  (lands each session branch into the current branch)' -ForegroundColor Yellow
+        return
+    }
+    $root = (Get-Location).Path
+    if (-not (Test-Path '.git')) {
+        Write-Host "  merge needs a git repo at $root" -ForegroundColor Red
+        return
+    }
+    if (Test-WorktreeDirty -Dir $root) {
+        Write-Host '  main working tree has uncommitted changes -- commit or stash before merging' -ForegroundColor Red
+        return
+    }
+    $target = Get-CurrentBranch -Root $root
+    Write-Host "  merge -> $target" -ForegroundColor Cyan
+    $reg = Read-SessionRegistry
+    foreach ($name in $Names) {
+        $s = Get-SessionByName -Reg $reg -Name $name
+        if (-not $s) { Write-Host "  no session '$name' -- skipped" -ForegroundColor DarkYellow; continue }
+        if (-not ($s.worktree -and $s.worktree.branch)) { Write-Host "  session '$name' has no worktree/branch -- skipped" -ForegroundColor DarkYellow; continue }
+        $w = $s.worktree
+        if ($w.branch -eq $target) { Write-Host "  session '$name' is on the target branch '$target' -- skipped" -ForegroundColor DarkYellow; continue }
+        if (Test-WorktreeDirty -Dir $w.path) { Write-Host "  '$name' has uncommitted changes at $($w.path) -- commit first, skipped" -ForegroundColor Red; continue }
+        $pf = Invoke-GitCapture -Dir $root -GitArgs @('merge-tree','--write-tree','--name-only',$target,$w.branch)
+        if (-not $pf.Ok) {
+            Write-Host "  '$name' ($($w.branch)) conflicts with $target -- rebasing to unblock" -ForegroundColor DarkYellow
+            $rb = Invoke-GitCapture -Dir $w.path -GitArgs @('rebase',$target)
+            if ($rb.Ok) { Write-Host "  rebased $($w.branch) onto $target" -ForegroundColor Green }
+            else {
+                $null = Invoke-GitCapture -Dir $w.path -GitArgs @('rebase','--abort')
+                Write-Host "  '$name' still conflicts after rebase -- resolve in $($w.path), re-run" -ForegroundColor Red
+                continue
+            }
+            $pf2 = Invoke-GitCapture -Dir $root -GitArgs @('merge-tree','--write-tree','--name-only',$target,$w.branch)
+            if (-not $pf2.Ok) { Write-Host "  '$name' still conflicts -- skipped" -ForegroundColor Red; continue }
+        }
+        $mg = Invoke-GitCapture -Dir $root -GitArgs @('merge','--no-edit',$w.branch)
+        if ($mg.Ok) { Write-Host "  merged '$name' ($($w.branch)) -> $target" -ForegroundColor Green }
+        else {
+            $null = Invoke-GitCapture -Dir $root -GitArgs @('merge','--abort')
+            Write-Host "  merge of '$name' failed -- skipped" -ForegroundColor Red
+            continue
+        }
+        if ($KeepWorktree) {
+            Write-Host "  kept worktree $($w.path) + branch $($w.branch) (--keep-worktree)" -ForegroundColor Cyan
+        } else {
+            $null = Invoke-GitCapture -Dir $root -GitArgs @('worktree','remove','--force',$w.path)
+            $null = Invoke-GitCapture -Dir $root -GitArgs @('branch','-d',$w.branch)
+            $tmp = [System.Collections.ArrayList]@($reg.sessions)
+            for ($i = 0; $i -lt $tmp.Count; $i++) {
+                if ($tmp[$i].name -eq $name) { Remove-Item -Recurse -Force $tmp[$i].session_dir -ErrorAction SilentlyContinue; $tmp.RemoveAt($i); break }
+            }
+            $reg.sessions = $tmp.ToArray()
+            if ($reg.last_used -eq $name) { $reg.last_used = $null }
+            Write-Host "  cleaned up session '$name' (worktree + branch + transcript)" -ForegroundColor Green
+        }
+        Write-SessionRegistry -Reg $reg
+    }
+    Write-Host '  merge complete' -ForegroundColor Green
+}
+
 function Invoke-OmpSession {
-    # `8sync .` / `8sync . <name>` -- resume/create an omp session in cwd.
+    # `8sync .` session hub -- port of su-code here.rs/session.rs.
+    #   8sync .                          resume the latest session (or omp default)
+    #   8sync . <name>                   create-or-resume a named session
+    #   8sync . new <name> [--worktree]  create a fresh session (--worktree = git worktree)
+    #   8sync . ls  (or --list/--ls/--json)  list this repo's sessions; --all = every repo
+    #   8sync . mv <old> <new>           rename a session
+    #   8sync . rm <name> [--force]      remove a session (--force deletes transcript too)
+    #   8sync . merge <a> <b> ...        land session branches into the current branch
     # Trailing --model/--smol/--slow/--plan/--thinking/etc. pass through to omp.
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
@@ -67,16 +571,46 @@ function Invoke-OmpSession {
         return
     }
     $s = Split-OmpArgs -Rest $Rest
-    $name = if ($s.Positional.Count -gt 0) { $s.Positional[0] } else { $null }
-    if ($name) {
-        $root = Get-HarnessSessionsRoot
-        $dir = Join-Path $root (Join-Path (Get-RepoSlug) ($name -replace '[^A-Za-z0-9._-]', '_'))
-        $null = New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue
-        Write-Host ("  omp session [{0}] -> {1}" -f $name, $dir) -ForegroundColor DarkGray
-        & $omp @($s.Flags + @("--session-dir=$dir"))
+    $worktreeFlag = $s.Flags -contains '--worktree'
+    $forceFlag    = $s.Flags -contains '--force'
+    $keepWtFlag   = $s.Flags -contains '--keep-worktree'
+    $allFlag      = $s.Flags -contains '--all'
+    $listFlag     = $allFlag -or $s.Flags -contains '--list' -or $s.Flags -contains '--ls' -or $s.Flags -contains '--json'
+    $jsonFlag     = $s.Flags -contains '--json'
+    $flags = @($s.Flags | Where-Object { $_ -notin @('--worktree','--force','--keep-worktree','--list','--ls','--json','--all') })
+    $pos = @($s.Positional)
+
+    $verb = if ($pos.Count -gt 0) { $pos[0] } else { '' }
+
+    # Reserved verbs can't be session names.
+    switch ($verb) {
+        'ls'    { Show-SessionList -Json:$jsonFlag -All:$allFlag; return }
+        'list'  { Show-SessionList -Json:$jsonFlag -All:$allFlag; return }
+        'rm'    {
+            if ($pos.Count -lt 2) { Write-Host '  usage: 8sync . rm <name> [--force]' -ForegroundColor Yellow; return }
+            Remove-Session -Name $pos[1] -Force:$forceFlag; return
+        }
+        'mv'    {
+            if ($pos.Count -lt 3) { Write-Host '  usage: 8sync . mv <old> <new>' -ForegroundColor Yellow; return }
+            Rename-Session -Old $pos[1] -New $pos[2]; return
+        }
+        'merge' {
+            $names = if ($pos.Count -gt 1) { $pos[1..($pos.Count-1)] } else { @() }
+            Merge-SessionBranches -Names $names -KeepWorktree:$keepWtFlag; return
+        }
+        'new'   {
+            if ($pos.Count -lt 2) { Write-Host '  usage: 8sync . new <name> [--worktree]' -ForegroundColor Yellow; return }
+            New-NamedSession -Name $pos[1] -Worktree:$worktreeFlag -Flags $flags; return
+        }
+        default {}
+    }
+
+    if ($listFlag) { Show-SessionList -Json:$jsonFlag -All:$allFlag; return }
+
+    if ($verb -eq '') {
+        Resume-LatestSession -Flags $flags
     } else {
-        Write-Host '  omp: resuming latest session in this repo...' -ForegroundColor DarkGray
-        & $omp @($s.Flags + @('--continue'))
+        Resume-NamedSession -Name $verb -Flags $flags
     }
 }
 
