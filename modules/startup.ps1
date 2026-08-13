@@ -113,8 +113,8 @@ function Set-ToolAliases {
 
 
 function Register-8SyncAlias {
-    # 8sync command dispatcher + aliases + tab completion.
-    # Extracted from Set-ToolAliases so it can be tested/reloaded independently.
+    # `ft` command dispatcher + alias + tab completion for flash-term (WezTerm config).
+    # The AI harness lives in the separate `8sync` (su-code) binary -- not here.
 
     function global:Invoke-8Sync {
         param(
@@ -129,14 +129,14 @@ function Register-8SyncAlias {
             'status' { Show-8SyncStatus }
             'reload' {
                 # Re-dot-source all modules + re-register dispatcher + completer in current session.
-                Write-Host '  Reloading 8sync modules...' -ForegroundColor DarkGray
+                Write-Host '  Reloading ft modules...' -ForegroundColor DarkGray
                 $bootstrapDir = Split-Path $PSCommandPath -ErrorAction SilentlyContinue
                 if (-not $bootstrapDir) { $bootstrapDir = $PSScriptRoot }
                 # PSScriptRoot inside the dispatcher closure is the startup.ps1 dir (modules/)
                 $modulesDir = $bootstrapDir
                 $moduleFiles = @(
-                    'core.ps1','agents\00-shared.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
-                    'clean.ps1','theme.ps1','gpu.ps1','gguf.ps1','up.ps1','autoupdate.ps1','skill.ps1','harness.ps1','setup.ps1'
+                    'core.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
+                    'clean.ps1','theme.ps1','gpu.ps1','gguf.ps1','up.ps1','autoupdate.ps1','setup.ps1','dev.ps1','profile.ps1'
                 )
                 $ok = 0; $fail = 0
                 foreach ($f in $moduleFiles) {
@@ -149,7 +149,7 @@ function Register-8SyncAlias {
                 # Re-register dispatcher and completer with updated functions
                 Register-8SyncAlias
                 Write-Host ("  Reloaded {0} modules{1}" -f $ok, $(if ($fail) { ", $fail failed" } else { '' })) -ForegroundColor Green
-                Write-Host '  All 8sync functions updated in current session.' -ForegroundColor DarkGray
+                Write-Host '  All ft functions updated in current session.' -ForegroundColor DarkGray
                 Write-Host ''
             }
             'sync'   {
@@ -157,8 +157,8 @@ function Register-8SyncAlias {
                 if ($Rest -contains '--help' -or $Rest -contains 'help' -or $Rest -contains '-h') {
                     Write-Host ''
                     Write-HintSection 'SYNC -- install and update managed tools via Scoop'
-                    Write-HintRow '8sync sync'         'Install missing + update all managed tools'
-                    Write-HintRow '8sync sync --check' 'Dry-run: show missing tools + available updates, no changes'
+                    Write-HintRow 'ft sync'         'Install missing + update all managed tools'
+                    Write-HintRow 'ft sync --check' 'Dry-run: show missing tools + available updates, no changes'
                     Write-Host ''
                 } else {
                     Invoke-ToolSync -Check:$checkFlag
@@ -171,23 +171,16 @@ function Register-8SyncAlias {
             'theme'  { Invoke-ThemeCommand -Rest $Rest }
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
             'setup'    { Invoke-SetupCommand -Rest $Rest }
+            'dev'      { Invoke-DevCommand -Rest $Rest }
             'autoupdate' { Invoke-AutoupdateCommand -Rest $Rest }
-            'harness'  { Invoke-HarnessCommand -Rest $Rest }
-            'skill'    { Invoke-SkillCommand -Rest $Rest }
-            '.'        { Invoke-OmpSession -Rest $Rest }
-            'ai'       { Invoke-AiCommand -Rest $Rest }
-            'find'     { Invoke-FindCommand -Rest $Rest }
-            'note'     { Invoke-NoteCommand -Rest $Rest }
-            'run'      { Invoke-RunCommand -Rest $Rest }
-            'ship'     { Invoke-ShipCommand -Rest $Rest }
-            'doctor'   { Invoke-DoctorCommand }
             'profile'  { Invoke-ProfileCommand -Rest $Rest }
             default  { Show-8SyncHint }
         }
     }
 
-    Set-Alias -Name '/8sync' -Value Invoke-8Sync -Scope Global -Force
-    Set-Alias -Name '8sync'  -Value Invoke-8Sync -Scope Global -Force
+    # `ft` is the flash-term command. `8sync`/`/8sync` are NOT aliased here -- that
+    # name belongs to the su-code AI binary, which must not be shadowed.
+    Set-Alias -Name 'ft' -Value Invoke-8Sync -Scope Global -Force
 
     Register-8SyncCompleter
 }
@@ -244,7 +237,7 @@ function Ensure-NerdFont {
     $script:NerdFontChecked = $true
 
     if (Test-NerdFontInstalled) { return }
-    Write-Host '[8sync] JetBrainsMono Nerd Font not found.' -ForegroundColor DarkYellow
+    Write-Host '[ft] JetBrainsMono Nerd Font not found.' -ForegroundColor DarkYellow
     Write-Host '  To install: scoop bucket add nerd-fonts && scoop install JetBrainsMono-NF' -ForegroundColor DarkGray
 }
 
@@ -263,8 +256,8 @@ function Start-WezTermShell {
 
     $psVer = $PSVersionTable.PSVersion
     if ($psVer.Major -lt 5 -or ($psVer.Major -eq 5 -and $psVer.Minor -lt 1)) {
-        Write-Warning ('[8sync] PowerShell {0}.{1} detected. Minimum supported: 5.1. Some features may not work.' -f $psVer.Major, $psVer.Minor)
-        Write-Warning '[8sync] Install pwsh 7+: scoop install powershell  or  https://aka.ms/powershell'
+        Write-Warning ('[ft] PowerShell {0}.{1} detected. Minimum supported: 5.1. Some features may not work.' -f $psVer.Major, $psVer.Minor)
+        Write-Warning '[ft] Install pwsh 7+: scoop install powershell  or  https://aka.ms/powershell'
     }
     & $markPhase 'version-check'
 
@@ -314,7 +307,7 @@ function Start-WezTermShell {
     & $markPhase 'missing-cache'
 
     if ($missingPackages.Count -gt 0) {
-        Write-Host ('[8sync] Missing tools: {0}. Run "8sync sync" to install.' -f ($missingPackages -join ', ')) -ForegroundColor DarkYellow
+        Write-Host ('[ft] Missing tools: {0}. Run "ft sync" to install.' -f ($missingPackages -join ', ')) -ForegroundColor DarkYellow
     }
 
     $boot.Stop()
@@ -322,6 +315,6 @@ function Start-WezTermShell {
     Show-AutoupdateNotice
 
     if ($env:WEZTERM_BOOT_TRACE -eq '1') {
-        Write-Host ('[8sync] startup {0}ms ({1})' -f [math]::Round($boot.Elapsed.TotalMilliseconds, 1), $startupMode) -ForegroundColor DarkGray
+        Write-Host ('[ft] startup {0}ms ({1})' -f [math]::Round($boot.Elapsed.TotalMilliseconds, 1), $startupMode) -ForegroundColor DarkGray
     }
 }

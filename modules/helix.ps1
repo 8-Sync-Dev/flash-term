@@ -162,7 +162,7 @@ function Invoke-HxTheme {
     }
 
     if (-not (Test-CommandExists 'fzf')) {
-        Write-Host 'fzf is missing. Run "8sync sync" or use "8sync hx theme <name>".' -ForegroundColor DarkYellow
+        Write-Host 'fzf is missing. Run "ft sync" or use "ft hx theme <name>".' -ForegroundColor DarkYellow
         return
     }
 
@@ -235,10 +235,10 @@ function Invoke-HxBg {
     if (-not $Style -or $Style -eq 'help') {
         Write-Host ''
         Write-HintSection 'HX BG -- set Helix background color'
-        Write-HintRow '8sync hx bg black'        'Pure black (#000000) background'
-        Write-HintRow '8sync hx bg transparent'  'Transparent (terminal bg shows through)'
-        Write-HintRow '8sync hx bg <#hex>'       'Custom hex color e.g. 8sync hx bg 0a0a0a'
-        Write-HintRow '8sync hx bg reset'         'Remove override, restore original theme'
+        Write-HintRow 'ft hx bg black'        'Pure black (#000000) background'
+        Write-HintRow 'ft hx bg transparent'  'Transparent (terminal bg shows through)'
+        Write-HintRow 'ft hx bg <#hex>'       'Custom hex color e.g. ft hx bg 0a0a0a'
+        Write-HintRow 'ft hx bg reset'         'Remove override, restore original theme'
         Write-Host ''
         Write-Host '  Current theme:' -NoNewline -ForegroundColor DarkGray
         Write-Host (' ' + (Get-HelixThemeValue)) -ForegroundColor Cyan
@@ -264,7 +264,7 @@ function Invoke-HxOpacity {
 
     if (-not $Value) {
         Write-Host ("Current overlay opacity: {0:F2}" -f $current) -ForegroundColor Cyan
-        Write-Host 'Usage: 8sync hx opacity <+|-|0.0-1.0>' -ForegroundColor DarkGray
+        Write-Host 'Usage: ft hx opacity <+|-|0.0-1.0>' -ForegroundColor DarkGray
         return
     }
 
@@ -312,7 +312,7 @@ function Invoke-HxLang {
     }
 
     if (-not (Test-CommandExists 'fzf')) {
-        Write-Host 'fzf is missing. Run "8sync sync" or use "8sync hx lang <name>".' -ForegroundColor DarkYellow
+        Write-Host 'fzf is missing. Run "ft sync" or use "ft hx lang <name>".' -ForegroundColor DarkYellow
         Write-Host ("Available: {0}" -f ($script:LangServers.Keys -join ', ')) -ForegroundColor DarkGray
         return
     }
@@ -331,25 +331,25 @@ function Invoke-HxLang {
 function Show-HxHelp {
     Write-Host ''
     Write-HintSection 'HELIX EDITOR'
-    Write-HintRow '8sync hx help'           'Show this help'
-    Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
-    Write-HintRow '8sync hx health'         'Parse hx --health: show LSP status, suggest missing'
-    Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
-    Write-HintRow '8sync hx opacity <val>'  '+  -  or 0.0-1.0 -- adjust background transparency'
-    Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
+    Write-HintRow 'ft hx help'           'Show this help'
+    Write-HintRow 'ft hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
+    Write-HintRow 'ft hx health'         'Parse hx --health: show LSP status, suggest missing'
+    Write-HintRow 'ft hx wrap'           'Toggle soft word-wrap on/off'
+    Write-HintRow 'ft hx opacity <val>'  '+  -  or 0.0-1.0 -- adjust background transparency'
+    Write-HintRow 'ft hx theme [name]'   'Pick Helix color theme (fzf picker)'
     Write-Host ''
 }
 
 function Invoke-HxHealth {
     if (-not (Test-CommandExists 'hx')) {
         Write-Host ''
-        Write-Host '  Helix (hx) not found. Run: 8sync sync' -ForegroundColor DarkYellow
+        Write-Host '  Helix (hx) not found. Run: ft sync' -ForegroundColor DarkYellow
         Write-Host ''
         return
     }
 
     Write-Host ''
-    Write-Host '  8sync hx health  LSP server status' -ForegroundColor Cyan
+    Write-Host '  ft hx health  LSP server status' -ForegroundColor Cyan
     Write-Host ''
 
     try {
@@ -435,7 +435,7 @@ function Invoke-HxHealth {
         Write-Host '  PARTIAL (some tools missing)' -ForegroundColor Yellow
         foreach ($l in $partial) {
             Write-Host ('    ~  {0}' -f $l) -ForegroundColor Yellow
-            Write-Host ('       Run: 8sync hx lang {0}' -f $l) -ForegroundColor DarkGray
+            Write-Host ('       Run: ft hx lang {0}' -f $l) -ForegroundColor DarkGray
         }
         Write-Host ''
     }
@@ -444,7 +444,7 @@ function Invoke-HxHealth {
         Write-Host '  MISSING' -ForegroundColor Red
         foreach ($l in $missing) {
             Write-Host ('    ✘  {0}' -f $l) -ForegroundColor Red
-            Write-Host ('       Run: 8sync hx lang {0}' -f $l) -ForegroundColor DarkGray
+            Write-Host ('       Run: ft hx lang {0}' -f $l) -ForegroundColor DarkGray
         }
         Write-Host ''
     }

@@ -1,12 +1,12 @@
 ﻿function Show-ThemeHelp {
     Write-Host ''
     Write-HintSection 'WEZTERM GLASS THEME'
-    Write-HintRow '8sync theme status'                  'Show current style, scene, and adaptive hint'
-    Write-HintRow '8sync theme list'                    'List available styles and scenes'
-    Write-HintRow '8sync theme <style> [scene]'         'Set style quickly, optional scene'
-    Write-HintRow '8sync theme style <name>'            'Set style only'
-    Write-HintRow '8sync theme scene <name>'            'Set scene only'
-    Write-HintRow '8sync theme help'                    'Show this help'
+    Write-HintRow 'ft theme status'                  'Show current style, scene, and adaptive hint'
+    Write-HintRow 'ft theme list'                    'List available styles and scenes'
+    Write-HintRow 'ft theme <style> [scene]'         'Set style quickly, optional scene'
+    Write-HintRow 'ft theme style <name>'            'Set style only'
+    Write-HintRow 'ft theme scene <name>'            'Set scene only'
+    Write-HintRow 'ft theme help'                    'Show this help'
     Write-Host ''
 }
 
@@ -53,14 +53,14 @@ function Invoke-ThemeCommand {
     switch ($sub) {
         'style' {
             if ($Rest.Count -lt 2) {
-                Write-Host ('Usage: 8sync theme style <{0}>' -f ($script:KnownGlassStyles -join '|')) -ForegroundColor DarkYellow
+                Write-Host ('Usage: ft theme style <{0}>' -f ($script:KnownGlassStyles -join '|')) -ForegroundColor DarkYellow
                 return
             }
             $targetStyle = $Rest[1].ToLowerInvariant()
         }
         'scene' {
             if ($Rest.Count -lt 2) {
-                Write-Host ('Usage: 8sync theme scene <{0}>' -f ($script:KnownGlassScenes -join '|')) -ForegroundColor DarkYellow
+                Write-Host ('Usage: ft theme scene <{0}>' -f ($script:KnownGlassScenes -join '|')) -ForegroundColor DarkYellow
                 return
             }
             $targetScene = $Rest[1].ToLowerInvariant()

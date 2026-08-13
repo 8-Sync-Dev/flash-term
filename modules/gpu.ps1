@@ -53,11 +53,11 @@ function Show-GpuStatus {
 function Show-GpuHelp {
     Write-Host ''
     Write-HintSection 'GPU -- reduce render lag with adaptive policy'
-    Write-HintRow '8sync gpu status' 'Show current GPU target and active profile'
-    Write-HintRow '8sync gpu 10' 'Set minimum GPU target to 10% (recommended for smoother rendering)'
-    Write-HintRow '8sync gpu <0-100>' 'Set custom minimum GPU target percent'
-    Write-HintRow '8sync gpu auto' ('Reset target to default ({0}%)' -f $script:GpuMinPercentDefault)
-    Write-HintRow '8sync gpu off' 'Set target to 0% (balanced power mode)'
+    Write-HintRow 'ft gpu status' 'Show current GPU target and active profile'
+    Write-HintRow 'ft gpu 10' 'Set minimum GPU target to 10% (recommended for smoother rendering)'
+    Write-HintRow 'ft gpu <0-100>' 'Set custom minimum GPU target percent'
+    Write-HintRow 'ft gpu auto' ('Reset target to default ({0}%)' -f $script:GpuMinPercentDefault)
+    Write-HintRow 'ft gpu off' 'Set target to 0% (balanced power mode)'
     Write-Host ''
 }
 
@@ -68,21 +68,21 @@ function Set-GpuMinPercent {
     try {
         Write-CurrentGpuState -MinPercent $safePercent
     } catch {
-        Write-Warning ('[8sync] Failed to write GPU state: {0}' -f $_)
+        Write-Warning ('[ft] Failed to write GPU state: {0}' -f $_)
         return
     }
 
-    Write-Host ('[8sync] GPU minimum target set to {0}%' -f $safePercent) -ForegroundColor Green
+    Write-Host ('[ft] GPU minimum target set to {0}%' -f $safePercent) -ForegroundColor Green
     if ($safePercent -ge 10) {
-        Write-Host '[8sync] Applying high-performance GPU bias to reduce UI lag.' -ForegroundColor Yellow
+        Write-Host '[ft] Applying high-performance GPU bias to reduce UI lag.' -ForegroundColor Yellow
     } else {
-        Write-Host '[8sync] Applying balanced GPU policy for lower power usage.' -ForegroundColor DarkGray
+        Write-Host '[ft] Applying balanced GPU policy for lower power usage.' -ForegroundColor DarkGray
     }
 
     try {
         Try-ReloadWezTerm
     } catch {
-        Write-Warning ('[8sync] GPU state saved, but WezTerm reload failed: {0}' -f $_)
+        Write-Warning ('[ft] GPU state saved, but WezTerm reload failed: {0}' -f $_)
     }
 }
 
@@ -118,12 +118,12 @@ function Invoke-GpuCommand {
     $parsed = 0
     if ([int]::TryParse($sub, [ref]$parsed)) {
         if ($parsed -lt 0 -or $parsed -gt 100) {
-            Write-Warning '[8sync] gpu value must be between 0 and 100.'
+            Write-Warning '[ft] gpu value must be between 0 and 100.'
             return
         }
         Set-GpuMinPercent -MinPercent $parsed
         return
     }
 
-    Write-Warning '[8sync] Unknown gpu option. Use: 8sync gpu help'
+    Write-Warning '[ft] Unknown gpu option. Use: ft gpu help'
 }

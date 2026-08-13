@@ -25,6 +25,9 @@ $script:ToolPackages = [ordered]@{
     procs     = 'procs'
     btm       = 'bottom'
     less      = 'less'
+    jq        = 'jq'
+    yq        = 'yq'
+    make      = 'make'
 }
 
 $script:StateDir = Join-Path $PSScriptRoot '.state'
@@ -86,7 +89,6 @@ $script:LangServers = [ordered]@{
 $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 
 . (Join-Path $script:ModulesDir 'core.ps1')
-. (Join-Path $script:ModulesDir 'agents\00-shared.ps1')
 . (Join-Path $script:ModulesDir 'sync.ps1')
 . (Join-Path $script:ModulesDir 'shell.ps1')
 . (Join-Path $script:ModulesDir 'bg.ps1')
@@ -97,9 +99,8 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'gguf.ps1')
 . (Join-Path $script:ModulesDir 'up.ps1')
 . (Join-Path $script:ModulesDir 'autoupdate.ps1')
-. (Join-Path $script:ModulesDir 'skill.ps1')
-. (Join-Path $script:ModulesDir 'harness.ps1')
 . (Join-Path $script:ModulesDir 'setup.ps1')
+. (Join-Path $script:ModulesDir 'dev.ps1')
 . (Join-Path $script:ModulesDir 'startup.ps1')
 . (Join-Path $script:ModulesDir 'profile.ps1')
 

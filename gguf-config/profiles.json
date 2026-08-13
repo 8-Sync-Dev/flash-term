@@ -1,6 +1,6 @@
 {
-  "_comment": "Saved server profiles — written by '8sync gguf save' or edited manually.",
-  "_hint": "Each key is a profile name usable with '8sync gguf serve --profile <name>'.",
+  "_comment": "Saved server profiles — written by 'ft gguf save' or edited manually.",
+  "_hint": "Each key is a profile name usable with 'ft gguf serve --profile <name>'.",
   "profiles": {
     "qwen3-local": {
       "description": "Qwen3.5-4B Q8 on local RTX — fast chat, code tasks",

@@ -50,13 +50,15 @@ Leader key: **`Ctrl+a`** (900ms timeout). WezTerm config in `keys.lua`.
 | Reload config | `Leader → r` |
 | Tab/workspace switcher | `Leader → s` |
 
-## Leader — AI harness (omp)
+## Leader — ft commands
+
+These leader shortcuts type a **`ft`** command into the active pane (tmux-style prefix trigger).
 
 | Action | Binding | Runs |
 |---|---|---|
-| Resume latest omp session | `Leader → .` | `8sync .` |
-| omp one-shot prompt (type your prompt, then Enter) | `Leader → o` | `8sync ai ` |
-| Harness readiness | `Leader → h` | `8sync harness status` |
-| Skill registry list | `Leader → k` | `8sync skill list` |
-| Update-all preview | `Leader → u` | `8sync up --check` |
-| Background wallpaper picker | `Leader → b` | `8sync bg pick` |
+| Update-all dry-run preview | `Leader → u` | `ft up --check` |
+| Background wallpaper picker | `Leader → b` | `ft bg pick` |
+
+> The full `ft` command surface lives in `ft help`. AI coding sessions (`8sync .`, `8sync ai`, …)
+> are provided by the separate [su-code](https://github.com/8-Sync-Dev/su-code) project, installed by
+> `ft setup` — they are not part of flash-term.

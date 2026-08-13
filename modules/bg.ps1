@@ -185,18 +185,18 @@ function Search-Safebooru {
 function Show-BgHelp {
     Write-Host ''
     Write-Host 'Background commands:' -ForegroundColor Yellow
-    Write-Host '  8sync bg help'
-    Write-Host '  8sync bg search <keywords>                    Search wallhaven (default)'
-    Write-Host '  8sync bg search --yandere <keywords>          Search yande.re (4K+ anime)'
-    Write-Host '  8sync bg search --safebooru <keywords>        Search safebooru (SFW anime)'
-    Write-Host '  8sync bg search --all <keywords>              Search all sources'
-    Write-Host '  8sync bg pick                                 fzf pick from cache'
-    Write-Host '  8sync bg set <id|path|url>'
-    Write-Host '  8sync bg open <id>'
-    Write-Host ('  8sync bg rotate [on [N] | off | now | time <min> | status]  (default: {0} min)' -f $script:BgRotateDefaultMinutes)
-    Write-Host '  8sync bg list                                 List images with preview'
-    Write-Host '  8sync bg clear cache                          Clear search cache'
-    Write-Host '  8sync bg remove <filename|id|all>             Remove downloaded images'
+    Write-Host '  ft bg help'
+    Write-Host '  ft bg search <keywords>                    Search wallhaven (default)'
+    Write-Host '  ft bg search --yandere <keywords>          Search yande.re (4K+ anime)'
+    Write-Host '  ft bg search --safebooru <keywords>        Search safebooru (SFW anime)'
+    Write-Host '  ft bg search --all <keywords>              Search all sources'
+    Write-Host '  ft bg pick                                 fzf pick from cache'
+    Write-Host '  ft bg set <id|path|url>'
+    Write-Host '  ft bg open <id>'
+    Write-Host ('  ft bg rotate [on [N] | off | now | time <min> | status]  (default: {0} min)' -f $script:BgRotateDefaultMinutes)
+    Write-Host '  ft bg list                                 List images with preview'
+    Write-Host '  ft bg clear cache                          Clear search cache'
+    Write-Host '  ft bg remove <filename|id|all>             Remove downloaded images'
     Write-Host ''
     Write-Host '  Sources: wallhaven.cc (default) | yande.re (4K+ anime) | safebooru (SFW)' -ForegroundColor DarkGray
     Write-Host '  Rotate picks random images from bg/ folder.' -ForegroundColor DarkGray
@@ -409,7 +409,7 @@ function Invoke-BgSearch {
     }
 
     if (-not $cleanKeywords.Trim()) {
-        Write-Host 'Usage: 8sync bg search [--yandere|--safebooru|--all] <keywords>' -ForegroundColor DarkYellow
+        Write-Host 'Usage: ft bg search [--yandere|--safebooru|--all] <keywords>' -ForegroundColor DarkYellow
         return
     }
 
@@ -455,12 +455,12 @@ function Invoke-BgSearch {
 function Invoke-BgPick {
     $cache = Read-BgCache
     if (-not $cache -or $cache.Count -eq 0) {
-        Write-Host '  No cached results. Run "8sync bg search <keywords>" first.' -ForegroundColor DarkYellow
+        Write-Host '  No cached results. Run "ft bg search <keywords>" first.' -ForegroundColor DarkYellow
         return
     }
 
     if (-not (Test-CommandExists 'fzf')) {
-        Write-Host '  fzf is missing. Run "8sync sync" or use "8sync bg set <id>".' -ForegroundColor DarkYellow
+        Write-Host '  fzf is missing. Run "ft sync" or use "ft bg set <id>".' -ForegroundColor DarkYellow
         return
     }
 
@@ -563,6 +563,21 @@ function Invoke-BgSet {
         return
     }
 
+    # Persist the chosen wallpaper into the repo as the committed default
+    # (assets/default-bg.<ext>), so it ships with the config and survives clones.
+    $repoRoot  = Split-Path $script:BackgroundDir -Parent
+    $assetsDir = Join-Path $repoRoot 'assets'
+    if (-not (Test-Path $assetsDir)) { $null = New-Item -ItemType Directory -Force -Path $assetsDir }
+    $ext = if ($finalPath -match '\.(\w{2,4})$') { $Matches[1].ToLower() } else { 'jpg' }
+    if ($ext -notin @('jpg','jpeg','png','webp','gif','bmp')) { $ext = 'jpg' }
+    $defaultBg = Join-Path $assetsDir ("default-bg.{0}" -f $ext)
+    try {
+        Copy-Item -Path $finalPath -Destination $defaultBg -Force -ErrorAction Stop
+        $finalPath = $defaultBg
+        Write-Host ("  Saved as repo default: assets/default-bg.{0}" -f $ext) -ForegroundColor DarkGray
+    } catch {
+        Write-Host ("  [warn] could not persist to assets/: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
     Write-CurrentBgLua -Path $finalPath
     Write-Host ('  Background set: {0}' -f (Split-Path $finalPath -Leaf)) -ForegroundColor Green
     $styleState = Write-CurrentStyleLua -BgHint $bgHint
@@ -626,7 +641,7 @@ function Invoke-BgRotateNow {
     }
 
     if ($allFiles.Count -eq 0) {
-        Write-Host '  No images in bg/ folder. Run "8sync bg search <keywords>" + "8sync bg set <id>" first.' -ForegroundColor DarkYellow
+        Write-Host '  No images in bg/ folder. Run "ft bg search <keywords>" + "ft bg set <id>" first.' -ForegroundColor DarkYellow
         return
     }
 
@@ -717,7 +732,7 @@ function Invoke-BgRotateCommand {
             if ($Rest.Count -lt 2) {
                 $state = Read-BgRotateState
                 Write-Host ('  Current interval: {0} min' -f $state.intervalMinutes) -ForegroundColor Cyan
-                Write-Host '  Usage: 8sync bg rotate time <minutes>' -ForegroundColor DarkGray
+                Write-Host '  Usage: ft bg rotate time <minutes>' -ForegroundColor DarkGray
                 return
             }
             $parsed = 0
@@ -726,7 +741,7 @@ function Invoke-BgRotateCommand {
                 Write-BgRotateState -Enabled $state.enabled -IntervalMinutes $parsed
                 Write-Host ('  Rotate interval set to {0} min' -f $parsed) -ForegroundColor Green
             } else {
-                Write-Host '  Invalid minutes. Usage: 8sync bg rotate time <minutes>' -ForegroundColor DarkYellow
+                Write-Host '  Invalid minutes. Usage: ft bg rotate time <minutes>' -ForegroundColor DarkYellow
             }
         }
         'status' {
@@ -741,7 +756,7 @@ function Invoke-BgRotateCommand {
             Write-Host ''
         }
         default {
-            Write-Host '  Usage: 8sync bg rotate [on [N] | off | now | time <min> | status]' -ForegroundColor DarkYellow
+            Write-Host '  Usage: ft bg rotate [on [N] | off | now | time <min> | status]' -ForegroundColor DarkYellow
             Write-Host ('  Default interval: {0} min' -f $script:BgRotateDefaultMinutes) -ForegroundColor DarkGray
         }
     }
@@ -822,7 +837,7 @@ function Invoke-BgList {
     }
     Write-Host ''
     if (-not $showPreview -and $hasImgcat) {
-        Write-Host '  Tip: 8sync bg list --preview   to show inline image thumbnails' -ForegroundColor DarkGray
+        Write-Host '  Tip: ft bg list --preview   to show inline image thumbnails' -ForegroundColor DarkGray
     }
     Write-Host '  * = currently active wallpaper' -ForegroundColor DarkGray
     Write-Host ''
@@ -834,11 +849,11 @@ function Invoke-BgRemove {
     Ensure-BackgroundDir
 
     if (-not $Rest -or $Rest.Count -eq 0) {
-        Write-Host '  Usage: 8sync bg remove <filename|id|all>' -ForegroundColor DarkYellow
+        Write-Host '  Usage: ft bg remove <filename|id|all>' -ForegroundColor DarkYellow
         Write-Host '  Examples:' -ForegroundColor DarkGray
-        Write-Host '    8sync bg remove wallhaven-abc123.jpg' -ForegroundColor DarkGray
-        Write-Host '    8sync bg remove abc123' -ForegroundColor DarkGray
-        Write-Host '    8sync bg remove all' -ForegroundColor DarkGray
+        Write-Host '    ft bg remove wallhaven-abc123.jpg' -ForegroundColor DarkGray
+        Write-Host '    ft bg remove abc123' -ForegroundColor DarkGray
+        Write-Host '    ft bg remove all' -ForegroundColor DarkGray
         return
     }
 
@@ -904,7 +919,7 @@ function Invoke-BgCommand {
         'help'   { Show-BgHelp }
         'search' {
             if ($Rest.Count -lt 2) {
-                Write-Host 'Usage: 8sync bg search <keywords>' -ForegroundColor DarkYellow
+                Write-Host 'Usage: ft bg search <keywords>' -ForegroundColor DarkYellow
                 return
             }
             $keywords = ($Rest | Select-Object -Skip 1) -join ' '
@@ -913,7 +928,7 @@ function Invoke-BgCommand {
         'pick'   { Invoke-BgPick }
         'set'    {
             if ($Rest.Count -lt 2) {
-                Write-Host 'Usage: 8sync bg set <id|path|url>' -ForegroundColor DarkYellow
+                Write-Host 'Usage: ft bg set <id|path|url>' -ForegroundColor DarkYellow
                 return
             }
             $value = ($Rest | Select-Object -Skip 1) -join ' '
@@ -921,7 +936,7 @@ function Invoke-BgCommand {
         }
         'open'   {
             if ($Rest.Count -lt 2) {
-                Write-Host 'Usage: 8sync bg open <id>' -ForegroundColor DarkYellow
+                Write-Host 'Usage: ft bg open <id>' -ForegroundColor DarkYellow
                 return
             }
             Invoke-BgOpen -Id $Rest[1]
@@ -931,7 +946,7 @@ function Invoke-BgCommand {
             if ($Rest.Count -ge 2 -and $Rest[1].ToLowerInvariant() -eq 'cache') {
                 Invoke-BgClearCache
             } else {
-                Write-Host 'Usage: 8sync bg clear cache' -ForegroundColor DarkYellow
+                Write-Host 'Usage: ft bg clear cache' -ForegroundColor DarkYellow
             }
         }
         'list'   { Invoke-BgList -Rest ($Rest | Select-Object -Skip 1) }

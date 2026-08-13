@@ -159,7 +159,7 @@ function Switch-TerminalProfile {
     if ($Name -ne 'default') {
         $profileDir = Get-ProfileDir -Name $Name
         if (-not (Test-Path $profileDir)) {
-            Write-Host "  Profile '$Name' not found. Use '8sync profile list' to see available profiles." -ForegroundColor Red
+            Write-Host "  Profile '$Name' not found. Use 'ft profile list' to see available profiles." -ForegroundColor Red
             return
         }
     }
@@ -232,7 +232,7 @@ function Open-TerminalProfile {
     if ($Name -ne 'default') {
         $profileDir = Get-ProfileDir -Name $Name
         if (-not (Test-Path $profileDir)) {
-            Write-Host "  Profile '$Name' not found. Use '8sync profile list' to see available profiles." -ForegroundColor Red
+            Write-Host "  Profile '$Name' not found. Use 'ft profile list' to see available profiles." -ForegroundColor Red
             return
         }
     }
@@ -290,13 +290,13 @@ function Open-TerminalProfile {
 function Show-ProfileHelp {
     Write-Host ''
     Write-HintSection 'PROFILE -- Chrome-like isolated terminal profiles'
-    Write-HintRow '8sync profile list'              'List all profiles (* = active)'
-    Write-HintRow '8sync profile create <name>'     'Create new empty profile'
-    Write-HintRow '8sync profile clone <src> <dst>'  'Clone profile with all settings'
-    Write-HintRow '8sync profile switch <name>'     'Switch current tab to profile (CLI/state only)'
-    Write-HintRow '8sync profile open <name>'       'Open new WezTerm window with profile (full isolation)'
-    Write-HintRow '8sync profile delete <name>'     'Delete a profile (cannot delete active)'
-    Write-HintRow '8sync profile help'              'Show this help'
+    Write-HintRow 'ft profile list'              'List all profiles (* = active)'
+    Write-HintRow 'ft profile create <name>'     'Create new empty profile'
+    Write-HintRow 'ft profile clone <src> <dst>'  'Clone profile with all settings'
+    Write-HintRow 'ft profile switch <name>'     'Switch current tab to profile (CLI/state only)'
+    Write-HintRow 'ft profile open <name>'       'Open new WezTerm window with profile (full isolation)'
+    Write-HintRow 'ft profile delete <name>'     'Delete a profile (cannot delete active)'
+    Write-HintRow 'ft profile help'              'Show this help'
     Write-Host ''
     Write-Host '  switch vs open:' -ForegroundColor Cyan
     Write-Host '    switch  Changes CLI login + state for current tab only.' -ForegroundColor DarkGray
@@ -326,35 +326,35 @@ function Invoke-ProfileCommand {
         'list'   { Get-TerminalProfiles }
         'create' {
             if ($args2.Count -lt 1) {
-                Write-Host '  Usage: 8sync profile create <name>' -ForegroundColor Yellow
+                Write-Host '  Usage: ft profile create <name>' -ForegroundColor Yellow
                 return
             }
             New-TerminalProfile -Name $args2[0]
         }
         'clone' {
             if ($args2.Count -lt 2) {
-                Write-Host '  Usage: 8sync profile clone <source> <destination>' -ForegroundColor Yellow
+                Write-Host '  Usage: ft profile clone <source> <destination>' -ForegroundColor Yellow
                 return
             }
             New-TerminalProfile -Name $args2[1] -CloneFrom $args2[0]
         }
         'switch' {
             if ($args2.Count -lt 1) {
-                Write-Host '  Usage: 8sync profile switch <name>' -ForegroundColor Yellow
+                Write-Host '  Usage: ft profile switch <name>' -ForegroundColor Yellow
                 return
             }
             Switch-TerminalProfile -Name $args2[0]
         }
         'open' {
             if ($args2.Count -lt 1) {
-                Write-Host '  Usage: 8sync profile open <name>' -ForegroundColor Yellow
+                Write-Host '  Usage: ft profile open <name>' -ForegroundColor Yellow
                 return
             }
             Open-TerminalProfile -Name $args2[0]
         }
         'delete' {
             if ($args2.Count -lt 1) {
-                Write-Host '  Usage: 8sync profile delete <name>' -ForegroundColor Yellow
+                Write-Host '  Usage: ft profile delete <name>' -ForegroundColor Yellow
                 return
             }
             Remove-TerminalProfile -Name $args2[0]

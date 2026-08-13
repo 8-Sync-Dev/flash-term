@@ -116,11 +116,11 @@ if (-not (Test-Path (Join-Path $target 'wezterm.lua'))) {
     exit 1
 }
 
-# ── 4. full bootstrap (8sync setup) unless skipped/update-only ─────────────
+# ── 4. full bootstrap (ft setup) unless skipped/update-only ─────────────
 if (-not $NoSetup -and -not $Update) {
     Write-Host ''
-    Write-Host '  == Full bootstrap: 8sync setup ==' -ForegroundColor Magenta
-    Write-Host '  (PATH + Scoop + WezTerm + tools + harness + omp subagents)' -ForegroundColor DarkGray
+    Write-Host '  == Full bootstrap: ft setup ==' -ForegroundColor Magenta
+    Write-Host '  (PATH + Scoop + WezTerm + tools + dev runtimes + su-code AI)' -ForegroundColor DarkGray
     $env:PATH = "$env:windir\System32;$env:windir;$target;$env:PATH"
     & powershell -NoProfile -ExecutionPolicy Bypass -Command ". (Join-Path '$target' 'wezterm-bootstrap.ps1') -Task Status 2>`$null; Invoke-SetupCommand"
 } else {
@@ -133,9 +133,9 @@ if (-not $NoSetup -and -not $Update) {
 Write-Host ''
 Write-Host '  Done.' -ForegroundColor Green
 if ($Update) {
-    Write-Host '  flash-term updated. Reload in WezTerm: 8sync reload' -ForegroundColor DarkGray
+    Write-Host '  flash-term updated. Reload in WezTerm: ft reload' -ForegroundColor DarkGray
 } else {
-    Write-Host '  Launch WezTerm -> 8sync . to start an omp AI session.' -ForegroundColor DarkGray
-    Write-Host '  Update anytime: re-run this installer (or 8sync up self / 8sync autoupdate on).' -ForegroundColor DarkGray
+    Write-Host '  Launch WezTerm -> ft (looks/tools) + 8sync . (AI session, su-code).' -ForegroundColor DarkGray
+    Write-Host '  Update anytime: re-run this installer (or ft up self / ft autoupdate on).' -ForegroundColor DarkGray
 }
 Write-Host ''

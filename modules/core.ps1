@@ -1,7 +1,10 @@
 ﻿function Ensure-PreferredPaths {
     $pathsToAdd = @(
         (Join-Path $HOME 'scoop\shims'),
-        (Join-Path $HOME '.local\bin')
+        (Join-Path $HOME '.local\bin'),
+        (Join-Path $HOME 'scoop\apps\rustup\current\.cargo\bin'),
+        (Join-Path $HOME '.cargo\bin'),
+        (Join-Path $HOME '.encore\bin')
     )
 
     foreach ($pathItem in $pathsToAdd) {
@@ -313,87 +316,72 @@ function Show-8SyncHint {
     $missingText = if ($missing.Count -gt 0) { ($missing -join ', ') } else { 'none' }
 
     Write-Host ''
-    Write-Host '  8sync  WezTerm Shell Toolkit' -ForegroundColor Cyan -NoNewline
+    Write-Host '  ft  WezTerm Shell Toolkit' -ForegroundColor Cyan -NoNewline
     Write-Host ('  [missing: {0}]' -f $missingText) -ForegroundColor DarkGray
 
     Write-HintSection 'PROFILE'
-    Write-HintRow '8sync profile list'              'List all profiles (* = active)'
-    Write-HintRow '8sync profile create <name>'     'Create new empty profile'
-    Write-HintRow '8sync profile clone <src> <dst>'  'Clone profile with all settings'
-    Write-HintRow '8sync profile switch <name>'     'Switch current tab to profile (CLI/state only)'
-    Write-HintRow '8sync profile open <name>'       'Open new window with full profile isolation'
-    Write-HintRow '8sync profile delete <name>'     'Delete a profile'
-    Write-HintRow '8sync profile help'              'Full profile help with details'
+    Write-HintRow 'ft profile list'              'List all profiles (* = active)'
+    Write-HintRow 'ft profile create <name>'     'Create new empty profile'
+    Write-HintRow 'ft profile clone <src> <dst>' 'Clone profile with all settings'
+    Write-HintRow 'ft profile switch <name>'     'Switch current tab to profile (CLI/state only)'
+    Write-HintRow 'ft profile open <name>'       'Open new window with full profile isolation'
+    Write-HintRow 'ft profile delete <name>'     'Delete a profile'
+    Write-HintRow 'ft profile help'              'Full profile help with details'
 
     Write-HintSection 'COMMANDS'
-    Write-HintRow '8sync help'              'Show this help'
-    Write-HintRow '8sync setup'             'One-command bootstrap: PATH + Scoop + tools + harness + doctor'
-    Write-HintRow '8sync status'            'Installed tools + last sync time'
-    Write-HintRow '8sync reload'            'Hot-reload all modules in current session (no new tab needed)'
-    Write-HintRow '8sync sync'              'Install missing tools + update all via scoop'
-    Write-HintRow '8sync sync --check'     'Dry-run: show missing + available updates, no changes'
-    Write-HintRow '8sync clean [--days N]'         'Deep clean: temp/cache/global env/RAM/disk (default: stale > 7 days)'
-    Write-HintRow '8sync clean --projects [--all]' 'Report stale git repos only (deletion disabled for safety)'
-    Write-HintRow '8sync gpu [N|status|auto|off]'  'Adaptive GPU policy. Example: 8sync gpu 10 for smoother rendering'
-    Write-HintRow '8sync clean --deep'             'Report stale MCP/npm/pip/cargo/go dev artifacts'
-    Write-HintRow '8sync clean --scan'             'Windows Defender quick scan + dev folder scan'
-    Write-HintRow '8sync clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
-    Write-HintRow '8sync clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
-    Write-HintRow '8sync theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
-    Write-HintSection 'AI HARNESS (omp)'
-    Write-HintRow '8sync .'                  'Resume the latest omp AI session in this repo'
-    Write-HintRow '8sync . <name>'           'Create/resume a NAMED omp session (isolated)'
-    Write-HintRow '8sync . new <name>'      'Create a FRESH session (--worktree = isolated git branch)'
-    Write-HintRow '8sync . ls [--all] [--json]' 'List sessions (* = latest, branch, dirty); --all = every repo'
-    Write-HintRow '8sync . rm <name> [--force]' 'Remove a session (--force also deletes the transcript)'
-    Write-HintRow '8sync . mv <old> <new>'   'Rename a session (registry + dir + worktree/branch)'
-    Write-HintRow '8sync . merge <a> [b...]' 'Land session branches into the current branch (local-only)'
-    Write-HintRow '8sync ai "<prompt>"'      'omp interactive with a seed prompt (-p = one-shot)'
-    Write-HintRow '8sync harness'            'Deploy skills + seed project memory + AGENTS.md + readiness'
-    Write-HintRow '8sync harness status'     'Health: omp, skills, codegraph, MCP, memory'
-    Write-HintRow '8sync harness global'     'Deploy skills to ~/.omp (every omp project benefits)'
-    Write-HintRow '8sync skill list'         'List skill registry + clone/deploy status'
-    Write-HintRow '8sync skill add <url>'    'Clone + register + deploy a skill from GitHub'
-    Write-HintRow '8sync skill deploy'       'Deploy all skills to ~/.omp/skills (omp auto-discovers)'
-    Write-HintRow '8sync up'                 'Update all: self, scoop tools, omp, skills, wezterm'
-    Write-HintRow '8sync up --check'         'Dry-run: report what would update, change nothing'
-    Write-HintRow '8sync find [kw]'           'Fuzzy-find a file (rg+fzf) and open in $EDITOR'
-    Write-HintRow '8sync note "msg" [-t tag]' 'Append a timestamped note to 8sync/NOTES.md'
-    Write-HintRow '8sync run [dev|build|test|fmt|lint]' 'Run the detected project recipe'
-    Write-HintRow '8sync ship "msg" [--pr]'   'git add + commit + push (+ optional gh pr create)'
-    Write-HintRow '8sync doctor'              'Health check: omp/wezterm/scoop/git/skills/memory'
-    Write-HintRow '8sync autoupdate [on|off|auto|now]' 'Background update + release notifier (notify mode by default)'
+    Write-HintRow 'ft help'              'Show this help'
+    Write-HintRow 'ft setup'             'Bootstrap: PATH + Scoop + tools + dev runtimes + su-code (AI)'
+    Write-HintRow 'ft dev [name|all]'    'Dev runtimes + apps: node/python/go/rust/chromium/docker/encore'
+    Write-HintRow 'ft status'            'Installed tools + last sync time'
+    Write-HintRow 'ft reload'            'Hot-reload all modules in current session (no new tab needed)'
+    Write-HintRow 'ft sync'              'Install missing tools + update all via scoop'
+    Write-HintRow 'ft sync --check'      'Dry-run: show missing + available updates, no changes'
+    Write-HintRow 'ft up'                'Update self + scoop tools + wezterm'
+    Write-HintRow 'ft up --check'        'Dry-run: report what would update, change nothing'
+    Write-HintRow 'ft autoupdate [on|off|auto|now]' 'Background update + release notifier (notify mode by default)'
+    Write-HintRow 'ft clean [--days N]'         'Deep clean: temp/cache/global env/RAM/disk (default: stale > 7 days)'
+    Write-HintRow 'ft clean --projects [--all]' 'Report stale git repos only (deletion disabled for safety)'
+    Write-HintRow 'ft clean --deep'             'Report stale MCP/npm/pip/cargo/go dev artifacts'
+    Write-HintRow 'ft clean --scan'             'Windows Defender quick scan + dev folder scan'
+    Write-HintRow 'ft clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
+    Write-HintRow 'ft clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
+    Write-HintRow 'ft gpu [N|status|auto|off]'  'Adaptive GPU policy. Example: ft gpu 10 for smoother rendering'
+    Write-HintRow 'ft theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
+
+    Write-HintSection 'AI (su-code -- the `8sync` binary, installed by `ft setup`)'
+    Write-HintRow '8sync .'                 'Resume / start an AI coding session in this repo'
+    Write-HintRow '8sync setup'             'Install the AI core (omp + skills) -- run once after ft setup'
 
     Write-HintSection 'GGUF'
-    Write-HintRow '8sync gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
-    Write-HintRow '8sync gguf hint'                                      'Prerequisites checklist (driver, CUDA, llama.cpp)'
-    Write-HintRow '8sync gguf serve --preset <max|high|medium|low>'     'Resource preset (GPU layers, ctx, threads)'
-    Write-HintRow '8sync gguf serve --profile <name>'                   'Launch from saved profile'
-    Write-HintRow '8sync gguf presets'                                   'List all presets with GPU/CPU/context details'
-    Write-HintRow '8sync gguf profiles'                                  'List saved server profiles'
-    Write-HintRow '8sync gguf save --profile <n> --engine-path <d> --model-path <f>' 'Save profile for quick re-launch'
-    Write-HintRow '8sync gguf status'                                    'Show running llama-server PIDs + ports'
-    Write-HintRow '8sync gguf stop'                                      'Kill all running llama-server processes'
+    Write-HintRow 'ft gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'
+    Write-HintRow 'ft gguf hint'                                      'Prerequisites checklist (driver, CUDA, llama.cpp)'
+    Write-HintRow 'ft gguf serve --preset <max|high|medium|low>'     'Resource preset (GPU layers, ctx, threads)'
+    Write-HintRow 'ft gguf serve --profile <name>'                   'Launch from saved profile'
+    Write-HintRow 'ft gguf presets'                                   'List all presets with GPU/CPU/context details'
+    Write-HintRow 'ft gguf profiles'                                  'List saved server profiles'
+    Write-HintRow 'ft gguf save --profile <n> --engine-path <d> --model-path <f>' 'Save profile for quick re-launch'
+    Write-HintRow 'ft gguf status'                                    'Show running llama-server PIDs + ports'
+    Write-HintRow 'ft gguf stop'                                      'Kill all running llama-server processes'
 
     Write-HintSection 'BACKGROUND'
-    Write-HintRow '8sync bg search <kw>'         'Search wallhaven (default), --yandere, --safebooru, --all'
-    Write-HintRow '8sync bg pick'                'Pick from cache with fzf + imgcat preview'
-    Write-HintRow '8sync bg set <id|path>'       'Set wallpaper by cache id, local path, or URL'
-    Write-HintRow '8sync bg open <id>'           'Open wallpaper page in browser'
-    Write-HintRow '8sync bg rotate [on N|off|time N]' 'Auto-rotate from bg/ every N min (default 5)'
-    Write-HintRow '8sync bg list [--preview]'    'List images with links (--preview: inline imgcat)'
-    Write-HintRow '8sync bg clear cache'         'Clear wallpaper search cache'
-    Write-HintRow '8sync bg remove <name|id|all>' 'Remove downloaded images'
+    Write-HintRow 'ft bg search <kw>'         'Search wallhaven (default), --yandere, --safebooru, --all'
+    Write-HintRow 'ft bg pick'                'Pick from cache with fzf + imgcat preview'
+    Write-HintRow 'ft bg set <id|path|url>'   'Set wallpaper; URL/path saved into repo as the default'
+    Write-HintRow 'ft bg open <id>'           'Open wallpaper page in browser'
+    Write-HintRow 'ft bg rotate [on N|off|time N]' 'Auto-rotate from bg/ every N min (default 5)'
+    Write-HintRow 'ft bg list [--preview]'    'List images with links (--preview: inline imgcat)'
+    Write-HintRow 'ft bg clear cache'         'Clear wallpaper search cache'
+    Write-HintRow 'ft bg remove <name|id|all>' 'Remove downloaded images'
 
     Write-HintSection 'HELIX EDITOR'
-    Write-HintRow '8sync hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
-    Write-HintRow '8sync hx health'         'Parse hx --health: show LSP status, suggest missing'
-    Write-HintRow '8sync hx wrap'           'Toggle soft word-wrap on/off'
-    Write-HintRow '8sync hx opacity <val>'  'Adjust background transparency: +  -  or 0.0-1.0'
-    Write-HintRow '8sync hx theme [name]'   'Pick Helix color theme (fzf picker)'
-    Write-HintRow '8sync hx bg black'       'Pure black background (glass effect)'
-    Write-HintRow '8sync hx bg transparent' 'Transparent bg (terminal bg shows through)'
-    Write-HintRow '8sync hx bg reset'       'Restore original theme background'
+    Write-HintRow 'ft hx lang [name]'    'Install language toolchain via scoop (fzf picker)'
+    Write-HintRow 'ft hx health'         'Parse hx --health: show LSP status, suggest missing'
+    Write-HintRow 'ft hx wrap'           'Toggle soft word-wrap on/off'
+    Write-HintRow 'ft hx opacity <val>'  'Adjust background transparency: +  -  or 0.0-1.0'
+    Write-HintRow 'ft hx theme [name]'   'Pick Helix color theme (fzf picker)'
+    Write-HintRow 'ft hx bg black'       'Pure black background (glass effect)'
+    Write-HintRow 'ft hx bg transparent' 'Transparent bg (terminal bg shows through)'
+    Write-HintRow 'ft hx bg reset'       'Restore original theme background'
 
     Write-HintSection 'FILE & NAVIGATION'
     Write-HintRow 'll'                      'List files with icons (eza -lah)'
@@ -465,7 +453,7 @@ function Show-8SyncStatus {
     Write-Host ('bg rotate: {0}' -f $rotateStr) -ForegroundColor $rotateColor
     if (Get-Command Get-CurrentGpuMinPercent -ErrorAction SilentlyContinue) {
         $gpuMin = Get-CurrentGpuMinPercent
-        Write-Host ('gpu target: {0}%  (set via: 8sync gpu N)' -f $gpuMin) -ForegroundColor DarkGray
+        Write-Host ('gpu target: {0}%  (set via: ft gpu N)' -f $gpuMin) -ForegroundColor DarkGray
     }
     $glass = Read-CurrentStyleState
     Write-Host ('glass theme: style={0} scene={1} hint={2}' -f $glass.style, $glass.scene, $glass.bgHint) -ForegroundColor DarkGray

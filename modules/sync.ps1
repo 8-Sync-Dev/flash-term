@@ -31,7 +31,7 @@ function Invoke-ToolSync {
     $scoop = Get-ScoopCommand
     if (-not $scoop) {
         if (-not $Quiet) {
-            Write-Warning 'Scoop was not found. Install Scoop first, then run /8sync sync.'
+            Write-Warning 'Scoop was not found. Install Scoop first, then run /ft sync.'
         }
         return
     }
@@ -39,7 +39,7 @@ function Invoke-ToolSync {
     # --check: dry-run report of missing + outdated, no install/update
     if ($Check) {
         Write-Host ''
-        Write-Host '  8sync sync --check  (dry-run — no changes made)' -ForegroundColor Cyan
+        Write-Host '  ft sync --check  (dry-run — no changes made)' -ForegroundColor Cyan
         Write-Host ''
 
         # Missing tools
@@ -87,7 +87,7 @@ function Invoke-ToolSync {
                     }
                 }
                 Write-Host ''
-                Write-Host '  Run: 8sync sync  to apply updates.' -ForegroundColor DarkGray
+                Write-Host '  Run: ft sync  to apply updates.' -ForegroundColor DarkGray
             } else {
                 Write-Host '  All installed tools are up to date.' -ForegroundColor Green
             }

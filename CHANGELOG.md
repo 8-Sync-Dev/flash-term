@@ -2,6 +2,69 @@
 
 All notable changes to flash-term are tracked here.
 
+
+## [v2026.08.13] - 2026-08-13 -- flash-term = WezTerm config; AI delegated to su-code
+
+### Changed
+- **Renamed the flash-term command `8sync` -> `ft`.** The `8sync` name now belongs to the
+  [su-code](https://github.com/8-Sync-Dev/su-code) AI harness binary, which `ft setup` installs
+  (`irm https://8-sync-dev.github.io/su-code/install.ps1 | iex`). flash-term no longer aliases or
+  shadows `8sync`. All terminal/theme/bg/dev/gguf commands are now `ft <verb>` (`ft bg set`,
+  `ft dev all`, `ft setup`); AI work is `8sync .` / `8sync ai` (su-code).
+- **Removed the omp AI harness from flash-term** -- sessions (`8sync .`), `ai`, `harness`, `skill`,
+  `find`/`note`/`run`/`ship`, `doctor`, the skill registry, `.omp/commands/`, and `agents/`. Deleted
+  `modules/harness.ps1`, `modules/skill.ps1`, `modules/agents/00-shared.ps1`, `agents/`, `.omp/`.
+  flash-term is now purely a WezTerm config + terminal toolkit. `ft up` dropped the `omp`/`skills` targets.
+- **`ft setup` step [5/5] now installs su-code** (instead of deploying the omp harness).
+- **`ft bg set <id|path|url>` persists the image into the repo** as `assets/default-bg.<ext>` (the
+  committed default wallpaper) and points `current-bg.lua` at it; `wezterm.lua` falls back to
+  `assets/default-bg.jpg` then `.png`. The old shipped `default-bg.png` was replaced by the
+  user-chosen `default-bg.jpg`.
+
+### Internal
+- Dispatcher remains the `Invoke-8Sync` function (internal name unchanged), now aliased as `ft`;
+  completer registered for `ft`; user-facing text rewritten `8sync` -> `ft` across all terminal modules.
+
+## [v2026.08.12] - 2026-08-12 -- dev runtimes bootstrap (no Visual Studio)
+
+### Added
+- **`ft dev` -- install development runtimes with NO Visual Studio C++ Build Tools.**
+  A single command (and the `ft setup` one-liner bootstrap) now provisions the full
+  local dev stack via Scoop:
+  - `ft dev node` -- Node.js + npm + pnpm (corepack, with `npm i -g pnpm` fallback).
+  - `ft dev python` -- `uv` + a managed standalone CPython (`uv python install`);
+    prebuilt, so no VS build tools.
+  - `ft dev go` -- Go (self-contained toolchain).
+  - `ft dev rust` -- Rust on the **GNU/MinGW host triple** (`gcc` + `rustup … windows-gnu`),
+    sidestepping MSVC / `link.exe` entirely.
+  - `ft dev chromium` -- Chromium (extras bucket) for browser automation / debugging.
+  - `ft dev docker` -- Docker Desktop via `winget` (needs admin + WSL2 + first GUI launch;
+    not a Scoop package).
+  - `ft dev encore` -- Encore.dev CLI via `iwr https://encore.dev/install.ps1 | iex` into
+    `~/.encore/bin` (non-Scoop installer).
+  - `ft dev all` installs every runtime/app; `ft dev` shows status; `ft dev --check`
+    is a dry run. Non-Scoop installs (encore, docker) use a new `Custom` scriptblock path.
+  - `ft setup` runs `Invoke-DevInstall` as step `[4/5]`, so the `irm | iex` one-liner pulls
+    the whole stack down in one pass (`--no-dev` skips it). `~/.cargo/bin` + `~/.encore/bin`
+    are on the preferred PATH so `cargo`/`rustc`/`encore` resolve in every tab.
+  - Added `jq`, `yq`, `make` to the managed CLI tool set (`ft sync` / `ft setup`).
+
+## [v2026.08.11] - 2026-08-11 -- omp slash commands (/sx-*)
+
+### Added
+- **omp native slash commands** now ship with the config and auto-deploy, so a one-liner
+  `irm | iex` install (or `8sync setup` / `8sync harness`) makes them appear in every
+  omp session -- closing the gap where the omp app showed no custom commands:
+  - `/sx-init` -- onboard to a project (stack, layout, commands, conventions).
+  - `/sx-plan` -- plan a task before coding (investigate + propose, no implementation).
+  - `/sx-review` -- review code/diff for correctness, bugs, edge cases.
+  - `/sx-commit` -- stage + write a Conventional Commit from the current diff.
+  - `/sx-fix` -- reproduce -> root-cause -> fix at source -> verify.
+  - Source: `.omp/commands/*.md` (committed). Deployed to `~/.omp/agent/commands` by
+    `Deploy-OmpCommands` (harness.ps1), wired into `8sync harness init|up|global` and
+    `8sync setup` (so `install.ps1` provisions them). Readiness counts them
+    (`8sync harness status`, `8sync doctor`).
+
 ## [v2026.08.11] - 2026-08-11 — full omp session management
 
 ### Added

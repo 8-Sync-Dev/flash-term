@@ -1,11 +1,12 @@
 # =============================================================================
-# 8sync setup -- one-command bootstrap (PATH + Scoop + tools + harness + doctor)
+# ft setup -- one-command bootstrap (PATH + Scoop + tools + dev runtimes + su-code)
 # =============================================================================
 # Usage:
-#   8sync setup            Ensure PATH, install Scoop, sync managed tools, deploy harness, doctor
-#   8sync setup --check    Dry-run: report what's missing, change nothing
-#   8sync setup --no-tools     Skip tool sync
-#   8sync setup --no-harness   Skip skill/memory deploy
+#   ft setup            Ensure PATH, install Scoop, sync managed tools, dev runtimes, su-code
+#   ft setup --check    Dry-run: report what's missing, change nothing
+#   ft setup --no-tools     Skip tool sync
+#   ft setup --no-harness   Skip su-code (AI) install
+#   ft setup --no-dev       Skip dev runtimes (node/python/go/rust/chromium/docker/encore)
 # =============================================================================
 
 function Get-ScoopShimsDir { Join-Path $HOME 'scoop\shims' }
@@ -80,19 +81,20 @@ function Set-DefaultWallpaper {
         $b = [System.IO.File]::ReadAllBytes($out)
         if ($b.Length -gt 20000 -and $b[0] -eq 0xFF -and $b[2] -eq 0xFF) {
             [System.IO.File]::WriteAllText($bgLua, "return [[$out]]`n", [System.Text.UTF8Encoding]::new($false))
-            Write-Host '  [ok]    default wallpaper set (change: 8sync bg search <kw>)' -ForegroundColor Green
+            Write-Host '  [ok]    default wallpaper set (change: ft bg search <kw>)' -ForegroundColor Green
         }
     } catch {}
 }
 
 function Show-SetupHelp {
     Write-Host ''
-    Write-Host '  8SYNC SETUP -- one-command bootstrap' -ForegroundColor Cyan
+    Write-Host '  FT SETUP -- one-command bootstrap' -ForegroundColor Cyan
     Write-Host ''
-    Write-HintRow '8sync setup'             'PATH + Scoop + tools + harness + omp subagents + doctor'
-    Write-HintRow '8sync setup --check'     'Dry-run: report what is missing, change nothing'
-    Write-HintRow '8sync setup --no-tools'  'Skip tool sync'
-    Write-HintRow '8sync setup --no-harness''Skip skill/memory deploy'
+    Write-HintRow 'ft setup'             'PATH + Scoop + tools + dev runtimes + su-code (AI)'
+    Write-HintRow 'ft setup --check'     'Dry-run: report what is missing, change nothing'
+    Write-HintRow 'ft setup --no-tools'  'Skip tool sync'
+    Write-HintRow 'ft setup --no-dev'    'Skip dev runtimes (node/python/go/rust/chromium/docker/encore)'
+    Write-HintRow 'ft setup --no-harness''Skip su-code (AI) install'
     Write-Host ''
 }
 
@@ -105,21 +107,22 @@ function Invoke-SetupCommand {
     $dryRun    = $Rest -contains '--check' -or $Rest -contains '--dry-run'
     $noTools   = $Rest -contains '--no-tools'
     $noHarness = $Rest -contains '--no-harness'
+    $noDev     = $Rest -contains '--no-dev'
 
     Write-Host ''
-    Write-Host '  8SYNC SETUP' -ForegroundColor Magenta
+    Write-Host '  FT SETUP' -ForegroundColor Magenta
     if ($dryRun) { Write-Host '  (dry-run -- no changes)' -ForegroundColor Yellow }
     Write-Host ''
 
     Ensure-PathForCore
-    Write-Host '  [1/4] core tools on PATH' -ForegroundColor Cyan
+    Write-Host '  [1/5] core tools on PATH' -ForegroundColor Cyan
     foreach ($t in 'git','omp','wezterm') {
         $src = (Get-Command $t -ErrorAction SilentlyContinue).Source
         if ($src) { Write-Host ("    [ok]    {0}: {1}" -f $t, $src) -ForegroundColor Green }
         else      { Write-Host ("    [miss]  {0} (install separately)" -f $t) -ForegroundColor DarkYellow }
     }
 
-    Write-Host '  [2/4] Scoop' -ForegroundColor Cyan
+    Write-Host '  [2/5] Scoop' -ForegroundColor Cyan
     $scoopOk = Ensure-ScoopInstalled -DryRun:$dryRun
 
     # WezTerm (the terminal app) -- install via scoop if missing
@@ -161,30 +164,43 @@ function Invoke-SetupCommand {
     }
 
     if (-not $noTools) {
-        Write-Host '  [3/4] managed tools (Scoop)' -ForegroundColor Cyan
+        Write-Host '  [3/5] managed tools (Scoop)' -ForegroundColor Cyan
         if ($scoopOk -and (Get-Command Invoke-ToolSync -ErrorAction SilentlyContinue)) {
             Invoke-ToolSync
         } else {
-            Write-Host '    [skip]  Scoop unavailable -- run `8sync sync` after installing Scoop' -ForegroundColor DarkYellow
+            Write-Host '    [skip]  Scoop unavailable -- run `ft sync` after installing Scoop' -ForegroundColor DarkYellow
+        }
+    }
+    if (-not $noDev) {
+        Write-Host '  [4/5] dev runtimes (Node/Python/Go/Rust/Chromium)' -ForegroundColor Cyan
+        if ($scoopOk -and (Get-Command Invoke-DevInstall -ErrorAction SilentlyContinue)) {
+            Invoke-DevInstall -DryRun:$dryRun
+        } else {
+            Write-Host '    [skip]  Scoop unavailable -- run `ft dev all` after installing Scoop' -ForegroundColor DarkYellow
         }
     }
 
     if (-not $noHarness) {
-        Write-Host '  [4/4] harness deploy' -ForegroundColor Cyan
-        if (Get-Command Invoke-HarnessInit -ErrorAction SilentlyContinue) {
-            Invoke-HarnessInit -DryRun:$dryRun
+        Write-Host '  [5/5] AI harness (su-code -- provides the `8sync` command)' -ForegroundColor Cyan
+        if (-not $dryRun) {
+            Write-Host '  Installing su-code...' -ForegroundColor DarkGray
+            try {
+                iwr -useb https://8-sync-dev.github.io/su-code/install.ps1 | iex
+                if (Get-Command 8sync -ErrorAction SilentlyContinue) {
+                    Write-Host '  [ok]    su-code installed -- `8sync` ready (AI: `8sync .`)' -ForegroundColor Green
+                } else {
+                    Write-Host '  [ok]    su-code installed -- open a NEW tab, then `8sync` works' -ForegroundColor Green
+                }
+            } catch {
+                Write-Host ("  [warn]  su-code install failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+                Write-Host '          manual: irm https://8-sync-dev.github.io/su-code/install.ps1 | iex' -ForegroundColor DarkGray
+            }
+        } else {
+            Write-Host '  [dry-run] would install su-code via irm install.ps1 | iex' -ForegroundColor Yellow
         }
-    }
-    # omp-native: deploy bundled subagents (designer/librarian/reviewer/scout/...)
-    $omp = Find-OmpExe
-    if ($omp -and -not $dryRun) {
-        Write-Host '  omp subagents (unpack)' -ForegroundColor Cyan
-        & $omp agents unpack 2>&1 | Out-Null
-        Write-Host '  [ok]    bundled subagents -> ~/.omp/agent/agents' -ForegroundColor Green
     }
 
     Write-Host ''
-    if (Get-Command Invoke-DoctorCommand -ErrorAction SilentlyContinue) { Invoke-DoctorCommand }
-    Write-Host '  Setup complete. Run `8sync .` to start an omp session.' -ForegroundColor Green
+    Write-Host '  Setup complete. Looks: `ft theme`. AI: `8sync .` (su-code).' -ForegroundColor Green
     Write-Host ''
 }

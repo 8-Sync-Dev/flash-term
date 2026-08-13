@@ -1,5 +1,5 @@
 {
-  "_comment": "Built-in resource presets for 8sync gguf serve. Each preset maps to llama-server flags.",
+  "_comment": "Built-in resource presets for ft gguf serve. Each preset maps to llama-server flags.",
   "_custom_hint": "Add your own entries below the built-ins. Custom entries survive updates.",
 
   "presets": {
@@ -46,7 +46,7 @@
   },
 
   "custom_presets": {
-    "_hint": "Define your own named presets here. Keys become usable as '8sync gguf serve --preset <key>'.",
+    "_hint": "Define your own named presets here. Keys become usable as 'ft gguf serve --preset <key>'.",
     "_example": {
       "description": "Example: Qwen3.5-4B tuned for RTX 3060 12GB",
       "n_gpu_layers": 35,

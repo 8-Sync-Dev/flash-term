@@ -1,20 +1,22 @@
 # flash-term
 
-A **WezTerm** terminal configuration + **omp AI coding harness** for Windows 11.
-Beautiful out of the box (Catppuccin Mocha, glass presets, Mica backdrop, GPU-aware rendering) and a
-strong agent harness on top of [omp](https://github.com/) — the same engine model as
-[`su-code`](https://github.com/8-Sync-Dev/su-code), ported to Windows + PowerShell.
+A **WezTerm** terminal configuration + the **`ft`** command for **Windows 11** (PowerShell).
+Beautiful out of the box — Catppuccin Mocha, glass presets, Mica backdrop, **purple neon border**,
+GPU-aware rendering, a default wallpaper — and a strong command toolkit for tooling bootstrap
+and daily terminal helpers.
+
+> **Not an AI harness.** The AI coding harness is a separate project,
+> [`su-code`](https://github.com/8-Sync-Dev/su-code), which provides the **`8sync`** command
+> (sessions `8sync .`, `8sync ai`, `8sync harness`, `8sync skill`, …). flash-term installs it for
+> you via `ft setup` — see [AI coding (su-code)](#ai-coding-su-code) below.
 
 ## Features
-- **Look** — dark gentle glass (Catppuccin Mocha + Mica), **purple neon border**, **default anime wallpaper** (`assets/default-bg.jpg`, shipped), git branch in the status bar.
+- **Look** — dark gentle glass (Catppuccin Mocha + Mica), **purple neon border**, **default wallpaper** (`assets/default-bg.jpg`, shipped — set yours with `ft bg set <url>`), git branch in the status bar.
 - **WezTerm** — many keybindings (leader `Ctrl+a`, pane splits, tabs, copy mode, command palette).
-- **omp harness** — `8sync .` resumes an AI coding session; skills auto-discovered from `~/.omp/skills`.
-- **Skill registry** — `8sync skill add/list/update/deploy` manages a portable skill library.
-- **update-all** — `8sync up` updates the config, Scoop tools, omp, skills, and checks WezTerm.
-- **Project memory** — `8sync harness` seeds `8sync/PROJECT.md`, `STATE.md`, `KNOWLEDGE.md` + a managed `.gitignore`.
-- **Tool sync** — managed CLI tools (fzf, zoxide, ripgrep, eza, helix, lazygit, …) via Scoop.
-- **Local models** — `8sync gguf` runs llama.cpp presets on your GPU.
-- **UX toolkit** — backgrounds (Wallhaven), glass themes, GPU policy, deep clean, profiles.
+- **Tool sync** — managed CLI tools (fzf, zoxide, ripgrep, eza, helix, lazygit, …) via Scoop (`ft sync`).
+- **Dev runtimes** — `ft dev` bootstraps Node, Python, Go, Rust, Chromium, Docker, Encore with **no Visual Studio** build tools.
+- **update-all** — `ft up` updates the config, Scoop tools, and checks WezTerm.
+- **Helpers** — backgrounds (Wallhaven/safebooru/yandere), glass themes, GPU policy, deep clean, profiles, GGUF local models, background update notifier.
 
 ## Install
 
@@ -37,40 +39,55 @@ git clone https://github.com/8-Sync-Dev/flash-term.git "$env:USERPROFILE\.config
 ```
 
 The one-liner does **full auto-setup**: clones flash-term to `%USERPROFILE%\.config\wezterm`, then
-runs `8sync setup` — which installs Scoop + WezTerm (if missing) + the managed CLI tools, deploys
-the omp harness (skills + project memory), and unpacks omp's subagents. Flags: `-ConfigDir <path>`,
-`-Update` (pull only, skip setup), `-NoSetup` (config only).
+runs `ft setup` — which installs Scoop + WezTerm (if missing), the managed CLI tools, the dev
+runtimes, and **su-code** (so the `8sync` AI command is available). Flags: `-ConfigDir <path>`,
+`-Update` (pull only, skip setup), `-NoSetup` (config only), `-NoDev` (skip dev runtimes).
 
 ## After install
 
 Launch WezTerm (Start Menu → WezTerm). The bootstrap (`wezterm-bootstrap.ps1`) sources on every tab:
 PATH, aliases, PSReadLine, and a background update check. Then:
 ```powershell
-8sync .            # start/resume an omp AI session
-8sync doctor       # health check (omp/wezterm/scoop/skills/agents)
-8sync autoupdate on   # banner when a new release is available
+ft status          # installed tools + last sync time
+ft help            # full command menu
+ft autoupdate on   # banner when a new release is available
 ```
 
-Type `8sync help` for the full menu.
+Type `ft help` for the full menu.
 
 ## Daily flow
 
 ```powershell
-8sync .              # resume the latest omp session in this repo
-8sync . feat-login   # a NAMED, isolated session for a feature
-8sync ai "refactor this"      # omp one-shot (add -p for stdout)
-8sync skill add https://github.com/<owner>/<skill-repo>   # add a skill
-8sync up             # update everything (config, tools, omp, skills)
+ft sync            # install missing + update managed CLI tools
+ft up              # update self + scoop tools + wezterm
+ft bg pick         # pick a wallpaper (fzf + image preview)
+ft theme           # set the glass style/scene
+ft dev all         # bootstrap every dev runtime
 ```
+
+## AI coding (su-code)
+
+flash-term itself has no AI features. For AI coding sessions, install the separate
+**su-code** project (run by `ft setup`, or directly):
+
+```powershell
+irm https://8-sync-dev.github.io/su-code/install.ps1 | iex
+```
+
+Then use the **`8sync`** command it provides:
+```powershell
+8sync .            # start/resume an AI coding session in this repo
+8sync ai "refactor this"   # one-shot prompt
+8sync skill list   # manage the skill library
+```
+
+See <https://github.com/8-Sync-Dev/su-code> for the full `8sync` surface.
 
 ## Keybindings (excerpt)
 
 | Action | Binding |
 |---|---|
 | Leader | `Ctrl+a` |
-| Resume omp session | `Leader → .` |
-| omp one-shot prompt | `Leader → o` |
-| Harness readiness | `Leader → h` |
 | Split right / down | `Ctrl+Shift+\|` / `Ctrl+Shift+_` |
 | Navigate panes | `Ctrl+Shift+Arrow` |
 | Tabs | `Ctrl+Tab` / `Alt+1..9` |
@@ -85,14 +102,16 @@ Full list: `docs/KEYBINDINGS.md`.
 ```
 wezterm.lua · keys.lua          WezTerm config
 wezterm-bootstrap.ps1           shell bootstrap + module loader
-modules/                        the 8sync command toolkit (one module per concern)
+install.ps1                     one-liner auto-installer / updater
+modules/                        the ft command toolkit (one module per concern)
   core · shell · startup        hint, completer, dispatcher, shell startup
   sync · up                     tool sync + update-all
-  harness · skill · agents/     omp AI harness + skill registry
+  setup · dev                   bootstrap + dev runtimes (installs su-code for AI)
   bg · theme · gpu · helix      WezTerm UX commands
   clean · profile · gguf        cleanup, profiles, local models
-agents/registry.json            skill registry
+  autoupdate                    background update + release notifier
 gguf-config/                    llama.cpp presets/profiles
+assets/                         default wallpaper
 ```
 
 ## License

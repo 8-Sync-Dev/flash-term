@@ -1,14 +1,14 @@
 # =============================================================================
-# 8sync autoupdate -- background update + release notification
+# ft autoupdate -- background update + release notification
 # =============================================================================
 # On every shell start (throttled), checks whether the local flash-term is
 # behind origin/main OR a newer GitHub release exists, and prints a one-line
 # banner. Modes: notify (default) | auto | off.
 #
-#   8sync autoupdate            Show mode + last check
-#   8sync autoupdate status     Same, verbose
-#   8sync autoupdate on|off|auto  Set mode
-#   8sync autoupdate now        Check immediately (foreground)
+#   ft autoupdate            Show mode + last check
+#   ft autoupdate status     Same, verbose
+#   ft autoupdate on|off|auto  Set mode
+#   ft autoupdate now        Check immediately (foreground)
 # =============================================================================
 
 $script:AutoupdateStatePath = Join-Path $script:StateDir 'autoupdate.json'
@@ -109,10 +109,10 @@ function Invoke-AutoupdateCheck {
 
     $msg = $null
     if ($behind -gt 0) {
-        $msg = "flash-term: $behind commit(s) behind origin/main  ->  run: 8sync up self"
+        $msg = "flash-term: $behind commit(s) behind origin/main  ->  run: ft up self"
     }
     if ($newRelease -and $release) {
-        $r = "flash-term: new release $release available  ->  run: 8sync up self"
+        $r = "flash-term: new release $release available  ->  run: ft up self"
         $msg = if ($msg) { "$msg`n         $r" } else { $r }
     }
 
@@ -164,13 +164,13 @@ function Show-AutoupdateNotice {
 
 function Show-AutoupdateHelp {
     Write-Host ''
-    Write-Host '  8SYNC AUTOUPDATE' -ForegroundColor Cyan
+    Write-Host '  FT AUTOUPDATE' -ForegroundColor Cyan
     Write-Host ''
-    Write-HintRow '8sync autoupdate'           'Show mode + last check time'
-    Write-HintRow '8sync autoupdate on'        'Enable notify mode (banner when update available)'
-    Write-HintRow '8sync autoupdate off'       'Disable checks'
-    Write-HintRow '8sync autoupdate auto'      'Auto-pull on startup when behind (ff-only)'
-    Write-HintRow '8sync autoupdate now'       'Check immediately (foreground)'
+    Write-HintRow 'ft autoupdate'           'Show mode + last check time'
+    Write-HintRow 'ft autoupdate on'        'Enable notify mode (banner when update available)'
+    Write-HintRow 'ft autoupdate off'       'Disable checks'
+    Write-HintRow 'ft autoupdate auto'      'Auto-pull on startup when behind (ff-only)'
+    Write-HintRow 'ft autoupdate now'       'Check immediately (foreground)'
     Write-Host ''
 }
 

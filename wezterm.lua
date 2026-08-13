@@ -9,7 +9,8 @@ end
 
 local home = wezterm.home_dir
 local config_dir = wezterm.config_dir or (home .. "\\.config\\wezterm")
-local fallback_bg_path = config_dir .. "\\assets\\default-bg.png"
+local fallback_bg_jpg = config_dir .. "\\assets\\default-bg.jpg"
+local fallback_bg_png = config_dir .. "\\assets\\default-bg.png"
 local current_bg_lua = config_dir .. "\\current-bg.lua"
 local bootstrap_path = config_dir .. "\\wezterm-bootstrap.ps1"
 local current_opacity_lua = config_dir .. "\\current-opacity.lua"
@@ -58,8 +59,11 @@ local function load_background_path()
     end
   end
 
-  if file_exists(fallback_bg_path) then
-    return fallback_bg_path
+  if file_exists(fallback_bg_jpg) then
+    return fallback_bg_jpg
+  end
+  if file_exists(fallback_bg_png) then
+    return fallback_bg_png
   end
 
   return nil

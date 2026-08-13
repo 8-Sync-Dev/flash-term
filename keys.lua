@@ -70,7 +70,7 @@ return {
   { key = "s", mods = "LEADER", action = act.ShowLauncherArgs({ flags = "FUZZY|WORKSPACES|TABS|LAUNCH_MENU_ITEMS" }) },
   { key = "r", mods = "LEADER", action = act.ReloadConfiguration },
 
-  -- ── Leader — AI harness (omp) shortcuts ──────────────────────────────────
+  -- ── Leader — AI (su-code `8sync`) + ft shortcuts ─────────────────────────
   -- Leader .   resume the latest omp session in this repo
   { key = ".", mods = "LEADER", action = send("8sync .") },
   -- Leader o   start typing an omp one-shot prompt (8sync ai <your prompt>)
@@ -80,7 +80,7 @@ return {
   -- Leader k   skill registry list
   { key = "k", mods = "LEADER", action = send("8sync skill list") },
   -- Leader u   update-all dry-run preview
-  { key = "u", mods = "LEADER", action = send("8sync up --check") },
+  { key = "u", mods = "LEADER", action = send("ft up --check") },
   -- Leader b   background wallpaper picker
-  { key = "b", mods = "LEADER", action = send("8sync bg pick") },
+  { key = "b", mods = "LEADER", action = send("ft bg pick") },
 }

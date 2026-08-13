@@ -54,7 +54,7 @@ function Register-8SyncCompleter {
         return
     }
 
-    # Tab / inline completion for: 8sync <mode> <subcommand>
+    # Tab / inline completion for: ft <mode> <subcommand>
     $completer = {
         param($wordToComplete, $commandAst, $cursorPosition)
 
@@ -62,7 +62,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','setup','status','reload','sync','autoupdate','clean','gpu','bg','hx','theme','gguf','up','harness','skill','ai','find','note','run','ship','doctor','profile','.')
+    $modes = @('help','setup','dev','status','reload','sync','autoupdate','clean','gpu','bg','hx','theme','gguf','up','profile')
 
         # subcommands per mode
         $subMap = @{
@@ -73,17 +73,9 @@ function Register-8SyncCompleter {
             clean = @('help','--days','--dry-run','--envs','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
-            up       = @('self','scoop','omp','skills','wezterm','--check','--dry-run','help')
-            harness  = @('init','up','global','status','help')
-            skill    = @('list','add','update','remove','deploy','help')
-            ai       = @('--print','-p','--model','--smol','--slow','--plan','--thinking')
-            '.'      = @('new','ls','list','rm','mv','merge','--worktree','--force','--keep-worktree','--list','--ls','--all','--json','--model','--smol','--slow','--plan','--thinking')
-            find     = @('--help')
-            note     = @('-t','--tag')
-            run      = @('dev','build','test','fmt','lint')
-            ship     = @('--pr')
-            doctor   = @()
+            up       = @('self','scoop','wezterm','--check','--dry-run','help')
             autoupdate = @('on','off','auto','now','status','help')
+            dev       = @('node','python','go','rust','chromium','docker','encore','all','help','--check','--dry-run')
         }
 
         if ($count -le 1) {
@@ -110,8 +102,7 @@ function Register-8SyncCompleter {
     }
 
     try {
-        Register-ArgumentCompleter -CommandName '8sync'  -ScriptBlock $completer -ErrorAction SilentlyContinue
-        Register-ArgumentCompleter -CommandName '/8sync' -ScriptBlock $completer -ErrorAction SilentlyContinue
+        Register-ArgumentCompleter -CommandName 'ft' -ScriptBlock $completer -ErrorAction SilentlyContinue
         $script:EightSyncCompleterRegistered = $true
     } catch {}
 }

@@ -1,5 +1,5 @@
 ﻿# ---------------------------------------------------------------------------
-#  8sync clean -- deep system / RAM / venv cleaner
+#  ft clean -- deep system / RAM / venv cleaner
 # ---------------------------------------------------------------------------
 
 function Format-Bytes {
@@ -561,7 +561,7 @@ function Invoke-EnvCleanCommand {
     $doAll = $Rest -contains '--all'
 
     Write-Host ''
-    Write-Host ('  8sync clean --envs  stale > {0}d' -f $StaleDays) -ForegroundColor Cyan
+    Write-Host ('  ft clean --envs  stale > {0}d' -f $StaleDays) -ForegroundColor Cyan
     Write-Host '  List-first mode: no env is deleted unless explicitly selected.' -ForegroundColor DarkGray
     Write-Host ''
 
@@ -588,7 +588,7 @@ function Invoke-EnvCleanCommand {
     Write-Host ('  Total: {0} env(s), {1}' -f $items.Count, (Format-Bytes ([long]$total))) -ForegroundColor DarkGray
 
     if (-not $doDelete) {
-        Write-Host '  Tip: run `8sync clean --envs --delete` to select envs for deletion.' -ForegroundColor DarkGray
+        Write-Host '  Tip: run `ft clean --envs --delete` to select envs for deletion.' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
@@ -744,7 +744,7 @@ function Invoke-ProjectPicker {
     )
 
     Write-Host ''
-    Write-Host ('  8sync clean --projects  stale > {0}d (report-only)' -f $StaleDays) -ForegroundColor Cyan
+    Write-Host ('  ft clean --projects  stale > {0}d (report-only)' -f $StaleDays) -ForegroundColor Cyan
     Write-Host ''
     Write-Host '  Project deletion has been disabled for safety. This mode now only reports.' -ForegroundColor DarkYellow
     Write-Host ''
@@ -912,7 +912,7 @@ function Show-DevArtifactReport {
     param([int]$StaleDays = 30)
 
     Write-Host ''
-    Write-Host ('  8sync clean --deep  dev artifacts > {0}d old' -f $StaleDays) -ForegroundColor Cyan
+    Write-Host ('  ft clean --deep  dev artifacts > {0}d old' -f $StaleDays) -ForegroundColor Cyan
     Write-Host ''
     Write-Host '  Scanning dev artifacts (MCP, npm, pip, cargo, go)...' -ForegroundColor Yellow
 
@@ -1019,7 +1019,7 @@ function Invoke-DeleteDevArtifacts {
 
 function Invoke-EcosystemAudit {
     Write-Host ''
-    Write-Host '  8sync clean --audit  ecosystem vulnerability scan' -ForegroundColor Cyan
+    Write-Host '  ft clean --audit  ecosystem vulnerability scan' -ForegroundColor Cyan
     Write-Host ''
 
     $anyFound = $false
@@ -1240,7 +1240,7 @@ function Invoke-DefenderScan {
     param([string[]]$TargetPaths)
 
     Write-Host ''
-    Write-Host '  8sync clean --scan  Windows Defender scan' -ForegroundColor Cyan
+    Write-Host '  ft clean --scan  Windows Defender scan' -ForegroundColor Cyan
     Write-Host ''
 
     # Locate MpCmdRun.exe
@@ -1665,14 +1665,14 @@ function Invoke-CleanLoopCommand {
         { $_ -in 'help', '-h', '--help' } {
             Write-Host ''
             Write-HintSection 'CLEAN LOOP -- background auto-optimization (safe-by-default)'
-            Write-HintRow '8sync clean --loop on'       'Start loop with current/default interval and profile'
-            Write-HintRow '8sync clean --loop on N'     'Start loop every N minutes'
-            Write-HintRow '8sync clean --loop on deep'  'Enable deep profile (dry-run clean + Defender cooldown)'
-            Write-HintRow '8sync clean --loop on 15 balanced' 'Set interval + profile together'
-            Write-HintRow '8sync clean --loop profile <name>' 'Set profile only: light|balanced|deep'
-            Write-HintRow '8sync clean --loop off'      'Stop the background clean loop'
-            Write-HintRow '8sync clean --loop now'      'Run one tick immediately'
-            Write-HintRow '8sync clean --loop status'   'Show loop state and last run time'
+            Write-HintRow 'ft clean --loop on'       'Start loop with current/default interval and profile'
+            Write-HintRow 'ft clean --loop on N'     'Start loop every N minutes'
+            Write-HintRow 'ft clean --loop on deep'  'Enable deep profile (dry-run clean + Defender cooldown)'
+            Write-HintRow 'ft clean --loop on 15 balanced' 'Set interval + profile together'
+            Write-HintRow 'ft clean --loop profile <name>' 'Set profile only: light|balanced|deep'
+            Write-HintRow 'ft clean --loop off'      'Stop the background clean loop'
+            Write-HintRow 'ft clean --loop now'      'Run one tick immediately'
+            Write-HintRow 'ft clean --loop status'   'Show loop state and last run time'
             Write-Host ''
         }
         default {
@@ -1708,7 +1708,7 @@ function Invoke-SystemClean {
     $dTag  = if ($DryRun) { '  dry-run' } else { '' }
 
     Write-Host ''
-    Write-Host ('  8sync clean  >{0}d stale{1}' -f $StaleDays, $dTag) -ForegroundColor Cyan
+    Write-Host ('  ft clean  >{0}d stale{1}' -f $StaleDays, $dTag) -ForegroundColor Cyan
     Write-Host '  SAFE: OS/browser/tool caches + global env/tool caches only. Project folders are never deleted.' -ForegroundColor DarkGray
     Write-Host ''
 
@@ -1882,7 +1882,7 @@ function Invoke-SystemClean {
     # -- Stale envs ------------------------------------------------------
     Write-Host ''
     Write-Host ('  STALE ENVS  (>{0}d)' -f $StaleDays) -ForegroundColor Yellow
-    Write-Host '  skipped by default for safety. Use: 8sync clean --envs (list) or --envs --delete (manual select).' -ForegroundColor DarkGray
+    Write-Host '  skipped by default for safety. Use: ft clean --envs (list) or --envs --delete (manual select).' -ForegroundColor DarkGray
 
     # -- RAM + network flush --------------------------------------------
     Write-Host ''
@@ -1939,28 +1939,28 @@ function Invoke-CleanCommand {
             { $_ -in '--help', 'help', '-h' } {
                 Write-Host ''
                 Write-HintSection 'CLEAN -- deep system / cache / global env / RAM / disk'
-                Write-HintRow '8sync clean'                          'Full clean: temp/cache/global env/RAM/disk (stale > 7d)'
-                Write-HintRow '8sync clean --days N'                 'Custom stale threshold  e.g. --days 14'
-                Write-HintRow '8sync clean --dry-run'                'Preview only -- nothing deleted'
-                Write-HintRow '8sync clean --envs'                   'List stale managed envs (no deletion)'
-                Write-HintRow '8sync clean --envs --delete'          'Delete selected env(s) by index (manual confirm)'
-                Write-HintRow '8sync clean --envs --delete --all'    'Delete all listed stale envs (still skips active/project)'
-                Write-HintRow '8sync clean --projects'               'Report stale git repos only (deletion disabled for safety)'
-                Write-HintRow '8sync clean --projects --all'         'Alias accepted but ignored (deletion disabled)'
-                Write-HintRow '8sync clean --projects --days N'      'Stale threshold for projects (default: 90d)'
-                Write-HintRow '8sync clean --projects --dry-run'     'Report stale projects (same as without --dry-run)'
-                Write-HintRow '8sync clean --deep'                   'Report stale MCP/npm/pip/cargo/go artifacts'
-                Write-HintRow '8sync clean --deep --delete'          'Delete stale artifacts with per-type confirmation'
-                Write-HintRow '8sync clean --deep --delete --all'    'Delete ALL stale artifacts, skip per-type prompt'
-                Write-HintRow '8sync clean --deep --delete --dry-run' 'Preview what --delete would remove'
-                Write-HintRow '8sync clean --deep --days N'          'Custom threshold for artifact scan'
-                Write-HintRow '8sync clean --scan'                   'Windows Defender quick + dev-folder scan'
-                Write-HintRow '8sync clean --scan <path>'            'Targeted Defender scan on specific path'
-                Write-HintRow '8sync clean --audit'                  'npm/cargo/pip vulnerability scan + postinstall check'
-                Write-HintRow '8sync clean --loop on [N] [profile]'  'Auto loop: light|balanced|deep with safety lock/cooldown'
-                Write-HintRow '8sync clean --loop off'               'Stop background clean loop'
-                Write-HintRow '8sync clean --loop status'            'Show loop state and last run time'
-                Write-HintRow '8sync clean --loop profile <name>'    'Change loop profile: light|balanced|deep'
+                Write-HintRow 'ft clean'                          'Full clean: temp/cache/global env/RAM/disk (stale > 7d)'
+                Write-HintRow 'ft clean --days N'                 'Custom stale threshold  e.g. --days 14'
+                Write-HintRow 'ft clean --dry-run'                'Preview only -- nothing deleted'
+                Write-HintRow 'ft clean --envs'                   'List stale managed envs (no deletion)'
+                Write-HintRow 'ft clean --envs --delete'          'Delete selected env(s) by index (manual confirm)'
+                Write-HintRow 'ft clean --envs --delete --all'    'Delete all listed stale envs (still skips active/project)'
+                Write-HintRow 'ft clean --projects'               'Report stale git repos only (deletion disabled for safety)'
+                Write-HintRow 'ft clean --projects --all'         'Alias accepted but ignored (deletion disabled)'
+                Write-HintRow 'ft clean --projects --days N'      'Stale threshold for projects (default: 90d)'
+                Write-HintRow 'ft clean --projects --dry-run'     'Report stale projects (same as without --dry-run)'
+                Write-HintRow 'ft clean --deep'                   'Report stale MCP/npm/pip/cargo/go artifacts'
+                Write-HintRow 'ft clean --deep --delete'          'Delete stale artifacts with per-type confirmation'
+                Write-HintRow 'ft clean --deep --delete --all'    'Delete ALL stale artifacts, skip per-type prompt'
+                Write-HintRow 'ft clean --deep --delete --dry-run' 'Preview what --delete would remove'
+                Write-HintRow 'ft clean --deep --days N'          'Custom threshold for artifact scan'
+                Write-HintRow 'ft clean --scan'                   'Windows Defender quick + dev-folder scan'
+                Write-HintRow 'ft clean --scan <path>'            'Targeted Defender scan on specific path'
+                Write-HintRow 'ft clean --audit'                  'npm/cargo/pip vulnerability scan + postinstall check'
+                Write-HintRow 'ft clean --loop on [N] [profile]'  'Auto loop: light|balanced|deep with safety lock/cooldown'
+                Write-HintRow 'ft clean --loop off'               'Stop background clean loop'
+                Write-HintRow 'ft clean --loop status'            'Show loop state and last run time'
+                Write-HintRow 'ft clean --loop profile <name>'    'Change loop profile: light|balanced|deep'
                 Write-Host ''
                 return
             }

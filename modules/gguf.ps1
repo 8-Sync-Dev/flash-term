@@ -1,17 +1,17 @@
 # =============================================================================
-# 8sync gguf -- Local GGUF server launcher (llama.cpp)
+# ft gguf -- Local GGUF server launcher (llama.cpp)
 # =============================================================================
 #
 # Usage:
-#   8sync gguf serve  --engine-path <dir> --model-path <file> [options]
-#   8sync gguf serve  --profile <name>    [--preset <name>] [--port N]
-#   8sync gguf detect                     Scan GPU/CPU/RAM -> recommended preset + flags
-#   8sync gguf presets                    List built-in + custom presets
-#   8sync gguf profiles                   List saved profiles
-#   8sync gguf save   --profile <name> --engine-path <d> --model-path <f> [opts]
-#   8sync gguf status                     Show running llama-server processes
-#   8sync gguf stop                       Kill all running llama-server processes
-#   8sync gguf help                       This help screen
+#   ft gguf serve  --engine-path <dir> --model-path <file> [options]
+#   ft gguf serve  --profile <name>    [--preset <name>] [--port N]
+#   ft gguf detect                     Scan GPU/CPU/RAM -> recommended preset + flags
+#   ft gguf presets                    List built-in + custom presets
+#   ft gguf profiles                   List saved profiles
+#   ft gguf save   --profile <name> --engine-path <d> --model-path <f> [opts]
+#   ft gguf status                     Show running llama-server processes
+#   ft gguf stop                       Kill all running llama-server processes
+#   ft gguf help                       This help screen
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ function Show-GgufPresets {
         }
     }
 
-    Write-Host '  Use: 8sync gguf serve --preset <name> --engine-path <dir> --model-path <file>' -ForegroundColor DarkGray
+    Write-Host '  Use: ft gguf serve --preset <name> --engine-path <dir> --model-path <file>' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -276,7 +276,7 @@ function Show-GgufDetect {
     Write-Host ("  Flash attn : {0}"          -f $(if ($ap.flash_attn) { 'on' } else { 'off' })) -ForegroundColor White
     Write-Host ''
     Write-Host '  To use this preset:' -ForegroundColor DarkGray
-    Write-Host ("    8sync gguf serve --engine-path <dir> --model-path <file>") -ForegroundColor Yellow
+    Write-Host ("    ft gguf serve --engine-path <dir> --model-path <file>") -ForegroundColor Yellow
     Write-Host ("    (auto-detect is the default when --preset is omitted)") -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  To override: --preset max|high|medium|low or a custom name from presets.json' -ForegroundColor DarkGray
@@ -288,7 +288,7 @@ function Show-GgufProfiles {
     if (-not $data -or -not $data.profiles) {
         Write-Host ''
         Write-Host '  No profiles saved yet.' -ForegroundColor DarkGray
-        Write-Host '  Save one: 8sync gguf save --profile <name> --engine-path <dir> --model-path <file>' -ForegroundColor DarkGray
+        Write-Host '  Save one: ft gguf save --profile <name> --engine-path <dir> --model-path <file>' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
@@ -312,7 +312,7 @@ function Show-GgufProfiles {
         Write-Host ''
     }
 
-    Write-Host '  Use: 8sync gguf serve --profile <name>' -ForegroundColor DarkGray
+    Write-Host '  Use: ft gguf serve --profile <name>' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -440,7 +440,7 @@ function Show-GgufHint {
     Write-Host '     -> https://github.com/ggml-org/llama.cpp/releases' -ForegroundColor DarkGray
     Write-Host '  4. Download a GGUF model  -> https://huggingface.co (filter: GGUF)' -ForegroundColor DarkGray
     Write-Host '  5. Run:' -ForegroundColor DarkGray
-    Write-Host '     8sync gguf serve \' -ForegroundColor Yellow
+    Write-Host '     ft gguf serve \' -ForegroundColor Yellow
     Write-Host '       --engine-path "C:\path\to\llama-cpp\bin" \' -ForegroundColor Yellow
     Write-Host '       --model-path  "C:\path\to\model.gguf"' -ForegroundColor Yellow
     Write-Host ''
@@ -448,7 +448,7 @@ function Show-GgufHint {
     if ($allOk) {
         Write-Host '  All prerequisites found. Ready to serve.' -ForegroundColor Green
     } else {
-        Write-Host '  Fix the [!!] items above, then re-run: 8sync gguf hint' -ForegroundColor DarkYellow
+        Write-Host '  Fix the [!!] items above, then re-run: ft gguf hint' -ForegroundColor DarkYellow
     }
     Write-Host ''
 }
@@ -458,18 +458,18 @@ function Show-GgufHelp {
     Write-HintSection 'GGUF -- Local llama-server launcher'
     Write-Host ''
     Write-Host '  -- Launch ---------------------------------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync gguf serve --engine-path <dir> --model-path <file>' `
+    Write-HintRow 'ft gguf serve --engine-path <dir> --model-path <file>' `
                   'Start server (auto-detect preset from hardware)'
-    Write-HintRow '8sync gguf serve ... --balance'    'Smart balance: reads GPU temp + VRAM free + model size -> cool/efficient/fast'
-    Write-HintRow '8sync gguf serve ... --preset high' 'Force a resource preset (max/high/medium/low or custom)'
-    Write-HintRow '8sync gguf serve ... --gpu-layers N' 'Override GPU layers on top of any preset/balance'
-    Write-HintRow '8sync gguf serve ... --ctx N'       'Override context size  e.g. --ctx 16384'
-    Write-HintRow '8sync gguf serve ... --threads N'   'Override CPU threads'
-    Write-HintRow '8sync gguf serve ... --parallel N'  'Override parallel slots'
-    Write-HintRow '8sync gguf serve ... --batch N'     'Override batch size'
-    Write-HintRow '8sync gguf serve ... --port 8080'   'Override port (default: 8080)'
-    Write-HintRow '8sync gguf serve ... --dry-run'     'Print command without launching'
-    Write-HintRow '8sync gguf serve --profile <n>'     'Load saved profile (engine+model+preset)'
+    Write-HintRow 'ft gguf serve ... --balance'    'Smart balance: reads GPU temp + VRAM free + model size -> cool/efficient/fast'
+    Write-HintRow 'ft gguf serve ... --preset high' 'Force a resource preset (max/high/medium/low or custom)'
+    Write-HintRow 'ft gguf serve ... --gpu-layers N' 'Override GPU layers on top of any preset/balance'
+    Write-HintRow 'ft gguf serve ... --ctx N'       'Override context size  e.g. --ctx 16384'
+    Write-HintRow 'ft gguf serve ... --threads N'   'Override CPU threads'
+    Write-HintRow 'ft gguf serve ... --parallel N'  'Override parallel slots'
+    Write-HintRow 'ft gguf serve ... --batch N'     'Override batch size'
+    Write-HintRow 'ft gguf serve ... --port 8080'   'Override port (default: 8080)'
+    Write-HintRow 'ft gguf serve ... --dry-run'     'Print command without launching'
+    Write-HintRow 'ft gguf serve --profile <n>'     'Load saved profile (engine+model+preset)'
     Write-Host ''
     Write-Host '  -- Balance mode (recommended for laptops) --------------------------------' -ForegroundColor DarkGray
     Write-Host '  --balance reads the model file size to estimate bytes/layer, queries live' -ForegroundColor DarkGray
@@ -479,14 +479,14 @@ function Show-GgufHelp {
     Write-Host '    - Enabling flash-attn only when all layers fit on GPU' -ForegroundColor DarkGray
     Write-Host '    - Scaling context size with available VRAM' -ForegroundColor DarkGray
     Write-Host '  Override any individual param after --balance:' -ForegroundColor DarkGray
-    Write-Host '    8sync gguf serve ... --balance --ctx 12000 --gpu-layers 25' -ForegroundColor Yellow
+    Write-Host '    ft gguf serve ... --balance --ctx 12000 --gpu-layers 25' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  -- Servers -------------------------------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync gguf list'                     'Show running servers with health, tok/s, GPU layers, memory'
-    Write-HintRow '8sync gguf info'                     'Hardware, mode comparison, param reference, running config snapshot'
-    Write-HintRow '8sync gguf info --model-path <file>' 'Add balance preview for specific model'
-    Write-HintRow '8sync gguf status'                   'Alias for list'
-    Write-HintRow '8sync gguf stop'                     'Kill all running llama-server processes'
+    Write-HintRow 'ft gguf list'                     'Show running servers with health, tok/s, GPU layers, memory'
+    Write-HintRow 'ft gguf info'                     'Hardware, mode comparison, param reference, running config snapshot'
+    Write-HintRow 'ft gguf info --model-path <file>' 'Add balance preview for specific model'
+    Write-HintRow 'ft gguf status'                   'Alias for list'
+    Write-HintRow 'ft gguf stop'                     'Kill all running llama-server processes'
     Write-Host ''
     Write-Host '  -- Presets -------------------------------------------------------------' -ForegroundColor DarkGray
     Write-Host '  Name       GPU-layers  Threads  Ctx    Parallel  Fits' -ForegroundColor DarkGray
@@ -495,28 +495,28 @@ function Show-GgufHelp {
     Write-Host '  medium     16          8        8K     1         4 GB VRAM   — laptop GPU' -ForegroundColor White
     Write-Host '  low        0 (CPU)     16       4K     1         no GPU / integrated' -ForegroundColor White
     Write-Host '  Custom: edit gguf-config/presets.json -> custom_presets' -ForegroundColor DarkGray
-    Write-HintRow '8sync gguf presets'                  'Show all presets with full details'
+    Write-HintRow 'ft gguf presets'                  'Show all presets with full details'
     Write-Host ''
     Write-Host '  -- Profiles (saved configs) --------------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync gguf profiles'                 'List saved profiles'
-    Write-HintRow '8sync gguf save --profile <n> --engine-path <d> --model-path <f>' `
+    Write-HintRow 'ft gguf profiles'                 'List saved profiles'
+    Write-HintRow 'ft gguf save --profile <n> --engine-path <d> --model-path <f>' `
                   'Save current args as named profile'
     Write-Host ''
     Write-Host '  -- Detection / prereqs -------------------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync gguf detect'                   'Scan GPU/CPU/RAM and recommend a preset'
-    Write-HintRow '8sync gguf hint'                     'Prerequisites checklist: driver, CUDA, llama.cpp guide'
+    Write-HintRow 'ft gguf detect'                   'Scan GPU/CPU/RAM and recommend a preset'
+    Write-HintRow 'ft gguf hint'                     'Prerequisites checklist: driver, CUDA, llama.cpp guide'
     Write-Host ''
     Write-Host '  -- Chat (interactive, no server) ---------------------------------------' -ForegroundColor DarkGray
-    Write-HintRow '8sync gguf chat --engine-path <dir> --model-path <file>' `
+    Write-HintRow 'ft gguf chat --engine-path <dir> --model-path <file>' `
                   'Interactive multi-turn chat session (llama-cli)'
-    Write-HintRow '8sync gguf chat --profile <n>'       'Load saved profile to start chat'
-    Write-HintRow '8sync gguf chat --temp 0.7 --ctx 8192 --system <txt>' 'Extra chat options'
+    Write-HintRow 'ft gguf chat --profile <n>'       'Load saved profile to start chat'
+    Write-HintRow 'ft gguf chat --temp 0.7 --ctx 8192 --system <txt>' 'Extra chat options'
     Write-Host ''
     Write-Host '  -- Use with omp --------------------------------------------------------' -ForegroundColor DarkGray
     Write-Host '  Server exposes an OpenAI-compatible /v1 endpoint (http://localhost:<port>/v1).' -ForegroundColor DarkGray
-    Write-Host '  Point omp at it: add a provider with that baseUrl in your omp config, then 8sync . --model <local>.' -ForegroundColor DarkGray
+    Write-Host '  Point omp at it: add a provider with that baseUrl in your omp config, then ft . --model <local>.' -ForegroundColor DarkGray
     Write-Host '  -- Quick example -------------------------------------------------------' -ForegroundColor DarkGray
-    Write-Host '  8sync gguf serve \' -ForegroundColor Yellow
+    Write-Host '  ft gguf serve \' -ForegroundColor Yellow
     Write-Host '    --engine-path "C:\Users\Admin\Documents\llamacpp\run" \' -ForegroundColor Yellow
     Write-Host '    --model-path  "C:\Users\Admin\Documents\llamacpp\model.gguf" \' -ForegroundColor Yellow
     Write-Host '    --balance' -ForegroundColor Yellow
@@ -579,7 +579,7 @@ function Invoke-GgufSave {
     Write-Host ("    Model  : {0}" -f $modelPath)  -ForegroundColor DarkGray
     Write-Host ("    Preset : {0}   Port: {1}" -f $preset, $port) -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host '  Use: 8sync gguf serve --profile ' -NoNewline -ForegroundColor DarkGray
+    Write-Host '  Use: ft gguf serve --profile ' -NoNewline -ForegroundColor DarkGray
     Write-Host $profileName -ForegroundColor Cyan
     Write-Host ''
 }
@@ -710,7 +710,7 @@ function Show-GgufList {
     $procs = Get-Process -Name 'llama-server','llama-server.exe' -ErrorAction SilentlyContinue
     if (-not $procs -or $procs.Count -eq 0) {
         Write-Host '  No llama-server processes running.' -ForegroundColor DarkGray
-        Write-Host '  Start one: 8sync gguf serve --engine-path <dir> --model-path <file>' -ForegroundColor DarkGray
+        Write-Host '  Start one: ft gguf serve --engine-path <dir> --model-path <file>' -ForegroundColor DarkGray
         Write-Host ''
         return
     }
@@ -760,7 +760,7 @@ function Show-GgufList {
         Write-Host ''
     }
 
-    Write-Host '  Stop all: 8sync gguf stop' -ForegroundColor DarkGray
+    Write-Host '  Stop all: ft gguf stop' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -797,7 +797,7 @@ function Show-GgufStatus {
     }
 
     Write-Host '  Endpoint: http://localhost:<port>/v1' -ForegroundColor Cyan
-    Write-Host '  Stop all: 8sync gguf stop' -ForegroundColor DarkGray
+    Write-Host '  Stop all: ft gguf stop' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -846,7 +846,7 @@ function Invoke-GgufServe {
     if ($profileName) {
         $data = Read-GgufJson (Get-GgufProfilesPath)
         if (-not $data -or -not $data.profiles.PSObject.Properties[$profileName]) {
-            Write-Warning ("gguf: profile '{0}' not found. Run: 8sync gguf profiles" -f $profileName)
+            Write-Warning ("gguf: profile '{0}' not found. Run: ft gguf profiles" -f $profileName)
             return
         }
         $pr = $data.profiles.$profileName
@@ -903,7 +903,7 @@ function Invoke-GgufServe {
     } elseif ($presetName) {
         $preset = Get-GgufPreset $presetName
         if (-not $preset) {
-            Write-Warning ("gguf: preset '{0}' not found. Run: 8sync gguf presets" -f $presetName)
+            Write-Warning ("gguf: preset '{0}' not found. Run: ft gguf presets" -f $presetName)
             return
         }
         $modeLabel = $presetName
@@ -1046,7 +1046,7 @@ function Invoke-GgufChat {
     if ($profileName) {
         $data = Read-GgufJson (Get-GgufProfilesPath)
         if (-not $data -or -not $data.profiles.PSObject.Properties[$profileName]) {
-            Write-Warning ("gguf chat: profile '{0}' not found. Run: 8sync gguf profiles" -f $profileName)
+            Write-Warning ("gguf chat: profile '{0}' not found. Run: ft gguf profiles" -f $profileName)
             return
         }
         $pr = $data.profiles.$profileName
@@ -1214,7 +1214,7 @@ function Show-GgufInfo {
     Write-Host '  Mode          When to use                                 How to use' -ForegroundColor DarkGray
     Write-Host ('  ' + ('-' * 76)) -ForegroundColor DarkGray
     Write-Host '  --balance     Daily use: auto-fit layers to free VRAM,    (default recommendation)' -ForegroundColor Cyan
-    Write-Host '                thermal guard, scales ctx with VRAM         8sync gguf serve ... --balance' -ForegroundColor DarkGray
+    Write-Host '                thermal guard, scales ctx with VRAM         ft gguf serve ... --balance' -ForegroundColor DarkGray
     Write-Host ''
     Write-Host '  --preset max  All layers on GPU, large ctx, flash-attn    --preset max' -ForegroundColor White
     Write-Host '                Best quality+speed. Needs 10+ GB VRAM' -ForegroundColor DarkGray
@@ -1244,8 +1244,8 @@ function Show-GgufInfo {
     Write-Host '  --batch N        Logical batch size            --batch 256' -ForegroundColor White
     Write-Host ''
     Write-Host '  Overrides apply on top of --balance or --preset:' -ForegroundColor DarkGray
-    Write-Host '    8sync gguf serve ... --balance --ctx 16384 --gpu-layers 26' -ForegroundColor Yellow
-    Write-Host '    8sync gguf serve ... --preset high --parallel 2 --batch 512' -ForegroundColor Yellow
+    Write-Host '    ft gguf serve ... --balance --ctx 16384 --gpu-layers 26' -ForegroundColor Yellow
+    Write-Host '    ft gguf serve ... --preset high --parallel 2 --batch 512' -ForegroundColor Yellow
     Write-Host ''
 
     # ── Balance preview for model ─────────────────────────────────────────────
@@ -1265,7 +1265,7 @@ function Show-GgufInfo {
         Write-Host ("  CPU threads  : {0}   Batch: {1}   Parallel: {2}" -f $bal.cpu_threads, $bal.batch_size, $bal.parallel) -ForegroundColor White
         Write-Host ''
         Write-Host '  Command to run with these settings:' -ForegroundColor DarkGray
-        Write-Host ("    8sync gguf serve --engine-path <dir> --model-path `"{0}`" --balance" -f $modelPath) -ForegroundColor Yellow
+        Write-Host ("    ft gguf serve --engine-path <dir> --model-path `"{0}`" --balance" -f $modelPath) -ForegroundColor Yellow
         Write-Host ''
     } elseif ($modelPath) {
         Write-Host ("  [!!] Model not found: {0}" -f $modelPath) -ForegroundColor Red
@@ -1281,7 +1281,7 @@ function Show-GgufInfo {
     Write-Host '  Edit: gguf-config/presets.json -> custom_presets section' -ForegroundColor DarkGray
     Write-Host '  Format:' -ForegroundColor DarkGray
     Write-Host '    "my-preset": {' -ForegroundColor White
-    Write-Host '      "description": "Qwen3 4B tuned for RTX 3050",  // shown in 8sync gguf presets' -ForegroundColor DarkGray
+    Write-Host '      "description": "Qwen3 4B tuned for RTX 3050",  // shown in ft gguf presets' -ForegroundColor DarkGray
     Write-Host '      "n_gpu_layers": 28,   // layers offloaded to GPU' -ForegroundColor DarkGray
     Write-Host '      "cpu_threads":  6,    // threads for CPU generation' -ForegroundColor DarkGray
     Write-Host '      "ctx_size":     12288,// context window in tokens' -ForegroundColor DarkGray
@@ -1291,8 +1291,8 @@ function Show-GgufInfo {
     Write-Host '      "notes":        "Optional note shown at launch"' -ForegroundColor DarkGray
     Write-Host '    }' -ForegroundColor White
     Write-Host ''
-    Write-Host '  Then: 8sync gguf serve ... --preset my-preset' -ForegroundColor Yellow
-    Write-Host '  List: 8sync gguf presets' -ForegroundColor DarkGray
+    Write-Host '  Then: ft gguf serve ... --preset my-preset' -ForegroundColor Yellow
+    Write-Host '  List: ft gguf presets' -ForegroundColor DarkGray
     Write-Host ''
 
     # ── Running server snapshot ───────────────────────────────────────────────
@@ -1352,17 +1352,17 @@ function Show-GgufInfo {
     Write-Host '  QUICK EXAMPLES' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  # Auto-tune for your hardware + model (recommended):' -ForegroundColor DarkGray
-    Write-Host '  8sync gguf serve --engine-path "C:\...\run" --model-path "C:\...\model.gguf" --balance' -ForegroundColor Yellow
+    Write-Host '  ft gguf serve --engine-path "C:\...\run" --model-path "C:\...\model.gguf" --balance' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  # Force preset, then fine-tune one param:' -ForegroundColor DarkGray
-    Write-Host '  8sync gguf serve ... --preset high --ctx 12000' -ForegroundColor Yellow
+    Write-Host '  ft gguf serve ... --preset high --ctx 12000' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  # Full manual control:' -ForegroundColor DarkGray
-    Write-Host '  8sync gguf serve ... --gpu-layers 24 --ctx 8192 --threads 6 --batch 256 --parallel 1' -ForegroundColor Yellow
+    Write-Host '  ft gguf serve ... --gpu-layers 24 --ctx 8192 --threads 6 --batch 256 --parallel 1' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '  # Save as profile to skip typing next time:' -ForegroundColor DarkGray
-    Write-Host '  8sync gguf save --profile local --engine-path "C:\...\run" --model-path "C:\...\model.gguf"' -ForegroundColor Yellow
-    Write-Host '  8sync gguf serve --profile local --balance' -ForegroundColor Yellow
+    Write-Host '  ft gguf save --profile local --engine-path "C:\...\run" --model-path "C:\...\model.gguf"' -ForegroundColor Yellow
+    Write-Host '  ft gguf serve --profile local --balance' -ForegroundColor Yellow
     Write-Host ''
 }
 
