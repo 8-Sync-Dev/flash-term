@@ -16,6 +16,10 @@ All notable changes to flash-term are tracked here.
   `modules/harness.ps1`, `modules/skill.ps1`, `modules/agents/00-shared.ps1`, `agents/`, `.omp/`.
   flash-term is now purely a WezTerm config + terminal toolkit. `ft up` dropped the `omp`/`skills` targets.
 - **`ft setup` step [5/5] now installs su-code** (instead of deploying the omp harness).
+- **`ft setup [5/5]` now prints the full AI onboarding sequence** after installing su-code:
+  `8sync setup` (once: omp + gh + MCP servers + models) -> `8sync harness` (per-project: 50 skills +
+  `/sx-*` commands) -> `8sync .`. Previously it only hinted `8sync .`, leaving the global + per-project
+  skill layers unconfigured -- a fresh `ft setup` then `8sync .` started a skill-poor session.
 - **`ft bg set <id|path|url>` persists the image into the repo** as `assets/default-bg.<ext>` (the
   committed default wallpaper) and points `current-bg.lua` at it; `wezterm.lua` falls back to
   `assets/default-bg.jpg` then `.png`. The old shipped `default-bg.png` was replaced by the

@@ -187,10 +187,14 @@ function Invoke-SetupCommand {
             try {
                 iwr -useb https://8-sync-dev.github.io/su-code/install.ps1 | iex
                 if (Get-Command 8sync -ErrorAction SilentlyContinue) {
-                    Write-Host '  [ok]    su-code installed -- `8sync` ready (AI: `8sync .`)' -ForegroundColor Green
+                    Write-Host '  [ok]    su-code installed -- `8sync` ready' -ForegroundColor Green
                 } else {
                     Write-Host '  [ok]    su-code installed -- open a NEW tab, then `8sync` works' -ForegroundColor Green
                 }
+                Write-Host '          Finish AI setup in a NEW tab:' -ForegroundColor Cyan
+                Write-Host '            8sync setup     # once: omp + gh + MCP servers + models' -ForegroundColor Gray
+                Write-Host '            8sync harness   # per-project: deploy 50 skills + /sx-* commands' -ForegroundColor Gray
+                Write-Host '            8sync .         # start an AI coding session' -ForegroundColor Gray
             } catch {
                 Write-Host ("  [warn]  su-code install failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
                 Write-Host '          manual: irm https://8-sync-dev.github.io/su-code/install.ps1 | iex' -ForegroundColor DarkGray
@@ -201,6 +205,7 @@ function Invoke-SetupCommand {
     }
 
     Write-Host ''
-    Write-Host '  Setup complete. Looks: `ft theme`. AI: `8sync .` (su-code).' -ForegroundColor Green
+    Write-Host '  Setup complete.' -ForegroundColor Green
+    Write-Host '  Looks/tools: `ft help`    AI: `8sync setup` -> `8sync harness` -> `8sync .`' -ForegroundColor Green
     Write-Host ''
 }
