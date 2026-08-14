@@ -38,11 +38,13 @@ All are gitignored.
 
 ## Tool management
 
-`$script:ToolPackages` lists the managed CLI tools (fzf, zoxide, ripgrep, fd, bat, eza, starship,
-helix, yazi, lazygit, delta, tokei, hyperfine, dust, procs, bottom, less, jq, yq, make). All
-installed/updated via Scoop. State persists to `.state/tool-state.json`; `.state/sync.lock` prevents
-concurrent syncs. A missing-tools cache (`.state/missing-cache.json`, 5-min TTL) avoids re-scanning on
-every tab.
+`$script:ToolPackages` lists the 21 managed CLI tools (fzf, zoxide, ripgrep, fd, bat, eza, starship,
+helix, yazi, lazygit, delta, tokei, hyperfine, dust, procs, bottom, less, jq, yq, make, chafa). All
+installed/updated via Scoop (bucket `extras` ensured first), batched into one install and one update
+call. State persists to `.state/tool-state.json`; `.state/sync.lock` prevents concurrent syncs and is
+reaped after 30 min. A missing-tools cache (`.state/missing-cache.json`, 5-min TTL) avoids re-scanning on
+every tab; `Start-AutoSync` re-syncs in a hidden process when a tool is missing or the last sync is
+older than 72h.
 
 `ft sync` installs/updates them; `ft sync --check` is a dry-run; `ft status` reports what is
 installed and the last sync time.
@@ -52,8 +54,9 @@ installed and the last sync time.
 `ft dev` provisions development runtimes with **no Visual Studio** build tools, via Scoop (and a
 couple of non-Scoop installers): `node`, `python` (uv + standalone CPython), `go`, `rust`
 (GNU/MinGW triple), `chromium`, `docker` (winget), `encore`. `ft dev all` installs everything;
-`ft dev` shows status; `ft dev --check` is a dry run. `ft setup` runs this as a bootstrap step
-(`--no-dev` skips it). `~/.cargo/bin` and `~/.encore/bin` are added to the preferred PATH.
+`ft dev` shows status; `ft dev all --check` is a dry run (`ft dev --check` with no target prints the
+status table). `ft setup` runs this as a bootstrap step (`--no-dev` skips it). `~/.cargo/bin` and
+`~/.encore/bin` are added to the preferred PATH.
 
 ## Update + readiness
 
@@ -61,6 +64,21 @@ couple of non-Scoop installers): `node`, `python` (uv + standalone CPython), `go
   reports the WezTerm version. `--check` is a dry-run.
 - `ft status` reports installed tools, last sync time, current GPU target, and glass theme.
 - `ft autoupdate [on|off|auto|now]` runs a background update + release notifier (notify mode by default).
+
+## Profiles
+
+`ft profile` gives each profile its own `.state/profiles/<name>/`, its own generated
+`current-{bg,opacity,style,gpu}-<name>.lua` (read by `wezterm.lua` when `WEZTERM_PROFILE` is set), and
+its own `CLAUDE_CONFIG_DIR`. `switch` changes the current tab's env/state only; `open` launches a new
+`wezterm-gui` window for full visual isolation.
+
+## Startup cost control
+
+`Start-WezTermShell` times 8 named phases per boot and appends them to `.state/startup-profile.json`
+(last 40 boots, surfaced as `startup perf:` in `ft status`; `WEZTERM_BOOT_TRACE=1` prints the total).
+Background work is gated to once per 20s across tabs (`.state/startup-background-gate.json`), and the
+default `light` startup mode runs only the clean-loop check — `WEZTERM_STARTUP_MODE=balanced` also runs
+auto-sync, wallpaper rotation, and the update notifier.
 
 ## Local models (GGUF)
 

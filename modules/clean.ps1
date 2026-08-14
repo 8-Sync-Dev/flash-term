@@ -626,7 +626,7 @@ function Invoke-EnvCleanCommand {
             Write-Host ('  skipped (active env): {0}' -f $t.Path) -ForegroundColor Yellow
             continue
         }
-        if (Test-IsProjectPath -Path $t.Path -or (Test-IsInsideGitRepo -Path $t.Path)) {
+        if ((Test-IsProjectPath -Path $t.Path) -or (Test-IsInsideGitRepo -Path $t.Path)) {
             Write-Host ('  skipped (project/git): {0}' -f $t.Path) -ForegroundColor DarkGray
             continue
         }
@@ -1119,7 +1119,7 @@ function Invoke-EcosystemAudit {
     }
 
     # -- cargo audit ---------------------------------------------------------
-    if (Test-CommandExists 'cargo-audit' -or (Test-CommandExists 'cargo' -and (Test-Path (Join-Path $HOME '.cargo\bin\cargo-audit.exe')))) {
+    if ((Test-CommandExists 'cargo-audit') -or ((Test-CommandExists 'cargo') -and (Test-Path (Join-Path $HOME '.cargo\bin\cargo-audit.exe')))) {
         Write-Host '  CARGO AUDIT (RustSec)' -ForegroundColor Yellow
         try {
             $cargoAuditCmd = if (Test-CommandExists 'cargo-audit') { 'cargo-audit' } else { 'cargo' }

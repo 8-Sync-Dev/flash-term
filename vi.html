@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flash-term — terminal Windows 11 đẹp không tưởng | cấu hình WezTerm + lệnh ft</title>
+<meta name="description" content="flash-term là cấu hình WezTerm và bộ lệnh một dòng cho Windows 11: theme kính Catppuccin, wallpaper động, 21 CLI tool, 7 dev runtime không cần Visual Studio, server GGUF llama.cpp chạy local và terminal sẵn sàng cho AI. Cài bằng một dòng PowerShell.">
+<meta name="keywords" content="windows terminal, wezterm config, tuỳ biến terminal windows 11, catppuccin mocha, powershell profile, terminal kính mờ, mica, nerd font, scoop, dựng môi trường dev windows, rust không cần visual studio, uv python windows, llama.cpp windows, gguf local llm, endpoint tương thích openai, ai coding cli, wallpaper terminal, fzf zoxide ripgrep eza, helix editor windows, dotfiles windows">
+<meta name="author" content="8-Sync-Dev">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#11111b">
+<link rel="canonical" href="https://8-sync-dev.github.io/flash-term/vi.html">
+<link rel="alternate" hreflang="en" href="https://8-sync-dev.github.io/flash-term/">
+<link rel="alternate" hreflang="vi" href="https://8-sync-dev.github.io/flash-term/vi.html">
+<link rel="alternate" hreflang="x-default" href="https://8-sync-dev.github.io/flash-term/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="flash-term">
+<meta property="og:title" content="flash-term — terminal Windows 11 đẹp không tưởng">
+<meta property="og:description" content="WezTerm + kính Catppuccin, wallpaper động, 21 CLI tool, 7 dev runtime không cần Visual Studio, server LLM GGUF local và AI coding harness cách một tổ hợp phím. Cài bằng một dòng PowerShell.">
+<meta property="og:url" content="https://8-sync-dev.github.io/flash-term/vi.html">
+<meta property="og:image" content="https://8-sync-dev.github.io/flash-term/assets/banner.png">
+<meta property="og:image:width" content="2352">
+<meta property="og:image:height" content="963">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="flash-term — terminal Windows 11 đẹp không tưởng">
+<meta name="twitter:description" content="Kính Catppuccin, wallpaper động, 21 CLI tool, 7 dev runtime, LLM GGUF local, sẵn sàng cho AI. Cài một dòng.">
+<meta name="twitter:image" content="https://8-sync-dev.github.io/flash-term/assets/banner.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9A%A1</text></svg>">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "flash-term",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "inLanguage": "vi",
+  "description": "Cấu hình WezTerm và bộ lệnh PowerShell một dòng cho Windows 11: theme kính Catppuccin, wallpaper động, 21 CLI tool, 7 dev runtime không cần Visual Studio, server GGUF llama.cpp local.",
+  "url": "https://8-sync-dev.github.io/flash-term/vi.html",
+  "downloadUrl": "https://8-sync-dev.github.io/flash-term/install.ps1",
+  "codeRepository": "https://github.com/8-Sync-Dev/flash-term",
+  "programmingLanguage": ["Lua", "PowerShell"],
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Organization", "name": "8-Sync-Dev", "url": "https://github.com/8-Sync-Dev" }
+}
+</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<header><div class="wrap">
+  <span class="brand">⚡ flash<span>-term</span></span>
+  <nav>
+    <a href="#features">Tính năng</a>
+    <a href="#install">Cài đặt</a>
+    <a href="#commands">Lệnh</a>
+    <a href="#ai">AI local</a>
+    <a href="https://github.com/8-Sync-Dev/flash-term">GitHub</a>
+    <a class="lang" href="./">EN / <b>VI</b></a>
+  </nav>
+</div></header>
+
+<div class="hero"><div class="wrap">
+  <div class="eyebrow">WezTerm · Windows 11 · PowerShell</div>
+  <h1>Terminal Windows<br>đẹp không tưởng.</h1>
+  <p class="tagline">Kính mờ Catppuccin, wallpaper động, và <em>một câu lệnh</em> dựng trọn môi trường dev của bạn.</p>
+  <p class="lede">flash-term là cấu hình WezTerm cộng với lệnh <code>ft</code>: 3 style kính × 3 scene,
+  viền neon tím, nền Mica, 21 CLI tool được quản lý, 7 dev runtime <b>không cần Visual Studio</b>,
+  server GGUF llama.cpp local với endpoint tương thích OpenAI, và AI coding harness cách đúng một tổ hợp phím.</p>
+
+  <div class="cta">
+    <div class="copy">
+      <code id="one">irm https://8-sync-dev.github.io/flash-term/install.ps1 | iex</code>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('one').textContent);this.textContent='đã copy'">copy</button>
+    </div>
+    <a class="btn" href="https://github.com/8-Sync-Dev/flash-term">★ Star trên GitHub</a>
+  </div>
+
+  <div class="chips">
+    <span class="chip">9 diện mạo lưu sẵn</span><span class="chip">21 CLI tool</span>
+    <span class="chip">7 dev runtime</span><span class="chip">không Visual Studio</span>
+    <span class="chip">tương phản Rec.709</span><span class="chip">llama.cpp /v1</span>
+    <span class="chip">khởi động 467ms</span><span class="chip">MIT</span>
+  </div>
+
+  <div class="shot"><img src="assets/banner.png" alt="Banner flash-term: chữ FLASH TERM bên cạnh terminal đang chạy ft status" width="2352" height="963"></div>
+</div></div>
+
+<section id="features"><div class="wrap">
+  <h2>Dành cho người muốn <span class="k">cả hai</span></h2>
+  <p class="sec-sub">Vừa đẹp vừa mạnh, trên Windows, không phải đi đường vòng qua build tools.</p>
+  <div class="grid">
+    <div class="card"><span class="tag">DIỆN MẠO</span>
+      <h3>9 diện mạo, một lệnh</h3>
+      <p><code>ft theme</code> ghép 3 style kính (neon / ice / mint) với 3 scene (focus / cinematic /
+      showcase). Trạng thái lưu vào file Lua nhỏ và áp dụng nóng — không cần khởi động lại.</p></div>
+    <div class="card"><span class="tag">TƯƠNG PHẢN</span>
+      <h3>Wallpaper tự quyết overlay</h3>
+      <p>Palette màu từ Wallhaven được tính độ sáng Rec.709, chia nhóm sáng / trung tính / tối, rồi lớp kính
+      dịch theo để chữ vẫn đọc được sau mỗi lần đổi ảnh.</p></div>
+    <div class="card"><span class="tag">TỐC ĐỘ</span>
+      <h3>Khởi động được đo, không phỏng đoán</h3>
+      <p>8 phase có tên được đo mỗi lần boot, lưu vòng 40 lượt, cache tool thiếu 5 phút, cổng chặn 20 giây
+      giữa các tab, hoãn init prompt. <code>ft status</code> in ra số ms của lần boot cuối.</p></div>
+    <div class="card"><span class="tag">BOOTSTRAP</span>
+      <h3>Không cần Visual Studio</h3>
+      <p>Rust dùng host triple GNU/MinGW với scoop <code>gcc</code>; Python là CPython standalone build sẵn
+      qua <code>uv</code>. Hai cái bẫy MSVC quen thuộc bị xử lý từ gốc.</p></div>
+    <div class="card"><span class="tag">DỌN DẸP</span>
+      <h3>Dọn mà không phá code</h3>
+      <p>Hơn 50 mục tiêu cache, ba lớp bảo vệ project/git kiểm tra lại trước mỗi lần xoá, và
+      <code>--projects</code> vốn không thể xoá. Kèm audit lỗ hổng npm/cargo/pip.</p></div>
+    <div class="card"><span class="tag">AI</span>
+      <h3>Serve model của chính bạn</h3>
+      <p><code>ft gguf serve --balance</code> khớp số GPU layer và context theo VRAM trống thật, giảm 20%
+      khi GPU trên 75 °C, và mở <code>/v1</code> cho mọi client OpenAI — kể cả <code>8sync</code>.</p></div>
+  </div>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <h2>Một dòng. <span class="k">Năm bước.</span></h2>
+  <p class="sec-sub">Trình cài clone vào <code>%USERPROFILE%\.config\wezterm</code> rồi chạy <code>ft setup</code>.</p>
+<pre><b>irm https://8-sync-dev.github.io/flash-term/install.ps1 | iex</b>
+
+<i>[1/5]</i> core tools on PATH        <i>kiểm tra git · omp · wezterm</i>
+<i>[2/5]</i> Scoop                     <i>+ WezTerm, JetBrainsMono NF, PowerShell 7, CompletionPredictor</i>
+<i>[3/5]</i> managed tools             <i>21 CLI tool qua Scoop</i>
+<i>[4/5]</i> dev runtimes              <i>node · python · go · rust · chromium · encore · docker</i>
+<i>[5/5]</i> AI harness                <i>trình cài su-code → lệnh `8sync`</i>
+
+<span class="c">ok</span> xong — mở WezTerm và chạy <b>ft help</b></pre>
+  <p class="sec-sub">Cờ: <code>-ConfigDir &lt;path&gt;</code> · <code>-Update</code> (chỉ pull) ·
+  <code>-NoSetup</code> (chỉ config) · <code>-Branch</code> / <code>-Repo</code>.
+  Bỏ bước: <code>--no-tools</code> · <code>--no-dev</code> · <code>--no-harness</code> · <code>--check</code>.</p>
+  <div class="note">Chạy lại một dòng cài sẽ hard-reset về <code>origin/main</code>. Nếu bạn có sửa đổi cá nhân,
+  hãy dùng <code>ft up self</code> — nó tự stash rồi trả lại quanh lần pull fast-forward.</div>
+</div></section>
+
+<section id="commands"><div class="wrap">
+  <h2>Lệnh <span class="k">ft</span></h2>
+  <p class="sec-sub">15 lệnh, 10 nhóm tab completion, menu tự wrap theo bề rộng terminal.</p>
+  <div class="two">
+    <div>
+      <table>
+        <tr><th>Lệnh</th><th>Làm gì</th></tr>
+        <tr><td><code>ft setup</code></td><td>Bootstrap 5 bước</td></tr>
+        <tr><td><code>ft sync [--check]</code></td><td>Cài thiếu + cập nhật 21 tool</td></tr>
+        <tr><td><code>ft up [--check]</code></td><td>Pull ff-only, tool Scoop, phiên bản WezTerm</td></tr>
+        <tr><td><code>ft reload</code></td><td>Nạp lại 14 module vào shell đang chạy</td></tr>
+        <tr><td><code>ft dev all</code></td><td>Node · Python · Go · Rust · Chromium · Encore · Docker</td></tr>
+        <tr><td><code>ft theme</code> / <code>ft gpu</code></td><td>Style + scene kính · chính sách GPU/FPS</td></tr>
+        <tr><td><code>ft bg …</code></td><td>Tìm, chọn, đặt, xoay wallpaper</td></tr>
+        <tr><td><code>ft clean …</code></td><td>Dọn ổ đĩa, audit chuỗi phụ thuộc</td></tr>
+        <tr><td><code>ft gguf …</code></td><td>Server llama.cpp local + chat</td></tr>
+        <tr><td><code>ft profile …</code></td><td>Profile terminal tách biệt kiểu Chrome</td></tr>
+        <tr><td><code>ft hx …</code></td><td>Helix: theme, health, wrap, opacity</td></tr>
+      </table>
+    </div>
+    <div class="shot"><img src="assets/preview-help.png" alt="Kết quả ft help liệt kê toàn bộ lệnh flash-term" loading="lazy"></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Kính mờ, <span class="k">lưu sẵn</span></h2>
+  <p class="sec-sub">Style quyết màu; scene quyết độ mờ; wallpaper quyết tương phản.</p>
+  <div class="shot"><img src="assets/preview-themes.png" alt="Palette của neon_glass, ice_glass và mint_glass" loading="lazy"></div>
+  <div class="two" style="margin-top:26px">
+    <div>
+<pre><b>ft theme</b>                    <i># style + scene hiện tại</i>
+<b>ft theme ice_glass</b>          <i># đổi style</i>
+<b>ft theme neon_glass cinematic</b>
+<b>ft bg search cyberpunk city</b>  <i># wallhaven, chỉ 4K+</i>
+<b>ft bg pick</b>                  <i># fzf + thumbnail chafa</i>
+<b>ft bg rotate on 10</b></pre>
+      <p class="sec-sub">Ba nguồn wallpaper (Wallhaven, yande.re, safebooru), chỉ SFW theo thiết kế,
+      điều kiện 4K trong mọi truy vấn, và <code>ft bg set</code> copy ảnh vào repo để wallpaper đi theo
+      config của bạn.</p>
+    </div>
+    <div class="shot"><img src="assets/preview-status.png" alt="ft status hiển thị tool, dung lượng và thời gian khởi động" loading="lazy"></div>
+  </div>
+</div></section>
+
+<section id="ai"><div class="wrap">
+  <h2>Model local, <span class="k">solver thật</span></h2>
+  <p class="sec-sub">flash-term lo serve model. <a href="https://github.com/8-Sync-Dev/su-code">su-code</a> (<code>8sync</code>) lo suy nghĩ.</p>
+<pre><b>ft gguf hint</b>                                    <i># checklist driver / CUDA / llama.cpp</i>
+<b>ft gguf serve --model-path model.gguf --balance</b>  <i># khớp layer + ctx theo VRAM trống</i>
+<b>ft gguf list</b>                                    <i># health, tok/s từ /metrics, uptime</i>
+<b>8sync .</b>                                         <i># session AI coding trong repo này</i></pre>
+  <table>
+    <tr><th>Preset</th><th>GPU layer</th><th>Thread</th><th>Context</th><th>Parallel</th><th>Batch</th><th>Flash-attn</th></tr>
+    <tr><td><code>max</code></td><td>99</td><td>2</td><td>32768</td><td>4</td><td>512</td><td>có</td></tr>
+    <tr><td><code>high</code></td><td>32</td><td>4</td><td>16384</td><td>2</td><td>256</td><td>có</td></tr>
+    <tr><td><code>medium</code></td><td>16</td><td>8</td><td>8192</td><td>1</td><td>128</td><td>—</td></tr>
+    <tr><td><code>low</code></td><td>0 (CPU)</td><td>16</td><td>4096</td><td>1</td><td>64</td><td>—</td></tr>
+  </table>
+  <div class="note">Mặc định endpoint bind <code>0.0.0.0</code> và không có auth. Trên mạng dùng chung hãy thêm
+  <code>--host 127.0.0.1</code>.</div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Lưu ý <span class="k">thật lòng</span></h2>
+  <p class="sec-sub">Vì một README nói quá sẽ ngốn của bạn cả buổi chiều.</p>
+  <div class="grid">
+    <div class="card"><h3>Chỉ Windows</h3><p>Windows 10/11, PowerShell 5.1+, dùng Scoop và <code>winget</code>.
+      Cài Scoop và TRIM/defrag cần admin. Docker cần WSL2 và mở GUI một lần.</p></div>
+    <div class="card"><h3><code>ft gpu N</code> chỉ hai trạng thái</h3><p>≥10 → HighPerformance + 165 FPS;
+      &lt;10 → LowPower + 120. Đây là công tắc chính sách, không phải sàn mức dùng GPU.</p></div>
+    <div class="card"><h3>Mica có, nhưng không phải chính</h3><p>Wallpaper và lớp overlay nằm trên nó.
+      Độ trong bạn thấy phần lớn từ <code>window_background_opacity</code>. Không có acrylic/blur.</p></div>
+    <div class="card"><h3>Xoay ảnh poll khi mở shell</h3><p>Xoay wallpaper và vòng dọn dẹp là poll lúc mở shell,
+      không phải Task Scheduler — cửa sổ để yên sẽ không tự đổi ảnh.</p></div>
+    <div class="card"><h3><code>ft clean</code> xoá thật</h3><p>Chạy trơ <code>ft clean</code> sẽ xoá file cũ hơn
+      7 ngày. Nên <code>--dry-run</code> trước. <code>node_modules</code>, <code>target/</code>,
+      <code>vendor/</code> không bao giờ bị chạm.</p></div>
+    <div class="card"><h3>Không có code AI ở đây</h3><p>flash-term không chứa AI. <code>ft setup</code> cài
+      <a href="https://github.com/8-Sync-Dev/su-code">su-code</a> — chủ sở hữu lệnh <code>8sync</code>.</p></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div><a href="https://github.com/8-Sync-Dev/flash-term">GitHub</a> ·
+    <a href="https://github.com/8-Sync-Dev/flash-term/blob/main/README.vi.md">README (VI)</a> ·
+    <a href="https://github.com/8-Sync-Dev/flash-term/blob/main/docs/KEYBINDINGS.md">Phím tắt</a> ·
+    <a href="https://github.com/8-Sync-Dev/flash-term/blob/main/docs/ARCHITECTURE.md">Kiến trúc</a> ·
+    <a href="https://github.com/8-Sync-Dev/su-code">su-code</a> ·
+    <a href="./">English</a></div>
+  <div style="margin-top:10px">MIT © 8-Sync-Dev · dựng cho WezTerm trên Windows 11</div>
+  <div class="kw">windows terminal · wezterm config · tuỳ biến terminal windows 11 · catppuccin mocha ·
+    powershell profile · terminal kính mờ · mica · nerd font · scoop · dựng môi trường dev windows ·
+    rust không cần visual studio · uv python windows · llama.cpp windows · gguf local llm ·
+    endpoint tương thích openai · ai coding cli · wallpaper terminal · fzf zoxide ripgrep eza ·
+    helix editor windows · dotfiles windows</div>
+  <div class="hash">#windows11 #wezterm #terminal #powershell #catppuccin #dotfiles #devtools #cli #scoop
+    #nerdfonts #rustlang #golang #nodejs #python #llamacpp #gguf #localllm #aicoding #developerexperience #ricing</div>
+</div></footer>
+
+</body>
+</html>

@@ -3,6 +3,44 @@
 All notable changes to flash-term are tracked here.
 
 
+## [v2026.08.14] - 2026-08-14 -- bilingual README + GitHub Pages site; `ft up` wired
+
+### Added
+- **Rewritten `README.md`** -- rendered banner + three preview images (`assets/banner.png`,
+  `preview-help.png`, `preview-status.png`, `preview-themes.png`), badges, a full feature deep-dive
+  (look/wallpapers/toolchain/GGUF/clean/profiles), a mermaid architecture diagram, an honest-caveats
+  section, and an SEO keyword/hashtag block.
+- **`README.vi.md`** -- complete Vietnamese translation, cross-linked with the English README.
+- **GitHub Pages landing site**: `index.html` (EN) + `vi.html` (VI) sharing `assets/site.css`, with
+  `hreflang` alternates, canonical URLs, Open Graph/Twitter cards pointing at `assets/banner.png`,
+  JSON-LD `SoftwareApplication`, `sitemap.xml`, `robots.txt` and `.nojekyll`. Served from the repo root,
+  so `https://8-sync-dev.github.io/flash-term/install.ps1` keeps working.
+- **`chafa` is now a managed CLI tool** (21 total), so `ft bg pick`'s inline thumbnail preview works
+  after `ft sync` instead of silently degrading to the text-only fallback.
+
+### Fixed
+- **`ft up` actually runs.** The dispatcher had no `up` case (it fell through to the help menu) and
+  `$script:UpTargets` was never defined, so even a direct call iterated zero targets. Added the
+  dispatcher arm + `$script:UpTargets = @('self','scoop','wezterm')`, and replaced the call to the
+  non-existent `Test-WorkingTreeClean` with a `git status --porcelain` check. `ft up`, `ft up --check`,
+  `ft up help` and single targets verified.
+- **`ft clean --envs --delete` project/git guard never fired**: `Test-IsProjectPath -Path $p -or (...)`
+  passed `-or` as a parameter, so the condition could not evaluate and stale envs inside project/git
+  trees were not skipped. Same binding bug in the `cargo audit` branch of `ft clean --audit`.
+- **`Alt+0` now jumps to the last tab** (`ActivateTab(-1)`); it was a duplicate of `Alt+9`.
+- **`ft help` no longer claims `ft bg pick` uses `imgcat`** -- the preview renderer is `chafa`.
+- **`docs/KEYBINDINGS.md`** documents `Ctrl+Shift+b` (wallpaper toggle), `Ctrl+Shift+o` (cursor cycle),
+  `Alt+0`, the mouse bindings, all six leader-typed commands, and the PSReadLine keys.
+- **`docs/gguf-local-gpu-provider.md`** no longer claims `--balance` equals a `balanced` preset (no such
+  preset exists); it now describes the actual VRAM solver and its `nvidia-smi` requirement.
+- **`docs/ARCHITECTURE.md`** updated: 21 tools, sync lock/TTL details, `ft dev all --check` caveat,
+  plus new Profiles and Startup-cost-control sections.
+
+### Internal
+- Project memory spine moved to the committed `su-code/` directory (`STATE.md` with a cold-resume
+  handoff, `KNOWLEDGE.md`, `PROJECT.md`). The root `8sync/` template folder is gitignored leftover from
+  before the su-code rename and holds nothing.
+
 ## [v2026.08.13] - 2026-08-13 -- flash-term = WezTerm config; AI delegated to su-code
 
 ### Changed

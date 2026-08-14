@@ -28,6 +28,7 @@ $script:ToolPackages = [ordered]@{
     jq        = 'jq'
     yq        = 'yq'
     make      = 'make'
+    chafa     = 'chafa'
 }
 
 $script:StateDir = Join-Path $PSScriptRoot '.state'
@@ -37,6 +38,7 @@ $script:SyncLockPath = Join-Path $script:StateDir 'sync.lock'
 $script:MissingCachePath = Join-Path $script:StateDir 'missing-cache.json'
 $script:MissingCacheTtlSeconds = 300   # 5 minutes
 $script:SyncIntervalHours = 72
+$script:UpTargets = @('self', 'scoop', 'wezterm')   # ft up -- update-all order
 $script:BgCacheLimit = 50
 $script:BgCachePath = Join-Path $script:StateDir 'bg-cache.json'
 $script:BgRotatePath = Join-Path $script:StateDir 'bg-rotate.json'

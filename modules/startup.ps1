@@ -164,6 +164,7 @@ function Register-8SyncAlias {
                     Invoke-ToolSync -Check:$checkFlag
                 }
             }
+            'up'     { Invoke-UpCommand -Rest $Rest }
             'clean'  { Invoke-CleanCommand -Rest $Rest }
             'gpu'    { Invoke-GpuCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }

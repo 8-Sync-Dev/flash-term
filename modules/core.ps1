@@ -365,7 +365,7 @@ function Show-8SyncHint {
 
     Write-HintSection 'BACKGROUND'
     Write-HintRow 'ft bg search <kw>'         'Search wallhaven (default), --yandere, --safebooru, --all'
-    Write-HintRow 'ft bg pick'                'Pick from cache with fzf + imgcat preview'
+    Write-HintRow 'ft bg pick'                'Pick from cache with fzf + inline chafa thumbnails'
     Write-HintRow 'ft bg set <id|path|url>'   'Set wallpaper; URL/path saved into repo as the default'
     Write-HintRow 'ft bg open <id>'           'Open wallpaper page in browser'
     Write-HintRow 'ft bg rotate [on N|off|time N]' 'Auto-rotate from bg/ every N min (default 5)'

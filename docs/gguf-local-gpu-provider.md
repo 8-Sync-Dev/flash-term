@@ -24,10 +24,13 @@ ft gguf hint      # prerequisites checklist (driver, CUDA, llama.cpp)
 ft gguf serve `
   --engine-path "C:\tools\llamacpp\run" `
   --model-path  "D:\models\qwen2.5-coder-14b.gguf" `
-  --balance            # = --preset balanced (GPU layers / ctx / threads tuned for this machine)
+  --balance            # solver: fits GPU layers + ctx to live free VRAM (not a preset)
 ```
 
-Other presets: `--preset max|high|medium|low`. Save a launch for reuse:
+`--balance` reads the model size, infers a quant multiplier from the filename, queries `nvidia-smi`
+for free VRAM and GPU temperature, reserves headroom, cuts GPU layers by 20% above 75 °C, and scales
+context 8K → 64K by what is left. It needs `nvidia-smi`; without it the launch silently falls back to
+CPU-only. Fixed presets instead: `--preset max|high|medium|low`. Save a launch for reuse:
 
 ```powershell
 ft gguf save --profile coder --engine-path <dir> --model-path <file>

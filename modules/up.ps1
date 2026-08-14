@@ -63,7 +63,7 @@ function Update-FlashTermSelf {
     Write-Host ("  [info]   self: $behind commit(s) behind") -ForegroundColor DarkGray
     if ($DryRun) { return }
 
-    $dirty = -not (Test-WorkingTreeClean -Root $root)
+    $dirty = [bool](& $git -C $root status --porcelain 2>$null)
     if ($dirty) {
         Write-Host '  [info]   self: stashing local changes before pull' -ForegroundColor DarkGray
         & $git -C $root stash push -u -m "ft up auto-stash" 2>$null

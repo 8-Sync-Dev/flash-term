@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flash-term — the Windows 11 terminal that looks unreal | WezTerm config + ft command</title>
+<meta name="description" content="flash-term is a WezTerm configuration and one-command toolkit for Windows 11: Catppuccin glass themes, live wallpapers, 21 managed CLI tools, 7 dev runtimes with no Visual Studio, a local GGUF llama.cpp server, and an AI-ready terminal. Install with one PowerShell line.">
+<meta name="keywords" content="windows terminal, wezterm config, windows 11 terminal customization, catppuccin mocha terminal, powershell profile, glass terminal, mica terminal, nerd font, scoop package manager, dev environment bootstrap windows, rust without visual studio, uv python windows, llama.cpp windows, gguf local llm, openai compatible endpoint, ai coding cli, terminal wallpaper, fzf zoxide ripgrep eza, helix editor windows, dotfiles windows">
+<meta name="author" content="8-Sync-Dev">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#11111b">
+<link rel="canonical" href="https://8-sync-dev.github.io/flash-term/">
+<link rel="alternate" hreflang="en" href="https://8-sync-dev.github.io/flash-term/">
+<link rel="alternate" hreflang="vi" href="https://8-sync-dev.github.io/flash-term/vi.html">
+<link rel="alternate" hreflang="x-default" href="https://8-sync-dev.github.io/flash-term/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="flash-term">
+<meta property="og:title" content="flash-term — the Windows 11 terminal that looks unreal">
+<meta property="og:description" content="WezTerm + Catppuccin glass, live wallpapers, 21 CLI tools, 7 dev runtimes with zero Visual Studio, a local GGUF LLM server, and an AI coding harness one keystroke away. One PowerShell line to install.">
+<meta property="og:url" content="https://8-sync-dev.github.io/flash-term/">
+<meta property="og:image" content="https://8-sync-dev.github.io/flash-term/assets/banner.png">
+<meta property="og:image:width" content="2352">
+<meta property="og:image:height" content="963">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="vi_VN">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="flash-term — the Windows 11 terminal that looks unreal">
+<meta name="twitter:description" content="Catppuccin glass, live wallpapers, 21 CLI tools, 7 dev runtimes, local GGUF LLM, AI-ready. One line to install.">
+<meta name="twitter:image" content="https://8-sync-dev.github.io/flash-term/assets/banner.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9A%A1</text></svg>">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "flash-term",
+  "alternateName": "flash-term WezTerm config + ft command",
+  "applicationCategory": "DeveloperApplication",
+  "applicationSubCategory": "Terminal emulator configuration",
+  "operatingSystem": "Windows 10, Windows 11",
+  "description": "WezTerm configuration and one-command PowerShell toolkit for Windows 11: Catppuccin glass themes, live wallpapers, 21 managed CLI tools, 7 dev runtimes without Visual Studio, local GGUF llama.cpp server, AI-ready.",
+  "url": "https://8-sync-dev.github.io/flash-term/",
+  "downloadUrl": "https://8-sync-dev.github.io/flash-term/install.ps1",
+  "codeRepository": "https://github.com/8-Sync-Dev/flash-term",
+  "programmingLanguage": ["Lua", "PowerShell"],
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Organization", "name": "8-Sync-Dev", "url": "https://github.com/8-Sync-Dev" },
+  "keywords": "windows terminal, wezterm, catppuccin, powershell, scoop, nerd font, gguf, llama.cpp, local llm, dotfiles"
+}
+</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<header><div class="wrap">
+  <span class="brand">⚡ flash<span>-term</span></span>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="#commands">Commands</a>
+    <a href="#ai">Local AI</a>
+    <a href="https://github.com/8-Sync-Dev/flash-term">GitHub</a>
+    <a class="lang" href="vi.html"><b>EN</b> / VI</a>
+  </nav>
+</div></header>
+
+<div class="hero"><div class="wrap">
+  <div class="eyebrow">WezTerm · Windows 11 · PowerShell</div>
+  <h1>The Windows terminal<br>that looks unreal.</h1>
+  <p class="tagline">Catppuccin glass, live wallpapers, and <em>one command</em> that installs your entire dev world.</p>
+  <p class="lede">flash-term is a WezTerm configuration plus the <code>ft</code> command: 3 glass styles × 3 scenes,
+  a purple neon border, Mica backdrop, 21 managed CLI tools, 7 dev runtimes with <b>zero Visual Studio</b>,
+  a local GGUF llama.cpp server on an OpenAI-compatible endpoint, and an AI coding harness one keystroke away.</p>
+
+  <div class="cta">
+    <div class="copy">
+      <code id="one">irm https://8-sync-dev.github.io/flash-term/install.ps1 | iex</code>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('one').textContent);this.textContent='copied'">copy</button>
+    </div>
+    <a class="btn" href="https://github.com/8-Sync-Dev/flash-term">★ Star on GitHub</a>
+  </div>
+
+  <div class="chips">
+    <span class="chip">9 persisted looks</span><span class="chip">21 CLI tools</span>
+    <span class="chip">7 dev runtimes</span><span class="chip">no Visual Studio</span>
+    <span class="chip">Rec.709 adaptive contrast</span><span class="chip">llama.cpp /v1</span>
+    <span class="chip">467ms startup</span><span class="chip">MIT</span>
+  </div>
+
+  <div class="shot"><img src="assets/banner.png" alt="flash-term banner: FLASH TERM wordmark beside a live ft status terminal" width="2352" height="963"></div>
+</div></div>
+
+<section id="features"><div class="wrap">
+  <h2>Built for people who want <span class="k">both</span></h2>
+  <p class="sec-sub">Pretty and powerful, on Windows, without a build-tools detour.</p>
+  <div class="grid">
+    <div class="card"><span class="tag">LOOK</span>
+      <h3>9 looks, one command</h3>
+      <p><code>ft theme</code> combines 3 glass styles (neon / ice / mint) with 3 scenes (focus / cinematic /
+      showcase). State is persisted to tiny Lua files and hot-applied — no restart.</p></div>
+    <div class="card"><span class="tag">CONTRAST</span>
+      <h3>Your wallpaper sets the overlay</h3>
+      <p>Wallhaven's colour palette is averaged with Rec.709 luminance, bucketed bright / neutral / dark,
+      and the glass overlay shifts so text stays readable after every wallpaper change.</p></div>
+    <div class="card"><span class="tag">SPEED</span>
+      <h3>Startup is measured, not guessed</h3>
+      <p>Eight named phases timed per boot into a 40-entry ring buffer, a 5-minute missing-tool cache,
+      a 20-second cross-tab gate, deferred prompt init. <code>ft status</code> prints the last boot in ms.</p></div>
+    <div class="card"><span class="tag">BOOTSTRAP</span>
+      <h3>Zero Visual Studio</h3>
+      <p>Rust lands on the GNU/MinGW host triple with scoop <code>gcc</code>; Python arrives as prebuilt
+      standalone CPython via <code>uv</code>. The two usual MSVC tripwires are engineered away.</p></div>
+    <div class="card"><span class="tag">RECLAIM</span>
+      <h3>Cleaning that respects your code</h3>
+      <p>50+ enumerated cache targets, three independent project/git guards re-checked before every delete,
+      and <code>--projects</code> that physically cannot delete. Plus npm/cargo/pip vulnerability audits.</p></div>
+    <div class="card"><span class="tag">AI</span>
+      <h3>Serve your own model</h3>
+      <p><code>ft gguf serve --balance</code> fits GPU layers and context to live free VRAM, backs off 20%
+      above 75 °C, and exposes <code>/v1</code> for any OpenAI-compatible client — including <code>8sync</code>.</p></div>
+  </div>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <h2>One line. <span class="k">Five stages.</span></h2>
+  <p class="sec-sub">The installer clones to <code>%USERPROFILE%\.config\wezterm</code>, then runs <code>ft setup</code>.</p>
+<pre><b>irm https://8-sync-dev.github.io/flash-term/install.ps1 | iex</b>
+
+<i>[1/5]</i> core tools on PATH        <i>git · omp · wezterm resolution</i>
+<i>[2/5]</i> Scoop                     <i>+ WezTerm, JetBrainsMono NF, PowerShell 7, CompletionPredictor</i>
+<i>[3/5]</i> managed tools             <i>21 CLI tools via Scoop</i>
+<i>[4/5]</i> dev runtimes              <i>node · python · go · rust · chromium · encore · docker</i>
+<i>[5/5]</i> AI harness                <i>su-code installer → the `8sync` command</i>
+
+<span class="c">ok</span> ready — open WezTerm and run <b>ft help</b></pre>
+  <p class="sec-sub">Flags: <code>-ConfigDir &lt;path&gt;</code> · <code>-Update</code> (pull only) ·
+  <code>-NoSetup</code> (config only) · <code>-Branch</code> / <code>-Repo</code>.
+  Stage skips: <code>--no-tools</code> · <code>--no-dev</code> · <code>--no-harness</code> · <code>--check</code>.</p>
+  <div class="note">Re-running the one-liner hard-resets to <code>origin/main</code>. Prefer
+  <code>ft up self</code> if you keep local edits — it stashes and restores them around a fast-forward pull.</div>
+</div></section>
+
+<section id="commands"><div class="wrap">
+  <h2>The <span class="k">ft</span> command</h2>
+  <p class="sec-sub">15 verbs, 10 sub-maps of tab completion, width-aware help.</p>
+  <div class="two">
+    <div>
+      <table>
+        <tr><th>Verb</th><th>What it does</th></tr>
+        <tr><td><code>ft setup</code></td><td>The 5-stage bootstrap</td></tr>
+        <tr><td><code>ft sync [--check]</code></td><td>Install missing + update 21 managed tools</td></tr>
+        <tr><td><code>ft up [--check]</code></td><td>Self ff-only pull, Scoop tools, WezTerm version</td></tr>
+        <tr><td><code>ft reload</code></td><td>Hot-reload 14 modules into the live shell</td></tr>
+        <tr><td><code>ft dev all</code></td><td>Node · Python · Go · Rust · Chromium · Encore · Docker</td></tr>
+        <tr><td><code>ft theme</code> / <code>ft gpu</code></td><td>Glass style + scene · GPU/FPS policy</td></tr>
+        <tr><td><code>ft bg …</code></td><td>Search, pick, set, rotate wallpapers</td></tr>
+        <tr><td><code>ft clean …</code></td><td>Reclaim disk, audit the supply chain</td></tr>
+        <tr><td><code>ft gguf …</code></td><td>Local llama.cpp server + chat</td></tr>
+        <tr><td><code>ft profile …</code></td><td>Chrome-style isolated terminal profiles</td></tr>
+        <tr><td><code>ft hx …</code></td><td>Helix theme, health, wrap, opacity</td></tr>
+      </table>
+    </div>
+    <div class="shot"><img src="assets/preview-help.png" alt="ft help output listing every flash-term command" loading="lazy"></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Glass, <span class="k">persisted</span></h2>
+  <p class="sec-sub">Styles drive colour; scenes drive opacity; the wallpaper drives contrast.</p>
+  <div class="shot"><img src="assets/preview-themes.png" alt="neon_glass, ice_glass and mint_glass palettes" loading="lazy"></div>
+  <div class="two" style="margin-top:26px">
+    <div>
+<pre><b>ft theme</b>                    <i># current style + scene</i>
+<b>ft theme ice_glass</b>          <i># switch style</i>
+<b>ft theme neon_glass cinematic</b>
+<b>ft bg search cyberpunk city</b>  <i># wallhaven, 4K+ only</i>
+<b>ft bg pick</b>                  <i># fzf + chafa thumbnails</i>
+<b>ft bg rotate on 10</b></pre>
+      <p class="sec-sub">Three wallpaper providers (Wallhaven, yande.re, safebooru), SFW-only by design,
+      4K minimum in every query, and <code>ft bg set</code> copies your pick into the repo so the wallpaper
+      travels with your config.</p>
+    </div>
+    <div class="shot"><img src="assets/preview-status.png" alt="ft status showing managed tools, disk usage and startup timing" loading="lazy"></div>
+  </div>
+</div></section>
+
+<section id="ai"><div class="wrap">
+  <h2>Local model, <span class="k">real solver</span></h2>
+  <p class="sec-sub">flash-term serves models. <a href="https://github.com/8-Sync-Dev/su-code">su-code</a> (<code>8sync</code>) does the thinking.</p>
+<pre><b>ft gguf hint</b>                                    <i># driver / CUDA / llama.cpp checklist</i>
+<b>ft gguf serve --model-path model.gguf --balance</b>  <i># fit layers + ctx to free VRAM</i>
+<b>ft gguf list</b>                                    <i># health, tok/s from /metrics, uptime</i>
+<b>8sync .</b>                                         <i># AI coding session in this repo</i></pre>
+  <table>
+    <tr><th>Preset</th><th>GPU layers</th><th>Threads</th><th>Context</th><th>Parallel</th><th>Batch</th><th>Flash-attn</th></tr>
+    <tr><td><code>max</code></td><td>99</td><td>2</td><td>32768</td><td>4</td><td>512</td><td>yes</td></tr>
+    <tr><td><code>high</code></td><td>32</td><td>4</td><td>16384</td><td>2</td><td>256</td><td>yes</td></tr>
+    <tr><td><code>medium</code></td><td>16</td><td>8</td><td>8192</td><td>1</td><td>128</td><td>—</td></tr>
+    <tr><td><code>low</code></td><td>0 (CPU)</td><td>16</td><td>4096</td><td>1</td><td>64</td><td>—</td></tr>
+  </table>
+  <div class="note">The endpoint binds <code>0.0.0.0</code> with no auth by default. Pass
+  <code>--host 127.0.0.1</code> on shared networks.</div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Honest <span class="k">caveats</span></h2>
+  <p class="sec-sub">Because a README that oversells costs you an afternoon.</p>
+  <div class="grid">
+    <div class="card"><h3>Windows only</h3><p>Windows 10/11, PowerShell 5.1+, Scoop and <code>winget</code>.
+      Scoop install and disk TRIM/defrag want admin. Docker needs WSL2 and one GUI launch.</p></div>
+    <div class="card"><h3><code>ft gpu N</code> is two-state</h3><p>≥10 → HighPerformance + 165 max FPS;
+      &lt;10 → LowPower + 120. It is a policy switch, not a utilisation floor.</p></div>
+    <div class="card"><h3>Mica is present, not dominant</h3><p>The shipped wallpaper and colour overlay sit on
+      top of it. The translucency you see is mostly <code>window_background_opacity</code>. No acrylic/blur setting.</p></div>
+    <div class="card"><h3>Rotation polls at shell start</h3><p>Wallpaper rotation and the clean loop are
+      startup polls, not scheduled tasks — an idle window never rotates.</p></div>
+    <div class="card"><h3><code>ft clean</code> deletes by default</h3><p>Bare <code>ft clean</code> removes files
+      older than 7 days. Run <code>--dry-run</code> first. <code>node_modules</code>, <code>target/</code>,
+      <code>vendor/</code> are never touched.</p></div>
+    <div class="card"><h3>No AI code here</h3><p>flash-term contains none. <code>ft setup</code> installs
+      <a href="https://github.com/8-Sync-Dev/su-code">su-code</a>, which owns the <code>8sync</code> command.</p></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div><a href="https://github.com/8-Sync-Dev/flash-term">GitHub</a> ·
+    <a href="https://github.com/8-Sync-Dev/flash-term/blob/main/README.md">README</a> ·
+    <a href="https://github.com/8-Sync-Dev/flash-term/blob/main/docs/KEYBINDINGS.md">Keybindings</a> ·
+    <a href="https://github.com/8-Sync-Dev/flash-term/blob/main/docs/ARCHITECTURE.md">Architecture</a> ·
+    <a href="https://github.com/8-Sync-Dev/su-code">su-code</a> ·
+    <a href="vi.html">Tiếng Việt</a></div>
+  <div style="margin-top:10px">MIT © 8-Sync-Dev · built for WezTerm on Windows 11</div>
+  <div class="kw">windows terminal · wezterm config · windows 11 terminal customization · catppuccin mocha terminal ·
+    powershell profile · glass terminal · mica terminal · nerd font setup · scoop package manager ·
+    dev environment bootstrap windows · rust without visual studio · uv python windows · llama.cpp windows ·
+    gguf local llm · openai compatible endpoint · ai coding cli · terminal wallpaper · fzf zoxide ripgrep eza ·
+    helix editor windows · dotfiles windows</div>
+  <div class="hash">#windows11 #wezterm #terminal #powershell #catppuccin #dotfiles #devtools #cli #scoop
+    #nerdfonts #rustlang #golang #nodejs #python #llamacpp #gguf #localllm #aicoding #developerexperience #ricing</div>
+</div></footer>
+
+</body>
+</html>

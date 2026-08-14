@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://8-sync-dev.github.io/flash-term/sitemap.xml
