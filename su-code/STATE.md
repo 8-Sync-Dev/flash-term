@@ -11,9 +11,9 @@ SEO) that makes only *true* claims — and fix every source-level lie the audit 
 
 ### Repo state
 - **Remote:** `https://github.com/8-Sync-Dev/flash-term` · **branch:** `main` (only ever work on `main` here)
-- **HEAD:** `4806ec2` + uncommitted changes ready for commit
+- **HEAD:** `532a6f2 feat(up+docs): add ft sucode auto-updater & embed real preview screenshot (1568x642)`
 - **Latest tag:** `v2026.08.13`
-- **Working tree:** clean after commit.
+- **Working tree:** clean. All changes pushed to `origin/main`.
 - **Memory dir:** `su-code/` (this file) — **committed**.
 ### What changed THIS session (11 modified + 10 new files)
 
