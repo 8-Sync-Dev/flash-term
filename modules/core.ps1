@@ -336,7 +336,7 @@ function Show-8SyncHint {
     Write-HintRow 'ft reload'            'Hot-reload all modules in current session (no new tab needed)'
     Write-HintRow 'ft sync'              'Install missing tools + update all via scoop'
     Write-HintRow 'ft sync --check'      'Dry-run: show missing + available updates, no changes'
-    Write-HintRow 'ft up'                'Update self + scoop tools + wezterm'
+    Write-HintRow 'ft up'                'Update self + scoop tools + su-code + wezterm'
     Write-HintRow 'ft up --check'        'Dry-run: report what would update, change nothing'
     Write-HintRow 'ft autoupdate [on|off|auto|now]' 'Background update + release notifier (notify mode by default)'
     Write-HintRow 'ft clean [--days N]'         'Deep clean: temp/cache/global env/RAM/disk (default: stale > 7 days)'
@@ -351,6 +351,7 @@ function Show-8SyncHint {
     Write-HintSection 'AI (su-code -- the `8sync` binary, installed by `ft setup`)'
     Write-HintRow '8sync .'                 'Resume / start an AI coding session in this repo'
     Write-HintRow '8sync setup'             'Install the AI core (omp + skills) -- run once after ft setup'
+    Write-HintRow 'ft sucode'               'Pull & update su-code AI binary from 8-Sync-Dev/su-code repo'
 
     Write-HintSection 'GGUF'
     Write-HintRow 'ft gguf serve --engine-path <d> --model-path <f>' 'Start llama-server with chosen preset'

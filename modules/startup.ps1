@@ -175,6 +175,9 @@ function Register-8SyncAlias {
             'dev'      { Invoke-DevCommand -Rest $Rest }
             'autoupdate' { Invoke-AutoupdateCommand -Rest $Rest }
             'profile'  { Invoke-ProfileCommand -Rest $Rest }
+            'sucode'   { Update-SuCode -DryRun:($Rest -contains '--check' -or $Rest -contains '--dry-run') }
+            'su-code'  { Update-SuCode -DryRun:($Rest -contains '--check' -or $Rest -contains '--dry-run') }
+            '8sync'    { Update-SuCode -DryRun:($Rest -contains '--check' -or $Rest -contains '--dry-run') }
             default  { Show-8SyncHint }
         }
     }

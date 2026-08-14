@@ -42,7 +42,7 @@ Terminal trên Windows luôn bắt bạn chọn: **đẹp** hoặc **mạnh**. f
 
 <div align="center">
 
-<img src="assets/preview-help.png" alt="ft help — menu lệnh flash-term" width="86%">
+<img src="assets/preview.png" alt="flash-term trải nghiệm thực tế — chia pane với yazi file tree, Helix editor, chọn theme và wallpaper động" width="100%">
 
 </div>
 
@@ -142,7 +142,7 @@ Ba nguồn ảnh, **chỉ SFW theo thiết kế** (Wallhaven `purity=110`, yande
 | `ft help` / `ft status` | Menu đầy đủ (tự wrap theo bề rộng) · tool, disk, GPU, theme, tốc độ khởi động |
 | `ft setup [--check\|--no-tools\|--no-dev\|--no-harness]` | Bootstrap 5 bước |
 | `ft sync [--check]` | Cài thiếu + `scoop update` toàn bộ tool (có lock, gộp batch) |
-| `ft up [self\|scoop\|wezterm] [--check]` | Update-all: pull ff-only (tự stash), tool Scoop, phiên bản WezTerm |
+| `ft up [self\|scoop\|sucode\|wezterm] [--check]` | Update-all: pull ff-only (tự stash), tool Scoop, binary AI su-code, phiên bản WezTerm |
 | `ft reload` | Nạp lại 14 module vào shell **đang chạy** — không cần tab mới |
 | `ft dev [name\|all] [--check]` | Dựng dev runtime |
 | `ft autoupdate [on\|off\|auto\|now]` | Nền: kiểm tra cập nhật + release (mỗi 6 giờ) |

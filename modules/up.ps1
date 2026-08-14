@@ -7,6 +7,7 @@
 #   ft up self|scoop|wezterm   Update only one target
 # =============================================================================
 
+$script:UpTargets = @('self', 'scoop', 'sucode', 'wezterm')
 
 function Get-UpRootDir {
     # flash-term config root = parent of modules/
@@ -81,6 +82,66 @@ function Update-FlashTermSelf {
 }
 
 
+function Update-SuCode {
+    # Pull & update latest su-code AI binary from 8-Sync-Dev/su-code repo.
+    param([switch]$DryRun)
+
+    $cmd = Get-Command 8sync -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        $foundPath = Join-Path $env:LOCALAPPDATA 'Programs\8sync\8sync.exe'
+        if (Test-Path $foundPath) { $cmd = @{ Source = $foundPath } }
+    }
+
+    $currentVer = 'not installed'
+    if ($cmd) {
+        try {
+            $verLine = & $cmd.Source --version 2>$null | Select-Object -First 1
+            if ($verLine) { $currentVer = $verLine.Trim() }
+            else { $currentVer = 'installed' }
+        } catch {
+            $currentVer = 'installed'
+        }
+    }
+
+    $latestTag = $null
+    $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
+    if ($gh) {
+        $latestTag = & $gh release view --repo 8-Sync-Dev/su-code --json tagName -q '.tagName' 2>$null
+    }
+    if (-not $latestTag) {
+        try {
+            $r = Invoke-RestMethod -Uri 'https://api.github.com/repos/8-Sync-Dev/su-code/releases/latest' -Headers @{ 'User-Agent' = 'flash-term' } -ErrorAction Stop
+            if ($r.tag_name) { $latestTag = $r.tag_name }
+        } catch {}
+    }
+
+    if ($DryRun) {
+        if (-not $cmd) {
+            Write-Host '  [dry-run] su-code: not installed, would install latest release from 8-Sync-Dev/su-code' -ForegroundColor Yellow
+        } elseif ($latestTag -and $currentVer -match [regex]::Escape($latestTag)) {
+            Write-Host ("  [ok]     su-code: {0} (up to date with 8-Sync-Dev/su-code)" -f $currentVer) -ForegroundColor Green
+        } else {
+            $targetInfo = if ($latestTag) { "latest: $latestTag" } else { 'latest release' }
+            Write-Host ("  [dry-run] su-code: currently {0}, would update to {1} from 8-Sync-Dev/su-code" -f $currentVer, $targetInfo) -ForegroundColor Yellow
+        }
+        return
+    }
+
+    Write-Host '  [info]   su-code: pulling latest release from 8-Sync-Dev/su-code...' -ForegroundColor DarkGray
+    try {
+        iwr -useb https://8-sync-dev.github.io/su-code/install.ps1 | iex
+        $newCmd = Get-Command 8sync -ErrorAction SilentlyContinue
+        $newVer = if ($newCmd) { (& $newCmd.Source --version 2>$null | Select-Object -First 1) } else { $null }
+        if ($newVer) {
+            Write-Host ("  [ok]     su-code: updated ({0}) from 8-Sync-Dev/su-code" -f $newVer.Trim()) -ForegroundColor Green
+        } else {
+            Write-Host '  [ok]     su-code: installer completed' -ForegroundColor Green
+        }
+    } catch {
+        Write-Host ("  [warn]   su-code update failed: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+}
+
 function Update-WezTermApp {
     # WezTerm ships its own auto-updater; we only report the installed version.
     param([switch]$DryRun)
@@ -101,10 +162,11 @@ function Show-UpHelp {
     Write-Host ''
     Write-Host '  FT UP -- update everything flash-term manages' -ForegroundColor Cyan
     Write-Host ''
-    Write-HintRow 'ft up'          'Update all: self, scoop tools, wezterm'
+    Write-HintRow 'ft up'          'Update all: self, scoop tools, su-code, wezterm'
     Write-HintRow 'ft up --check'  'Dry-run: report what would update, change nothing'
     Write-HintRow 'ft up self'     'git pull the flash-term config repo (ff-only)'
     Write-HintRow 'ft up scoop'    'scoop update buckets + all managed tools'
+    Write-HintRow 'ft up sucode'   'pull & update latest su-code AI binary (8-Sync-Dev/su-code)'
     Write-HintRow 'ft up wezterm'  'Report WezTerm version (auto-updates in-app)'
     Write-Host ''
 }
@@ -121,7 +183,11 @@ function Invoke-UpCommand {
     }
 
     $dryRun = $Rest -contains '--check' -or $Rest -contains '--dry-run'
-    $targets = @($Rest | Where-Object { $_ -in $script:UpTargets } | Select-Object -Unique)
+    $normalizedRest = $Rest | ForEach-Object {
+        $item = "$_".ToLowerInvariant()
+        if ($item -in @('sucode', 'su-code', '8sync')) { 'sucode' } else { $item }
+    }
+    $targets = @($normalizedRest | Where-Object { $_ -in $script:UpTargets } | Select-Object -Unique)
     if ($targets.Count -eq 0) { $targets = $script:UpTargets }
 
     if ($dryRun) {
@@ -141,6 +207,7 @@ function Invoke-UpCommand {
                     Invoke-ToolSync
                 }
             }
+            'sucode'  { Update-SuCode -DryRun:$dryRun }
             'wezterm' { Update-WezTermApp -DryRun:$dryRun }
         }
     }

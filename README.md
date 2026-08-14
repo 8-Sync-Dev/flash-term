@@ -41,7 +41,7 @@ Windows terminals ask you to choose: **pretty** or **powerful**. flash-term refu
 
 <div align="center">
 
-<img src="assets/preview-help.png" alt="ft help — the flash-term command menu" width="86%">
+<img src="assets/preview.png" alt="flash-term in real usage — split panes with yazi file tree, Helix editor, theme picker, and live starry wallpaper" width="100%">
 
 </div>
 
@@ -141,7 +141,7 @@ Three providers, **SFW-only by design** (Wallhaven `purity=110`, yande.re `ratin
 | `ft help` / `ft status` | Full menu (width-aware word wrap) · tools, disk, GPU, theme, startup perf |
 | `ft setup [--check\|--no-tools\|--no-dev\|--no-harness]` | The 5-stage bootstrap |
 | `ft sync [--check]` | Install missing + `scoop update` all managed tools (lock-guarded, batched) |
-| `ft up [self\|scoop\|wezterm] [--check]` | Update-all: ff-only self pull (auto-stash), Scoop tools, WezTerm version |
+| `ft up [self\|scoop\|sucode\|wezterm] [--check]` | Update-all: ff-only self pull (auto-stash), Scoop tools, su-code AI binary, WezTerm version |
 | `ft reload` | Hot-reload 14 modules into the **live** shell — no new tab |
 | `ft dev [name\|all] [--check]` | Provision dev runtimes |
 | `ft autoupdate [on\|off\|auto\|now]` | Background update + release notifier (6h interval) |

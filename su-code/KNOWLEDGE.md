@@ -47,3 +47,5 @@ flows (`validated:`) so future sessions don't repeat them.
   `8sync/` would never reach another machine.
 - failure: no gitleaks pre-commit hook is installed in this clone (every `.git/hooks/*` is a `.sample`),
   so the secret gate the harness assumes silently does not run. Scan staged content manually.
+- validated: `ft up sucode` / `ft sucode` pulls the latest release of `su-code` directly from `8-Sync-Dev/su-code` GitHub releases using the official `install.ps1` script (`irm https://8-sync-dev.github.io/su-code/install.ps1 | iex`), providing atomic update without cargo/build prerequisites.
+- validated: Real usage screenshots showcase multi-pane workflow (Yazi file tree, Helix editor, theme picker, starry wallpaper) as `assets/preview.png` (1568x642) embedded across README (EN/VI) and GitHub Pages (`index.html`/`vi.html`).

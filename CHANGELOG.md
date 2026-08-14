@@ -6,6 +6,8 @@ All notable changes to flash-term are tracked here.
 ## [v2026.08.14] - 2026-08-14 -- bilingual README + GitHub Pages site; `ft up` wired
 
 ### Added
+- **`ft up sucode` / `ft sucode` auto-updater**: `su-code` AI binary can now be updated on-demand or as part of `ft up` directly pulling latest releases from `8-Sync-Dev/su-code` repo.
+- **Real usage screenshot (`assets/preview.png`, 1568x642)**: featured real multi-pane terminal workflow (Yazi file tree, Helix editor, theme picker, starry anime wallpaper) prominently in `README.md`, `README.vi.md`, `index.html`, and `vi.html`.
 - **Rewritten `README.md`** -- rendered banner + three preview images (`assets/banner.png`,
   `preview-help.png`, `preview-status.png`, `preview-themes.png`), badges, a full feature deep-dive
   (look/wallpapers/toolchain/GGUF/clean/profiles), a mermaid architecture diagram, an honest-caveats

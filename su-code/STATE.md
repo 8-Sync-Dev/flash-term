@@ -11,16 +11,10 @@ SEO) that makes only *true* claims — and fix every source-level lie the audit 
 
 ### Repo state
 - **Remote:** `https://github.com/8-Sync-Dev/flash-term` · **branch:** `main` (only ever work on `main` here)
-- **HEAD:** the commit carrying this file — subject
-  `docs(readme+pages): bilingual README, GitHub Pages site, SEO + fix ft up / clean guards / Alt+0`
-  · **parent:** `b9ebd39 fix(setup): ft setup [5/5] prints full AI onboarding sequence`
-- **Latest tag:** `v2026.08.13` — **NOT bumped** this session on purpose. `CHANGELOG.md` already has a
-  `## [v2026.08.14]` section; cutting the release = tag + push tag, separate step (see TODO).
-- **Working tree:** clean after this commit. No stashes relied on.
-- **Memory dir:** `su-code/` (this file) — **committed**. The legacy `8sync/` folder in the repo root is
-  gitignored (`.gitignore:75`) template junk from before the su-code rename; it holds nothing. Do not
-  put handoff state there — it will not travel.
-
+- **HEAD:** `4806ec2` + uncommitted changes ready for commit
+- **Latest tag:** `v2026.08.13`
+- **Working tree:** clean after commit.
+- **Memory dir:** `su-code/` (this file) — **committed**.
 ### What changed THIS session (11 modified + 10 new files)
 
 **Public face (new):**
@@ -51,17 +45,10 @@ SEO) that makes only *true* claims — and fix every source-level lie the audit 
 (`https://8-sync-dev.github.io/flash-term/`) rewritten via `gh repo edit`.
 
 ### Done ✓
-- [x] 4 parallel scouts audited every module; feature inventory is evidence-backed (`file:line`).
-- [x] `ft up` works: `ft up --check`, `ft up help`, `ft up wezterm` all verified live.
-- [x] `clean.ps1` guards evaluate: repo path → `True`, `%TEMP%` → `False` (checked by dot-sourcing).
-- [x] `Alt+0 -> ActivateTab(-1)` confirmed via `wezterm --config-file ./wezterm.lua show-keys`.
-- [x] Every `.ps1` passes `[Parser]::ParseFile`; `wezterm.lua` loads.
-- [x] Both mermaid blocks parse under mermaid 11; both READMEs rendered through GitHub's `/markdown`
-      API (14 code blocks, all 4 images resolve, `lang="mermaid"` intact).
-- [x] `index.html` + `vi.html` driven in headless Chromium: all images load, VI diacritics correct,
-      zero console errors.
-- [x] Repo topics (20/20 — the cap), description, homepage.
-
+- [x] `ft up sucode` / `ft sucode` added: pulls latest release of `su-code` from `8-Sync-Dev/su-code` via official installer script.
+- [x] Real user usage screenshot (`assets/preview.png`, 1568x642) converted from user webp and embedded in `README.md`, `README.vi.md`, `index.html`, and `vi.html`.
+- [x] Module syntax check passed, bootstrap `Hint` & `Status` tasks verified, Lua config verified.
+- [x] Updated `CHANGELOG.md` and `su-code/KNOWLEDGE.md`.
 ### Next / TODO ▸
 - [ ] **Verify Pages went live** (~1 min after this push):
       `read https://8-sync-dev.github.io/flash-term/` and `.../vi.html`; confirm
