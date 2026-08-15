@@ -3,6 +3,67 @@
 All notable changes to flash-term are tracked here.
 
 
+## [v2026.08.16] - 2026-08-16 -- omp OAuth gateway + ZCode skill mirror
+
+### Added
+- **`ft gateway` command** (`modules/gateway.ps1`): reuse the Claude / Gemini / GLM accounts
+  already OAuth'd in omp from any OpenAI-compatible client (ZCode, etc.) without issuing a new
+  API key. Starts `omp auth-broker serve` (credential vault, port 9377) plus
+  `omp auth-gateway serve` (proxy that injects the live token, port 9378) as hidden background
+  processes, then prints the exact provider values to paste into a client form:
+  base URL `http://127.0.0.1:9378/v1`, the gateway bearer key, OpenAI-compatible format.
+  Subcommands: `start` · `stop` · `restart` · `status` · `key` · `models` · `help`.
+  OAuth refresh stays with omp, so the key never has to be rotated by hand.
+  - Verified end to end: live completions through `anthropic/claude-haiku-4-5`,
+    `google-antigravity/gemini-2.5-flash` and `zai/glm-5.3` (60 models across 3 providers),
+    idempotent `start`, `restart` + a post-restart request, and `stop` clearing both ports.
+  - Note: reasoning models (`zai/*`) need a larger `max_tokens` — a small budget is consumed by
+    `reasoning_content` and returns empty `content`.
+- **`ft skills` command** (`modules/skills.ps1`): mirror the omp skill library
+  (`~/.omp/skills`, 54 skills) into the ZCode workspace layout
+  `<project>/.zcode/skills/<name>/SKILL.md`. `8sync harness init` only vendors
+  `su-code/skills/`, which ZCode does not read, so this closes that gap.
+  Subcommands: `sync [--force]` (current project) · `all [path] [--force]` (every project that
+  has a real `su-code/` memory dir under the scan root) · `list` · `status` · `help`.
+  Copies are additive by default so a locally edited skill is never clobbered; `--force`
+  re-copies. The scanner requires `su-code/` to hold actual memory
+  (`STATE.md`/`KNOWLEDGE.md`/`skills/`…), so a checkout merely *named* `su-code` cannot make its
+  parent look like a project.
+  - Applied across the machine: 16 projects synced, 54 `SKILL.md` each (verified on disk).
+
+
+## [v2026.08.15] - 2026-08-15 -- session restore across reboots (resurrect.wezterm)
+
+### Added
+- **Session persistence via [resurrect.wezterm](https://github.com/YedPool/resurrect.wezterm)
+  (YedPool fork — fixes Windows hangs and `periodic_save` never writing files)**: the window/
+  tab/split layout, pane working directories and screen text are auto-saved every 2 minutes and
+  the last workspace is restored automatically when WezTerm starts — so after a PC shutdown/reboot
+  the terminal reopens with the session as it was left.
+  - `wezterm.lua`: pcall-guarded `wezterm.plugin.require` + `periodic_save` (120 s) +
+    `gui-startup` auto-restore. Failure to load the plugin (offline first start) degrades to the
+    previous behaviour — the config never breaks.
+  - `keys.lua`: `Ctrl+a Shift+s` saves the workspace now; `Ctrl+a Shift+r` fuzzy-restores any
+    saved workspace/window/tab (`restore_text` on, safe-process allowlist honoured).
+  - Caveat: processes are not literally resurrected. Panes reopen a fresh shell (with the
+    bootstrap) at the saved cwd with scrollback text restored; known-safe TUIs (`vim`, `nvim`,
+    `claude`, `htop`, …) are relaunched automatically, others are not.
+- **`ft session` command** (`modules/session.ps1`): manage saved sessions from the shell —
+  `status`/`list [--all]` (saved workspaces/windows/tabs with pane counts), `save` (instant save
+  via an OSC 1337 `ft_session_save` user-var trigger wired to `event_driven_save` in
+  `wezterm.lua`), `restore <name>` (stages `current_state` so the next WezTerm start restores
+  that workspace), `delete <name>` (with confirm). Wired into the dispatcher, reload list,
+  Tab-completer and help hints. Structure-change saves (event-driven) were also enabled, so a
+  split/tab change is captured immediately instead of waiting for the 2-minute periodic save.
+- **Smart image paste (`Ctrl+Alt+v`)**: WezTerm has no native clipboard-image paste
+  (wezterm#7272 closed unmerged; the latest stable is still 20240203, so upgrading adds
+  nothing here). When the clipboard holds an image, it is saved to
+  `%TEMP%\ft-paste\img_<timestamp>.png` and the file path is typed into the pane (Claude
+  Code / `8sync` image workflow); with plain text in the clipboard it falls back to a normal
+  paste. Implementation: `wezterm.action_callback` + STA PowerShell child process
+  (`Windows.Forms.Clipboard::GetImage`) in `keys.lua`.
+
+
 ## [v2026.08.14] - 2026-08-14 -- bilingual README + GitHub Pages site; `ft up` wired
 
 ### Added
