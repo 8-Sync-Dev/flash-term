@@ -346,7 +346,16 @@ function Show-8SyncHint {
     Write-HintRow 'ft clean --audit'            'npm/cargo/pip vulnerability scan + postinstall check'
     Write-HintRow 'ft clean --loop on [N] [profile]' 'Auto clean loop (light/balanced/deep) with safe dry-run defaults'
     Write-HintRow 'ft gpu [N|status|auto|off]'  'Adaptive GPU policy. Example: ft gpu 10 for smoother rendering'
+    Write-HintRow 'ft gateway [start|key|models]' 'Expose omp OAuth (Claude/Gemini/GLM) as a local OpenAI-compatible endpoint'
+    Write-HintRow 'ft skills [sync|all|list]'   'Mirror omp skills into .zcode/skills for every su-code project'
     Write-HintRow 'ft theme [style] [scene]'    'Set WezTerm glass style/scene and persist it'
+
+    Write-HintSection 'SESSION (WezTerm session restore across reboots)'
+    Write-HintRow 'ft session'                'Status: what the next WezTerm start will restore'
+    Write-HintRow 'ft session list [--all]'   'List saved workspaces/windows (+tabs with --all)'
+    Write-HintRow 'ft session save'           'Save current workspace now (auto every 2 min; Ctrl+a Shift+s)'
+    Write-HintRow 'ft session restore <name>' 'Stage a saved workspace for the next WezTerm start'
+    Write-HintRow 'ft session delete <name>'  'Delete a saved workspace'
 
     Write-HintSection 'AI (su-code -- the `8sync` binary, installed by `ft setup`)'
     Write-HintRow '8sync .'                 'Resume / start an AI coding session in this repo'

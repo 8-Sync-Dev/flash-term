@@ -62,7 +62,7 @@ function Register-8SyncCompleter {
         $count  = $tokens.Count
 
         # top-level modes
-    $modes = @('help','setup','dev','status','reload','sync','autoupdate','clean','gpu','bg','hx','theme','gguf','up','profile','sucode')
+    $modes = @('help','setup','dev','status','reload','sync','autoupdate','clean','gpu','gateway','skills','bg','hx','theme','gguf','up','profile','session','sucode')
 
         # subcommands per mode
         $subMap = @{
@@ -72,8 +72,11 @@ function Register-8SyncCompleter {
             sync  = @('--check','--help')
             clean = @('help','--days','--dry-run','--envs','--projects','--all','--deep','--delete','--scan','--audit','--loop','on','off','now','status','profile','light','balanced','deep','--help')
             gpu = @('status','auto','off','help','--help','-h','0','10','20','30')
+            gateway = @('status','start','stop','restart','key','models','help','--help','-h')
+            skills = @('status','sync','all','list','help','--force','--help','-h')
             gguf     = @('serve','chat','list','info','presets','profiles','detect','hint','save','status','stop','help','--balance','--preset','max','high','medium','low','--profile','--engine-path','--model-path','--port','--ctx','--temp','--system','--gpu-layers','--threads','--parallel','--batch','--dry-run')
             up       = @('self','scoop','sucode','su-code','8sync','wezterm','--check','--dry-run','help')
+            session  = @('list','save','restore','delete','status','help','--all','--force')
             sucode   = @('--check','--dry-run','update','help')
             autoupdate = @('on','off','auto','now','status','help')
             dev       = @('node','python','go','rust','chromium','docker','encore','all','help','--check','--dry-run')

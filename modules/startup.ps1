@@ -136,7 +136,7 @@ function Register-8SyncAlias {
                 $modulesDir = $bootstrapDir
                 $moduleFiles = @(
                     'core.ps1','sync.ps1','shell.ps1','bg.ps1','helix.ps1',
-                    'clean.ps1','theme.ps1','gpu.ps1','gguf.ps1','up.ps1','autoupdate.ps1','setup.ps1','dev.ps1','profile.ps1'
+                    'clean.ps1','theme.ps1','gpu.ps1','gateway.ps1','skills.ps1','gguf.ps1','up.ps1','autoupdate.ps1','setup.ps1','dev.ps1','session.ps1','profile.ps1'
                 )
                 $ok = 0; $fail = 0
                 foreach ($f in $moduleFiles) {
@@ -167,12 +167,15 @@ function Register-8SyncAlias {
             'up'     { Invoke-UpCommand -Rest $Rest }
             'clean'  { Invoke-CleanCommand -Rest $Rest }
             'gpu'    { Invoke-GpuCommand -Rest $Rest }
+            'gateway' { Invoke-GatewayCommand -Rest $Rest }
+            'skills'  { Invoke-SkillsCommand -Rest $Rest }
             'bg'     { Invoke-BgCommand -Rest $Rest }
             'hx'     { Invoke-HxCommand -Rest $Rest }
             'theme'  { Invoke-ThemeCommand -Rest $Rest }
             'gguf'     { Invoke-GgufCommand -Rest $Rest }
             'setup'    { Invoke-SetupCommand -Rest $Rest }
             'dev'      { Invoke-DevCommand -Rest $Rest }
+            'session'  { Invoke-SessionCommand -Rest $Rest }
             'autoupdate' { Invoke-AutoupdateCommand -Rest $Rest }
             'profile'  { Invoke-ProfileCommand -Rest $Rest }
             'sucode'   { Update-SuCode -DryRun:($Rest -contains '--check' -or $Rest -contains '--dry-run') }

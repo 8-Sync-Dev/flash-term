@@ -70,6 +70,9 @@ $script:DefaultGlassStyle = 'neon_glass'
 $script:DefaultGlassScene = 'focus'
 $script:KnownGlassStyles = @('neon_glass', 'ice_glass', 'mint_glass')
 $script:KnownGlassScenes = @('focus', 'cinematic', 'showcase')
+$script:OmpBrokerPort = 9377    # ft gateway -- omp auth-broker (credential vault)
+$script:OmpGatewayPort = 9378   # ft gateway -- omp auth-gateway (OpenAI-compatible proxy)
+$script:SkillsScanRoot = Split-Path $PSScriptRoot -Parent   # ft skills all -- where to look for su-code projects
 
 $script:LangServers = [ordered]@{
     'python'     = @('python', 'pyright')
@@ -98,11 +101,14 @@ $script:ModulesDir = Join-Path $PSScriptRoot 'modules'
 . (Join-Path $script:ModulesDir 'clean.ps1')
 . (Join-Path $script:ModulesDir 'theme.ps1')
 . (Join-Path $script:ModulesDir 'gpu.ps1')
+. (Join-Path $script:ModulesDir 'gateway.ps1')
+. (Join-Path $script:ModulesDir 'skills.ps1')
 . (Join-Path $script:ModulesDir 'gguf.ps1')
 . (Join-Path $script:ModulesDir 'up.ps1')
 . (Join-Path $script:ModulesDir 'autoupdate.ps1')
 . (Join-Path $script:ModulesDir 'setup.ps1')
 . (Join-Path $script:ModulesDir 'dev.ps1')
+. (Join-Path $script:ModulesDir 'session.ps1')
 . (Join-Path $script:ModulesDir 'startup.ps1')
 . (Join-Path $script:ModulesDir 'profile.ps1')
 
