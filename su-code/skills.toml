@@ -1,0 +1,5 @@
+# su-code/skills.toml — project skill manifest (committed). `8sync harness` re-pulls these on any machine.
+
+[codegraph]
+src = "builtin:codegraph"
+when = "always"

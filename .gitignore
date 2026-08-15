@@ -70,6 +70,10 @@ tmp/
 
 .DS_Store
 
+# ZCode workspace skill mirror -- a byte-for-byte copy of su-code/skills/
+# (which IS committed). Regenerate on any machine with: ft skills sync
+.zcode/skills/
+
 # -- 8sync harness (managed) --
 .codegraph/
 8sync/
