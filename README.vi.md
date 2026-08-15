@@ -270,9 +270,11 @@ Mỗi profile có `.state/profiles/<name>/`, bộ `current-{bg,opacity,style,gpu
 | Tab | `Ctrl+Tab` · `Alt+1..9` · `Alt+0` (tab cuối) |
 | Đổi wallpaper ↔ gradient | `Ctrl+Shift+b` |
 | Xoay kiểu con trỏ | `Ctrl+Shift+o` |
+| Lưu phiên / khôi phục phiên (fuzzy) | `Ctrl+a Shift+s` / `Ctrl+a Shift+r` |
 | Command palette / launcher | `Ctrl+Shift+p` / `Ctrl+Shift+l` |
 | Lịch sử fuzzy (fzf) / nhảy thư mục (zoxide) | `Ctrl+r` / `Alt+c` |
 | Reload config / copy mode | `Ctrl+a r` / `Ctrl+a c` |
+| Dán ảnh (lưu file + điền đường dẫn) | `Ctrl+Alt+v` |
 
 Bảng đầy đủ: [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md).
 

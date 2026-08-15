@@ -45,6 +45,7 @@ sets `disable_default_key_bindings`.
 | Action | Binding |
 |---|---|
 | Copy / paste | `Ctrl+Shift+c` / `Ctrl+Shift+v` (also `Ctrl+v`) |
+| Smart paste (image → file path) | `Ctrl+Alt+v` |
 | Search | `Ctrl+Shift+f` |
 | Command palette | `Ctrl+Shift+p` |
 | Launcher | `Ctrl+Shift+l` |
@@ -60,6 +61,15 @@ sets `disable_default_key_bindings`.
 | Extend selection | `Shift` + left drag |
 | Complete selection / open link | `Shift` + left release |
 
+### Smart image paste (`Ctrl+Alt+v`)
+
+WezTerm has no native clipboard-image paste ([wezterm#7272](https://github.com/wezterm/wezterm/issues/7272),
+closed unmerged — no release, stable or nightly, supports it). This binding closes the gap:
+if the clipboard holds an image (Snipping Tool, screenshot, copied picture), it is saved to
+`%TEMP%\ft-paste\img_<timestamp>.png` and the **file path is typed into the pane** — the
+workflow AI CLIs (Claude Code, `8sync`) expect. With no image in the clipboard it falls back
+to a normal text paste.
+
 ## Leader (`Ctrl+a`) — prefix
 
 | Action | Binding |
@@ -69,6 +79,24 @@ sets `disable_default_key_bindings`.
 | Command palette | `Leader → x` |
 | Reload config | `Leader → r` |
 | Tab/workspace switcher | `Leader → s` |
+| Save session now | `Leader → Shift+s` |
+| Fuzzy restore a saved session | `Leader → Shift+r` |
+
+## Session restore (resurrect.wezterm)
+
+Windows/tabs/splits layout, pane working directories and screen text are auto-saved every
+2 minutes ([YedPool/resurrect.wezterm](https://github.com/YedPool/resurrect.wezterm), loaded
+via `wezterm.plugin.require` in `wezterm.lua`) and restored automatically the next time
+WezTerm starts — so a reboot reopens the session as it was. Use `Leader → Shift+s` to save
+on demand and `Leader → Shift+r` to pick and restore any saved workspace/window/tab.
+
+Panes come back with their cwd and scrollback text; known-safe TUIs (`vim`, `nvim`,
+`claude`, `htop`, …) are relaunched automatically. Other long-running processes cannot be
+resurrected — the pane reopens a fresh shell at the saved directory.
+
+Manage saved sessions from the shell: `ft session` (status), `ft session list [--all]`,
+`ft session save` (instant save via OSC 1337 trigger), `ft session restore <name>` (stage
+for next WezTerm start), `ft session delete <name>`.
 
 ## Leader — typed commands
 

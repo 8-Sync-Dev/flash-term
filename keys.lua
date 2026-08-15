@@ -6,12 +6,46 @@
 local wezterm = require("wezterm")
 local act = wezterm.action
 
+-- Session persistence plugin (cached by wezterm; same instance as wezterm.lua).
+local resurrect_ok, resurrect =
+  pcall(wezterm.plugin.require, "https://github.com/YedPool/resurrect.wezterm")
+
 -- Type a command into the active pane + Enter (tmux-style prefix trigger).
 local function send(cmd)
   return act.SendString(cmd .. "\r")
 end
 
-return {
+local function file_exists(path)
+  local f = io.open(path, "r")
+  if f then
+    f:close()
+    return true
+  end
+  return false
+end
+
+-- Smart paste (Ctrl+Alt+V): WezTerm has no native clipboard-image paste
+-- (issue wezterm#7272, closed unmerged). If the clipboard holds an image,
+-- save it as %TEMP%\ft-paste\img_<stamp>.png and type the file path into the
+-- pane (the Claude Code / 8sync image workflow); otherwise paste text normally.
+local paste_image_ps = [==[
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$img = [System.Windows.Forms.Clipboard]::GetImage()
+if ($img) {
+  $dir = Join-Path $env:TEMP 'ft-paste'
+  $null = New-Item -ItemType Directory -Force -Path $dir
+  $path = Join-Path $dir ('img_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.png')
+  $img.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+  [Console]::Out.Write($path)
+}
+]==]
+
+local pwsh_shim = wezterm.home_dir .. "\\scoop\\shims\\pwsh.exe"
+local paste_shell = file_exists(pwsh_shim) and pwsh_shim
+  or "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+
+local keys = {
   -- ── Pane splits ──────────────────────────────────────────────────────────
   { key = "|", mods = "CTRL|SHIFT", action = act.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
   { key = "_", mods = "CTRL|SHIFT", action = act.SplitPane({ direction = "Down",  size = { Percent = 34 } }) },
@@ -56,6 +90,17 @@ return {
   { key = "c", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard")    },
   { key = "v", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") },
   { key = "v", mods = "CTRL",       action = act.PasteFrom("Clipboard") },
+  -- Smart paste: image in clipboard -> save PNG + type its path; else text paste
+  { key = "v", mods = "CTRL|ALT",   action = wezterm.action_callback(function(window, pane)
+    local ok, stdout = wezterm.run_child_process({
+      paste_shell, "-NoLogo", "-NoProfile", "-STA", "-Command", paste_image_ps,
+    })
+    if ok and stdout and stdout ~= "" then
+      pane:send_text(stdout:gsub("[\r\n]+$", ""))
+    else
+      window:perform_action(act.PasteFrom("Clipboard"), pane)
+    end
+  end) },
 
   -- ── Search / palette / launcher / select ─────────────────────────────────
   { key = "f", mods = "CTRL|SHIFT", action = act.Search({ CaseInSensitiveString = "" }) },
@@ -83,4 +128,46 @@ return {
   { key = "u", mods = "LEADER", action = send("ft up --check") },
   -- Leader b   background wallpaper picker
   { key = "b", mods = "LEADER", action = send("ft bg pick") },
+
+  -- ── Leader — session save/restore (resurrect.wezterm) ────────────────────
 }
+
+if resurrect_ok then
+  -- Leader S   save the whole workspace state now (also auto-saved every 2 min)
+  table.insert(keys, {
+    key = "S",
+    mods = "LEADER",
+    action = wezterm.action_callback(function(window, pane)
+      resurrect.state_manager.save_state(resurrect.workspace_state.get_workspace_state())
+    end),
+  })
+  -- Leader R   fuzzy-pick a saved workspace/window/tab and restore it
+  table.insert(keys, {
+    key = "R",
+    mods = "LEADER",
+    action = wezterm.action_callback(function(window, pane)
+      resurrect.fuzzy_loader.fuzzy_load(window, pane, function(id, label)
+        local type = string.match(id, "^([^/]+)")
+        id = string.match(id, "([^/]+)$")
+        id = string.match(id, "(.+)%..+$")
+        local opts = {
+          relative = true,
+          restore_text = true,
+          on_pane_restore = resurrect.tab_state.default_on_pane_restore,
+        }
+        if type == "workspace" then
+          resurrect.workspace_state.restore_workspace(
+            resurrect.state_manager.load_state(id, "workspace"), opts)
+        elseif type == "window" then
+          resurrect.window_state.restore_window(
+            pane:window(), resurrect.state_manager.load_state(id, "window"), opts)
+        elseif type == "tab" then
+          resurrect.tab_state.restore_tab(
+            pane:tab(), resurrect.state_manager.load_state(id, "tab"), opts)
+        end
+      end)
+    end),
+  })
+end
+
+return keys

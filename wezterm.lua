@@ -849,5 +849,31 @@ table.insert(config.keys, {
   action = wezterm.action.EmitEvent("cycle-cursor-style"),
 })
 
+-- Session persistence (resurrect.wezterm, YedPool fork — fixes Windows hangs
+-- and periodic_save never writing). Auto-saves window/tab/split layout + cwd
+-- every 2 minutes and restores the last saved workspace on WezTerm startup,
+-- so a reboot reopens the session as it was. Manual keys live in keys.lua.
+local resurrect_ok, resurrect = pcall(
+  wezterm.plugin.require,
+  "https://github.com/YedPool/resurrect.wezterm"
+)
+if resurrect_ok then
+  resurrect.state_manager.set_max_nlines(2000)
+  resurrect.state_manager.periodic_save({
+    interval_seconds = 120,
+    save_workspaces = true,
+    save_windows = true,
+    save_tabs = true,
+  })
+  -- Also save immediately when the pane/tab structure changes, plus an initial
+  -- save shortly after startup. The user_var lets `ft session save` trigger an
+  -- instant save from any pane via an OSC 1337 escape sequence.
+  resurrect.state_manager.event_driven_save({
+    save_workspaces = true,
+    user_var = "ft_session_save",
+  })
+  wezterm.on("gui-startup", resurrect.state_manager.resurrect_on_gui_startup)
+end
+
 return config
 

@@ -269,8 +269,10 @@ own `CLAUDE_CONFIG_DIR` — a second signed-in identity in a second window.
 | Tabs | `Ctrl+Tab` · `Alt+1..9` · `Alt+0` (last) |
 | Toggle wallpaper ↔ gradient | `Ctrl+Shift+b` |
 | Cycle cursor style | `Ctrl+Shift+o` |
+| Save session / fuzzy restore | `Ctrl+a Shift+s` / `Ctrl+a Shift+r` |
 | Command palette / launcher | `Ctrl+Shift+p` / `Ctrl+Shift+l` |
 | Fuzzy history (fzf) / dir jump (zoxide) | `Ctrl+r` / `Alt+c` |
+| Smart paste: image → file path | `Ctrl+Alt+v` |
 | Reload config / copy mode | `Ctrl+a r` / `Ctrl+a c` |
 
 Full table: [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md).
