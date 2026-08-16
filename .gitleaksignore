@@ -1,0 +1,9 @@
+# False positives from vendored security skills: these files CONTAIN detection
+# patterns / example placeholders for secrets (a secret-scanner's own regexes,
+# docs describing key formats) -- not real credentials.
+su-code/skills/clouds-f/skills/senior-security/references/security-architecture-patterns.md:generic-api-key:583
+su-code/skills/clouds-f/skills/senior-security/scripts/secret_scanner.py:private-key:165
+su-code/skills/clouds-f/skills/senior-security/scripts/secret_scanner.py:private-key:183
+su-code/skills/debug-verify/SKILL.md:generic-api-key:216
+su-code/skills/review-mr/references/stream-bench.py:generic-api-key:23
+su-code/skills/security-audit/SKILL.md:generic-api-key:63

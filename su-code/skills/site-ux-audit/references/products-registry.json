@@ -1,0 +1,29 @@
+{
+  "_note": "8 Sync Dev product/site registry — nguồn: `vercel project ls` (account kilopfds-projects) + org-core/products.md. Verify lại: `vercel project ls`. Owner: FE=Quốc Hưng (frontend), Fullstack=Anh Tú (BE/AI/product). Cập nhật 2026-07-23.",
+  "verified": "2026-07-23",
+  "vercel_account": "kilopfds-projects",
+  "sites": [
+    { "key": "brand-hub", "vercel": "8sync-web", "url": "https://8syncdev.com", "repo": "products/8syncdev-pro-v2", "role": "Brand hub", "scope": "core", "owner_fe": "Quốc Hưng", "webchat": false },
+    { "key": "coding", "vercel": "8sync-coding", "url": "https://coding.8syncdev.com", "repo": "products/8syncdev-pro-v2 (apps/coding)", "role": "DSA playground 'The Breach' (1000 bài, free)", "scope": "core", "owner_fe": "Quốc Hưng", "webchat": true },
+    { "key": "news", "vercel": "8syncdev-news", "url": "https://news.8syncdev.com", "repo": "products/8syncdev-pro-v2 (apps/news)", "role": "AI news (SEO/traffic engine)", "scope": "core", "owner_fe": "Quốc Hưng", "webchat": true },
+    { "key": "course", "vercel": "8sync-course", "url": "https://course.8syncdev.com", "repo": "products/8syncdev-pro-v2 (apps/tutorial)", "role": "LMS 1-kèm-1 (doanh thu chính)", "scope": "core", "owner_fe": "Quốc Hưng", "webchat": true },
+    { "key": "app", "vercel": "8sync-app", "url": "https://app.8syncdev.com", "repo": "products/8syncdev-pro-v2", "role": "Auth/tài khoản trung tâm (LMS admin)", "scope": "core", "owner_fe": "Quốc Hưng", "webchat": false },
+    { "key": "zus", "vercel": "zus-web", "url": "https://zus.8syncdev.com", "repo": "products/zus", "role": "ZUS AI IDE (mũi nhọn)", "scope": "core", "owner_fe": "Quốc Hưng", "webchat": false },
+    { "key": "mind0", "vercel": "continumind-web", "url": "https://mind0.8syncdev.com", "repo": "products/mind0", "role": "Organizational AI memory (B2B, paused)", "scope": "b2b-paused", "owner_fe": "Anh Tú", "webchat": false },
+    { "key": "ielts", "vercel": "ielts-ai-startup", "url": "https://ielts.8syncdev.com", "repo": null, "role": "Ezen IELTS AI (out-of-scope MKT)", "scope": "paused", "owner_fe": "Anh Tú", "webchat": false },
+    { "key": "acoleads-home", "vercel": "acoleads-home", "url": "https://acoleads-home.vercel.app", "repo": "products/AcoLeads", "role": "AcoLeads marketing (AI Messenger assistant SaaS)", "scope": "product", "owner_fe": "Anh Tú", "webchat": true },
+    { "key": "acoleads-web", "vercel": "acoleads-web", "url": "https://acoleads-web.vercel.app", "repo": "products/AcoLeads", "role": "AcoLeads web", "scope": "product", "owner_fe": "Anh Tú", "webchat": true },
+    { "key": "acoleads-client", "vercel": "acoleads-client", "url": "https://acoleads-client.vercel.app", "repo": "products/AcoLeads", "role": "AcoLeads client app", "scope": "product", "owner_fe": "Anh Tú", "webchat": null },
+    { "key": "acoleads-admin", "vercel": "acoleads-admin", "url": "https://acoleads-admin.vercel.app", "repo": "products/AcoLeads", "role": "AcoLeads admin", "scope": "product", "owner_fe": "Anh Tú", "webchat": null },
+    { "key": "croptrace", "vercel": "farm-crm-01-dev", "url": "https://croptracevn.com", "repo": "products/farm-crm-01-dev", "role": "CropTrace agri-CRM/công-nợ (B2B)", "scope": "b2b-paused", "owner_fe": "Anh Tú", "webchat": null },
+    { "key": "cloudgo-agent", "vercel": "cloudgo-ai-agent", "url": "https://cloudgo-agent.8syncdev.com", "repo": null, "role": "CloudGO AI agent (day-job, B2B)", "scope": "b2b-paused", "owner_fe": "Anh Tú", "webchat": null },
+    { "key": "cloudgo-dashboard", "vercel": "agentic-cloudgo-dashboard", "url": "https://agentic-cloudgo-dashboard.vercel.app", "repo": null, "role": "CloudGO agent dashboard", "scope": "b2b-paused", "owner_fe": "Anh Tú", "webchat": null }
+  ],
+  "webchat": {
+    "sdk": "https://app-acoleads.8syncdev.com/webchat/sdk.js",
+    "product": "AcoLeads (AI assistant for Facebook Messenger — SaaS của founder)",
+    "model": "glm-4.5-flash",
+    "embedded_on": ["coding", "news", "course"],
+    "owner": "Anh Tú (AcoLeads product = BE/AI/SDK/KB) + Quốc Hưng (FE nhúng trên monorepo)"
+  }
+}

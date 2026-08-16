@@ -1,0 +1,45 @@
+---
+description: When asked to review Rust code or a PR, walk the checklist by concern and report every real finding with severity — do not pre-filter to the first issue.
+alwaysApply: false
+---
+
+# Review Keyword (clouds-rust)
+
+Canonical source: `SKILL.md` and `references/code-review-checklist.md` in this skill root.
+
+Apply when the request mentions `review`, `PR`, `pull request`, `audit`, `look over`, or
+`code quality` for Rust code.
+
+## Non-negotiables
+
+1. **Walk the whole checklist, report every real finding.** Do not stop at the first issue or
+   pre-filter to "the important one". Cover: correctness, ownership/borrows, API design, error
+   handling, concurrency, performance, unsafe, testing, style.
+   `references/code-review-checklist.md` is the ordered list.
+2. **State severity and the concrete fix.** Each finding: what smells, why it's a problem, the
+   idiomatic fix, and a severity (blocker / should-fix / nit). A finding without a fix is a
+   complaint, not a review.
+3. **Verify claims against the code, not from memory.** Read the actual function, its callers,
+   and its type invariants before asserting a bug. `lsp references` for anything exported.
+4. **Ground each finding in a rule or reference.** Link the anti-pattern or best-practice section
+   that explains why it matters (`references/anti-patterns.md`, `references/best-practices.md`),
+   so the author can learn the principle, not just apply the patch.
+5. **Clippy-clean is table stakes, not the review.** Assume `clippy -D warnings` and `rustfmt`
+   pass; review the things clippy can't see — API shape, error strategy, concurrency correctness,
+   allocation in hot paths, unsafe soundness, missing edge-case tests.
+6. **Separate correctness from taste.** Blockers (UB, races, panics in lib code, broken semver,
+   lost errors) are not the same as nits (naming, ordering). Rank them so.
+
+## Order of work
+
+Read the diff and enough surrounding code to judge it (types, callers, invariants). Walk
+`references/code-review-checklist.md` category by category. For each hit, open the reference that
+explains the principle. Produce findings grouped by severity, each with location + fix.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- The change touches `unsafe` and you cannot verify soundness from the diff alone — flag it as a
+  blocker and request the SAFETY reasoning (`rules/unsafe-keyword.mdc`).
+- A performance claim in the PR has no benchmark — flag it unverified (`rules/performance-keyword.mdc`).

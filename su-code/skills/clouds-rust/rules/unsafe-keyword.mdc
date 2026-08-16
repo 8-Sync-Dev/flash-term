@@ -1,0 +1,52 @@
+---
+description: When the request touches unsafe, raw pointers, transmute, MaybeUninit, FFI, Pin, or reported UB, establish soundness before writing code — unsafe narrows the checker, it does not disable it.
+alwaysApply: false
+---
+
+# Unsafe Keyword (clouds-rust)
+
+Canonical source: `SKILL.md` and `references/unsafe-rust.md` in this skill root.
+
+Apply when the request mentions `unsafe`, `raw pointer`, `*const`/`*mut`, `transmute`,
+`MaybeUninit`, `NonNull`, `FFI`, `extern "C"`, `bindgen`, `#[no_mangle]`, `Pin`,
+self-referential, `no_std`, undefined behaviour / `UB`, or `Miri`. Also apply to any bug report
+whose symptom is a segfault, memory corruption, or a Miri failure.
+
+## Non-negotiables
+
+1. **Soundness first.** A safe public API must be impossible to misuse into UB, for *any* input.
+   Unsafe (a block that could go wrong) is acceptable; unsound (a safe API that can trigger UB)
+   is a defect of a worse kind. `references/unsafe-rust.md` §UB catalog, §safe-abstraction.
+2. **Minimal scope + `// SAFETY:` on every block.** Each `unsafe` block is as small as possible
+   and carries a comment stating the invariant that makes it sound and why it holds here. No
+   comment = not reviewable = reject.
+3. **Prefer removing unsafe over commenting it.** Most application-level `unsafe` is premature
+   (avoidable perf, a borrow-checker fight, or reinventing a safe std API). Push back: name the
+   safe construction (`split_at_mut`, `Cell`, an index/arena, `Vec::with_capacity` + `push`)
+   before accepting `unsafe`.
+4. **`unsafe` does not turn off the borrow checker.** It grants exactly five superpowers
+   (deref raw ptr, call unsafe fn, impl unsafe trait, access `static mut`/union field). Aliasing
+   `&mut`, dangling/misaligned refs, and invalid values are UB *inside* unsafe too.
+5. **FFI boundary discipline.** `#[repr(C)]` on shared types, define ownership across the
+   boundary explicitly, never let a `panic!` unwind across `extern "C"` (`catch_unwind`), and
+   treat every pointer from C as untrusted. `references/unsafe-rust.md` §FFI.
+6. **Verify with Miri.** Any unsafe change is validated under `cargo +nightly miri test` where
+   the code can run under Miri; if it can't (FFI, inline asm), say so and state what was checked
+   instead.
+
+## Order of work
+
+Read the existing `unsafe` and its `// SAFETY:` notes, the type's invariants, and who can
+construct/observe it. Establish the invariant the safe wrapper guarantees *before* editing. Then
+`references/unsafe-rust.md` for the specific hazard (aliasing, uninit, Pin projection, FFI).
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- The unsafe is justified only by unmeasured performance. Ask for the benchmark first (Rule 6,
+  measure-first) — the safe version is often equally fast after inlining.
+- The change would expose a raw pointer, `MaybeUninit`, or an unchecked invariant in a *public*
+  safe API without a soundness argument.
+- You cannot state the SAFETY invariant precisely. An unstated invariant is a blocker, not an
+  assumption.

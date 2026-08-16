@@ -1,0 +1,47 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  
+  @font-face { font-family:"Outfit"; src:url("fonts/Outfit-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"Outfit"; src:url("fonts/Outfit-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"Bricolage"; src:url("fonts/BricolageGrotesque-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"Bricolage"; src:url("fonts/BricolageGrotesque-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"InstrumentSans"; src:url("fonts/InstrumentSans-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"InstrumentSans"; src:url("fonts/InstrumentSans-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"GeistMono"; src:url("fonts/GeistMono-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"BigShoulders"; src:url("fonts/BigShoulders-Bold.ttf"); font-weight:700; }
+
+  * { margin:0; box-sizing:border-box }
+  body { width:1584px; height:396px; background:#0a0a0b; position:relative; overflow:hidden;
+         display:flex; align-items:center; gap:77px; padding-left:118px; }
+  body::after { content:""; position:absolute; inset:0; background:url("data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22160%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%222%22/><feColorMatrix values=%220 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0%22/></filter><rect width=%22160%22 height=%22160%22 filter=%22url(%23n)%22/></svg>"); }
+  body::before { content:""; position:absolute; inset:0; background:radial-gradient(ellipse 60% 90% at 18% 40%, rgba(79,124,255,.14), transparent 60%),radial-gradient(ellipse 50% 80% at 85% 115%, rgba(168,85,247,.10), transparent 55%),radial-gradient(ellipse 40% 60% at 70% -20%, rgba(34,211,238,.07), transparent 60%); }
+  .mark { width:214px; height:214px; flex:none; position:relative; z-index:2;
+          filter:drop-shadow(0 0 25px rgba(79,124,255,.25)); }
+  .txt { position:relative; z-index:2; }
+  h1 { font-family:"Outfit"; color:#f5f4f1; font-size:96px; font-weight:700; letter-spacing:-0.03em; line-height:1; }
+  .row { display:flex; align-items:center; gap:24px; margin-top:28px; }
+  .badge { font-family:"Outfit"; border:1.5px solid rgba(245,244,241,.85); color:#f5f4f1;
+           font-size:19px; letter-spacing:.30em; font-weight:700;
+           padding:8px 15px 8px 24px; }
+  .sub { font-family:"GeistMono"; color:rgba(245,244,241,.50); font-size:18px; letter-spacing:.10em; }
+  .inf { position:absolute; right:-102px; top:50%; transform:translateY(-50%); z-index:1; }
+  .mark-sm { width:594px; height:594px; color:rgba(245,244,241,.05); }
+</style></head><body>
+  <svg class="mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g8" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#4F7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs>
+  <g fill="none" stroke="url(#g8)" stroke-width="8" stroke-linecap="round">
+    <path d="M 50.62 51.99 A 16 16 0 1 1 63.22 45.01"/>
+    <path d="M 49.38 48.01 A 16 16 0 1 1 36.78 54.99"/>
+  </g>
+</svg>
+
+  <div class="txt"><h1>8 Sync</h1>
+    <div class="row"><span class="badge">DEV</span><span class="sub">GITHUB.COM/8-SYNC-DEV</span></div>
+  </div>
+  <div class="inf"><svg class="mark-sm" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="currentColor" stroke-width="8">
+    <circle cx="50" cy="36" r="16"/>
+    <circle cx="50" cy="64" r="16"/>
+  </g>
+</svg>
+</div>
+</body></html>

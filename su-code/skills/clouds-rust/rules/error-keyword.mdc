@@ -1,0 +1,46 @@
+---
+description: When the request touches error handling, treat the error type as part of the API — typed for libraries, context-rich for binaries — and keep unwrap/panic out of library paths.
+alwaysApply: false
+---
+
+# Error Keyword (clouds-rust)
+
+Canonical source: `SKILL.md`, `references/best-practices.md` §error design, and
+`references/fundamentals.md` §error mechanics.
+
+Apply when the request mentions `error`, `Result`, `Option`, `unwrap`, `expect`, `panic`, `?`,
+`thiserror`, `anyhow`, `eyre`, `Box<dyn Error>`, or "how should this fail".
+
+## Non-negotiables
+
+1. **Error type = API contract.** A library exposes a typed error (`thiserror` enum,
+   `#[non_exhaustive]`, `#[from]` for conversions) so callers can match and handle it. A binary
+   uses `anyhow`/`eyre` with `.context()` chains. Do not leak `anyhow::Error` from a library's
+   public API. `references/best-practices.md` §error design.
+2. **No `unwrap`/`expect` in library paths without a proven invariant.** If it truly cannot fail,
+   `expect("reason the invariant holds")` documents why; otherwise propagate with `?`. Panics in
+   a library are the library deciding to crash the caller's process. `SKILL.md` Rule 4.
+3. **`panic!` is for broken invariants and unreachable states**, not expected failure (missing
+   file, bad input, network error) — those are `Result`. `references/fundamentals.md` §panic vs recoverable.
+4. **Preserve context and source.** Use `?` with `#[from]`/`.context()` so the error chain
+   survives; don't collapse a rich error into a `String`. Stringly-typed errors lose the ability
+   to match and handle. `references/anti-patterns.md` §stringly-typed errors.
+5. **Handle overflow deliberately.** Integer overflow panics in debug and wraps in release —
+   choose `checked_`/`wrapping_`/`saturating_` explicitly where it matters.
+   `references/best-practices.md` §security baseline.
+
+## Order of work
+
+Determine whether the code is a library or a binary — that decides the error strategy. Read the
+existing error type and match the project's convention. Design the error as part of the API
+(variants callers need to distinguish), then wire `?` conversions. Verify with a test that
+asserts the specific error variant, not just `is_err()`.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- Removing an `unwrap` would change a public function's signature to return `Result` and callers
+  are outside the change scope — flag the ripple and confirm scope.
+- The requested behaviour is to swallow errors silently; surface that it hides failures and
+  propose logging + propagation instead.

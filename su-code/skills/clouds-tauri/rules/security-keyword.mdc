@@ -1,0 +1,66 @@
+---
+description: When the user touches auth, secrets, permissions, capabilities, CSP, IPC exposure, file access, untrusted input, or anything shipping to real users, establish the trust boundary before changing code.
+alwaysApply: false
+---
+
+# Security Keyword (clouds-tauri)
+
+Canonical source: `SKILL.md` in this skill root.
+
+Apply this rule when the request mentions `security`, `hardening`, `audit`, `auth`, `token`,
+`secret`, `permission`, `capability`, `ACL`, `scope`, `CSP`, `isolation`, shell or process
+execution, filesystem access, opening a URL, rendering content the app did not author, or
+"we're about to ship this to users". Also apply it to any *bug report* whose fix is "grant
+more permission".
+
+## Non-negotiables
+
+1. **Default-deny, then add one permission at a time.** Grant the narrowest permission to the
+   narrowest window set. A window rendering less-trusted content gets its own capability file,
+   never a widening of `default`. Mechanism: `references/security.md` §4 (capabilities), §5
+   (permissions and what the defaults really contain).
+2. **Never widen a scope to make an error go away.** `... not allowed. Permissions associated
+   with this command: ...` is a design question, not a config typo. The correct fix is usually
+   a narrower owned command, not a broader plugin scope — see `SKILL.md` Rule 8.
+3. **`remote.urls` is additive, not a replacement.** A capability's `local` context defaults to
+   `true`; adding `remote` grants the listed origins *in addition to* local access. Never
+   attach `remote` to a capability carrying filesystem, shell, or process permissions.
+   `references/security.md` §3 (the enforcement path) and §4.
+4. **Validate in Rust, never in a JSON glob.** Every path, command name, URL, shell argument,
+   and deserialized payload crossing the IPC line is canonicalised and containment-checked
+   inside the `#[tauri::command]`. Capability scopes are the second layer, never the first.
+   `references/security.md` §1, and `references/ipc-and-commands.md` for the command surface.
+5. **Pin `tauri >= 2.11.1`.** CVE-2026-42184 / GHSA-7gmj-67g7-phm9: `is_local_url()` compared
+   only the first domain label, so `http://app.evil.com` was classified `Origin::Local` on
+   Windows and Android — remote pages received local-context privileges. Exposure tracks the
+   **`tauri` runtime crate**, not `tauri-build`; check the resolved version in `Cargo.lock`,
+   not the caret range in `Cargo.toml`.
+6. **Model output is attacker-controlled text.** Any command reachable from a rendered page is
+   reachable from prompt injection — no XSS required. Enumerate the command surface an
+   LLM-rendered surface can reach and treat that set as the real attack surface.
+   `references/security.md` §2 (threat model for a desktop AI app).
+7. **CSP is compiled in.** It ships as a constant in the binary; a mistake is live on every
+   install until an update lands. Review it as a release artifact, not a dev convenience.
+
+## Order of work
+
+Read `src-tauri/tauri.conf.json`, every `tauri.<platform>.conf.json`, all of
+`src-tauri/capabilities/`, and the `generate_handler!` list **before** proposing anything.
+Then follow `playbooks/security-review.md`. Lookups:
+`cheatsheets/capabilities-permissions.md`. Postures compared: `references/case-studies.md`
+§1–§3.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- The only fix you can find requires widening `fs`, `shell`, or `process` scope beyond a
+  literal known path or program.
+- You are asked to disable CSP, enable `dangerousDisableAssetCspModification`, or add a
+  wildcard origin.
+- The change would move a secret, private key, or long-lived token into the webview or into
+  anything the frontend bundle can read.
+- The project pins `tauri < 2.11.1` and you cannot upgrade — report the exposure, do not
+  quietly ship around it.
+- You cannot determine who controls the input reaching a command. An unknown trust boundary is
+  a blocker, not an assumption.

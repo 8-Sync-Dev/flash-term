@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clouds F"
+  short_description: "Front-end orchestration and routing skill."
+  default_prompt: "Route front-end tasks by keyword, apply graph-first analysis, and deliver minimal safe changes with clear rationale."

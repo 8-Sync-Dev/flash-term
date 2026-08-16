@@ -1,0 +1,119 @@
+%% =====================================================================
+%% CANONICAL TEMPLATE — IEEE conference (IEEEtran, two-column)
+%% Copy this file, keep the structure, swap the content.
+%% Build:  writter-ai/skills/academic-paper/scripts/build.sh example-ieee.tex
+%% Class docs: texdoc IEEEtran  ·  https://www.ieee.org/conferences/publishing/templates
+%% =====================================================================
+\documentclass[conference]{IEEEtran}
+% For a journal (single/double column, per-journal) use e.g.:
+%   \documentclass[journal]{IEEEtran}
+% Camera-ready page limits: strip \IEEEoverridecommandlockouts only if needed.
+
+\usepackage{cite}                 % IEEE-style [1],[2]-[4] citation compression
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}             % professional tables (\toprule \midrule \bottomrule)
+% hyperref LAST; IEEEtran-friendly options:
+\usepackage[hidelinks,breaklinks=true]{hyperref}
+
+\begin{document}
+
+\title{A Concise, Specific Paper Title\\
+{\footnotesize \textsuperscript{}Optional subtitle or venue note}}
+
+% ---- Authors (IEEEtran affiliation blocks) ----
+\author{
+\IEEEauthorblockN{First A. Author}
+\IEEEauthorblockA{\textit{Dept. Name} \\
+\textit{Organization}\\
+City, Country \\
+first.author@org.edu}
+\and
+\IEEEauthorblockN{Second B. Author}
+\IEEEauthorblockA{\textit{Dept. Name} \\
+\textit{Organization}\\
+City, Country \\
+second.author@org.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+State the problem in one sentence, the gap in the second, your approach in the
+third, and the headline quantitative result in the fourth. An abstract is
+150--250 words, contains no citations, and every claim here is proven in the body.
+Replace this paragraph with yours.
+\end{abstract}
+
+\begin{IEEEkeywords}
+keyword one, keyword two, keyword three, keyword four
+\end{IEEEkeywords}
+
+\section{Introduction}
+Open with the problem and why it matters, then the specific gap in prior work,
+then your contribution. Close the introduction with an explicit contribution
+list, which reviewers look for:
+\begin{itemize}
+\item A clearly stated method/algorithm (Section~\ref{sec:method}).
+\item An empirical result: e.g., we improve X by \emph{Y\%} over baseline~\cite{ref_baseline}.
+\item An analysis/ablation isolating the source of the gain (Section~\ref{sec:results}).
+\end{itemize}
+
+\section{Related Work}
+Group prior art into 2--3 threads; for each, state what it does and its limitation
+relative to your setting~\cite{ref_survey,ref_method}. Do not merely list papers.
+
+\section{Method}\label{sec:method}
+Describe the approach precisely enough to reproduce. Define notation once. A
+displayed equation is numbered and referenced as Eq.~\eqref{eq:objective}:
+\begin{equation}\label{eq:objective}
+\mathcal{L}(\theta) \;=\; \frac{1}{N}\sum_{i=1}^{N} \ell\!\left(f_\theta(x_i), y_i\right) + \lambda\,\lVert\theta\rVert_2^2 .
+\end{equation}
+State assumptions explicitly. If there is an algorithm, present it in an
+\texttt{algorithmic} block and reference its line numbers in the text.
+
+\section{Experiments}\label{sec:exp}
+Specify datasets, baselines, metrics, and the exact protocol (splits, seeds,
+hardware). Every number in the paper must be reproducible from this description.
+
+\section{Results}\label{sec:results}
+Lead with the headline table, then analysis. Table~\ref{tab:main} spans one column;
+for a full-width float use \verb|table*| and \verb|figure*|.
+\begin{table}[t]
+\caption{Main results. Best per column in \textbf{bold}. Report mean$\pm$std over seeds.}
+\label{tab:main}
+\centering
+\begin{tabular}{lcc}
+\toprule
+Method & Metric A ($\uparrow$) & Metric B ($\downarrow$) \\
+\midrule
+Baseline~\cite{ref_baseline} & 71.2 & 0.184 \\
+Ours                         & \textbf{78.6} & \textbf{0.142} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Full-width figure example (spans both columns, top of page):
+%\begin{figure*}[t]
+%  \centering
+%  \includegraphics[width=\textwidth]{figure.pdf}
+%  \caption{Caption. Explain what the reader should conclude, not just what is shown.}
+%  \label{fig:overview}
+%\end{figure*}
+
+\section{Conclusion}
+Restate the contribution and the single most important number. State one concrete
+limitation and one next step. No new claims here.
+
+\section*{Acknowledgment}
+Optional. Funding, compute, and people who helped but are not authors.
+
+% ---- References ----
+% IEEEtran.bst is fetched automatically by tectonic. Put entries in refs.bib.
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

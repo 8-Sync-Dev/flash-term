@@ -1,0 +1,112 @@
+%% =====================================================================
+%% CANONICAL TEMPLATE — arXiv / preprint (single-column, article class)
+%% Copy this file, keep the structure, swap the content.
+%% Build:  writter-ai/skills/academic-paper/scripts/build.sh example-arxiv.tex
+%% arXiv accepts standard `article`. To match a venue, drop in its style file
+%% (e.g. neurips_2024.sty, icml2024.sty) and replace the \usepackage line noted below.
+%% =====================================================================
+\documentclass[11pt]{article}
+
+\usepackage[letterpaper,margin=1in]{geometry}   % venue style files usually set this
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{authblk}                 % clean author/affiliation blocks
+\usepackage[numbers,sort&compress]{natbib}   % [1,2,4] numeric; or drop `numbers` for (Author, Year)
+\usepackage{xcolor}
+\usepackage[hidelinks,breaklinks=true]{hyperref}
+% ---- To use a venue style instead, comment geometry+authblk above and add e.g.:
+% \usepackage[preprint]{neurips_2024}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+
+\title{\bfseries A Concise, Specific Paper Title}
+
+\author[1]{First A. Author}
+\author[1,2]{Second B. Author}
+\author[2]{Third C. Author}
+\affil[1]{Department, Organization, \texttt{\{first,second\}@org.edu}}
+\affil[2]{Second Organization, \texttt{third@org2.edu}}
+\date{}   % arXiv stamps its own date; keep empty
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Problem in one sentence, gap in the second, approach in the third, headline
+result in the fourth. 150--250 words, no citations, every claim proven in the
+body. Replace this paragraph with yours.
+\end{abstract}
+
+\section{Introduction}
+Problem, why it matters, the specific gap, and your contribution. End with an
+explicit contribution list:
+\begin{itemize}
+\item A clearly stated method (Section~\ref{sec:method}).
+\item An empirical result improving X by $Y\%$ over \citet{ref_baseline}.
+\item Analysis/ablation isolating the gain (Section~\ref{sec:results}).
+\end{itemize}
+
+\section{Related Work}
+Group prior art into threads; state what each does and its limitation relative to
+your setting \citep{ref_survey,ref_method}.
+
+\section{Method}\label{sec:method}
+Define notation once; make the approach reproducible. A numbered equation:
+\begin{equation}\label{eq:objective}
+\mathcal{L}(\theta) = \frac{1}{N}\sum_{i=1}^{N}\ell\!\big(f_\theta(x_i), y_i\big) + \lambda\lVert\theta\rVert_2^2 .
+\end{equation}
+State results as formal claims where appropriate:
+\begin{theorem}\label{thm:main}
+Under assumptions A1--A2, the estimator $\hat\theta$ satisfies $\lVert\hat\theta-\theta^\star\rVert = \mathcal{O}(1/\sqrt{N})$.
+\end{theorem}
+\begin{proof}[Proof sketch] Give the idea; defer full proof to an appendix. \end{proof}
+
+\section{Experiments}\label{sec:exp}
+Datasets, baselines, metrics, protocol (splits, seeds, hardware). Every reported
+number must be reproducible from this section.
+
+\section{Results}\label{sec:results}
+Lead with the table, then analysis.
+\begin{table}[t]
+\centering
+\caption{Main results. Best per column in \textbf{bold}; mean$\pm$std over seeds.}
+\label{tab:main}
+\begin{tabular}{lcc}
+\toprule
+Method & Metric A ($\uparrow$) & Metric B ($\downarrow$) \\
+\midrule
+Baseline \citep{ref_baseline} & 71.2 & 0.184 \\
+Ours                          & \textbf{78.6} & \textbf{0.142} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%\begin{figure}[t]
+%  \centering
+%  \includegraphics[width=0.8\linewidth]{figure.pdf}
+%  \caption{Caption states the takeaway, not just the contents.}
+%  \label{fig:overview}
+%\end{figure}
+
+\section{Conclusion}
+Restate the contribution and the key number; one limitation, one next step.
+
+\section*{Acknowledgments}
+Optional: funding, compute, non-author contributors.
+
+\bibliographystyle{plainnat}   % or abbrvnat / unsrtnat; venue styles override this
+\bibliography{refs}
+
+\appendix
+\section{Full Proof of Theorem~\ref{thm:main}}
+Defer long derivations here.
+
+\end{document}

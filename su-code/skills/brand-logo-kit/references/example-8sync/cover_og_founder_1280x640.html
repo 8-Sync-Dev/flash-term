@@ -1,0 +1,65 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  
+  @font-face { font-family:"Outfit"; src:url("fonts/Outfit-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"Outfit"; src:url("fonts/Outfit-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"Bricolage"; src:url("fonts/BricolageGrotesque-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"Bricolage"; src:url("fonts/BricolageGrotesque-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"InstrumentSans"; src:url("fonts/InstrumentSans-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"InstrumentSans"; src:url("fonts/InstrumentSans-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"GeistMono"; src:url("fonts/GeistMono-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"BigShoulders"; src:url("fonts/BigShoulders-Bold.ttf"); font-weight:700; }
+
+  * { margin:0; box-sizing:border-box }
+  body { width:1280px; height:640px; background:#0a0a0b; position:relative; overflow:hidden;
+         display:flex; align-items:center; gap:78px; padding-left:70px;
+         font-family:"Outfit"; }
+  body::after { content:""; position:absolute; inset:0; background:url("data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22160%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%222%22/><feColorMatrix values=%220 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0%22/></filter><rect width=%22160%22 height=%22160%22 filter=%22url(%23n)%22/></svg>"); }
+  body::before { content:""; position:absolute; inset:0; background:radial-gradient(ellipse 60% 90% at 18% 40%, rgba(79,124,255,.14), transparent 60%),radial-gradient(ellipse 50% 80% at 85% 115%, rgba(168,85,247,.10), transparent 55%),radial-gradient(ellipse 40% 60% at 70% -20%, rgba(34,211,238,.07), transparent 60%); }
+  .brand { flex:none; position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:26px; }
+  .mark { width:260px; height:260px; filter:drop-shadow(0 0 31px rgba(79,124,255,.25)); }
+  .bname { display:flex; align-items:center; gap:9px; }
+  .bname b { color:#f5f4f1; font-size:41px; font-weight:700; letter-spacing:-0.02em; }
+  .badge { border:1.5px solid rgba(245,244,241,.8); color:#f5f4f1; font-size:18px;
+           letter-spacing:.28em; font-weight:700; padding:6px 10px 6px 15px; }
+  .txt { position:relative; z-index:2; min-width:0; }
+  h1 { color:#f5f4f1; font-size:58px; font-weight:700; letter-spacing:-0.025em; line-height:1.05; }
+  h1 span { color:rgba(245,244,241,.55); font-weight:400; }
+  .role { color:rgba(245,244,241,.82); font-size:23px; font-weight:400;
+          letter-spacing:.01em; margin-top:10px; }
+  .hr { height:2px; width:360px; margin:20px 0;
+        background:linear-gradient(90deg,#22D3EE,#4F7CFF,#A855F7,transparent); }
+  .ln { font-family:"GeistMono"; font-size:17px; letter-spacing:.06em; white-space:nowrap; }
+  .prod { color:#7fb2ff; margin-bottom:9px; }
+  .cred { color:rgba(245,244,241,.75); margin-bottom:9px; }
+  .ctc  { color:rgba(245,244,241,.48); font-size:13.5px; letter-spacing:.03em; }
+  .ctc b { color:rgba(245,244,241,.7); font-weight:400; }
+  .inf { position:absolute; right:-166px; top:50%; transform:translateY(-50%); z-index:1; }
+  .mark-sm { width:960px; height:960px; color:rgba(245,244,241,.05); }
+</style></head><body>
+  <div class="brand"><svg class="mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g8" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#4F7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs>
+  <g fill="none" stroke="url(#g8)" stroke-width="8" stroke-linecap="round">
+    <path d="M 50.62 51.99 A 16 16 0 1 1 63.22 45.01"/>
+    <path d="M 49.38 48.01 A 16 16 0 1 1 36.78 54.99"/>
+  </g>
+</svg>
+
+    <div class="bname"><b>8 Sync</b><span class="badge">DEV</span></div>
+  </div>
+  <div class="txt">
+    <h1>Nguyễn Phương Anh Tú <span>(Kevin)</span></h1>
+    <div class="role">AI Engineer · Founder of 8 Sync Dev</div>
+    <div class="hr"></div>
+    <div class="ln prod">MIND0 · ZUS AI IDE · EZEN IELTS AI · NEWS AI · CODING · TUTORIAL · VEC8</div>
+    <div class="ln cred">2 JTE PAPERS · 13 CITATIONS · 1,000+ STUDENTS · GITHUB 177 FOLLOWERS</div>
+    <div class="ln ctc" style="margin-bottom:8px"><b>8SYNCDEV.COM</b> · ATUS@8SYNCDEV.COM · <b>0768 691 901</b> · ZALO · WHATSAPP</div>
+    <div class="ln ctc">YT DEV8SYNC 2.5K · TIKTOK @8SYNCDEV 2.5K · FB/8SYNC · GITHUB.COM/8-SYNC-DEV</div>
+  </div>
+  <div class="inf"><svg class="mark-sm" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="currentColor" stroke-width="8">
+    <circle cx="50" cy="36" r="16"/>
+    <circle cx="50" cy="64" r="16"/>
+  </g>
+</svg>
+</div>
+</body></html>

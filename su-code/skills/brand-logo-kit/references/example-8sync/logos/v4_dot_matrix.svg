@@ -1,0 +1,18 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g fill="currentColor">
+    <circle cx="50.0" cy="20.5" r="2.6"/>
+    <circle cx="60.83" cy="26.75" r="2.6"/>
+    <circle cx="60.83" cy="39.25" r="2.6"/>
+    <circle cx="50.0" cy="45.5" r="2.6"/>
+    <circle cx="39.17" cy="39.25" r="2.6"/>
+    <circle cx="39.17" cy="26.75" r="2.6"/>
+    <circle cx="50.0" cy="49.0" r="3.2"/>
+    <circle cx="61.31" cy="53.69" r="3.2"/>
+    <circle cx="66.0" cy="65.0" r="3.2"/>
+    <circle cx="61.31" cy="76.31" r="3.2"/>
+    <circle cx="50.0" cy="81.0" r="3.2"/>
+    <circle cx="38.69" cy="76.31" r="3.2"/>
+    <circle cx="34.0" cy="65.0" r="3.2"/>
+    <circle cx="38.69" cy="53.69" r="3.2"/>
+  </g>
+</svg>

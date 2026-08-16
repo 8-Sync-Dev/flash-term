@@ -1,0 +1,61 @@
+---
+description: When the user reports something broken, crashing, blank, or working in dev but not in prod, reproduce and isolate the failing side of the IPC boundary before editing anything.
+alwaysApply: false
+---
+
+# Debug Keyword (clouds-tauri)
+
+Canonical source: `SKILL.md` in this skill root.
+
+Apply this rule when the request mentions `debug`, `broken`, `not working`, `crash`, `panic`,
+`hang`, `blank window`, `white screen`, `works in dev but not in prod`, `no error but nothing
+happens`, or asks for a reproduction. Also apply it when a user pastes an error string and
+asks for a fix — the string is a symptom, not a diagnosis.
+
+## Non-negotiables
+
+1. **Reproduce before patching.** A fix applied to an unreproduced bug cannot be verified, so
+   it is a guess with a diff attached. If you cannot reproduce it locally, reproduce it in
+   logs. Triage order: `references/debugging-and-testing.md` §triage.
+2. **Decide which side of the IPC boundary failed before touching either side.** Frontend
+   never called it, the call was denied by the ACL, the command ran and returned an error, or
+   the command ran and the frontend mishandled the result — these are four different bugs with
+   four different fixes. Determine which one it is from devtools + Rust logs, then edit one
+   side. `references/debugging-and-testing.md` §triage;
+   `references/ipc-and-commands.md`.
+3. **With `panic = "abort"`, a command panic is a silent process death, not an error.** No
+   rejected promise, no error dialog, no stack in the webview console — the window simply
+   vanishes or freezes. If a whole-app disappearance follows a specific action, suspect a
+   panic and check the release profile before hunting for a logic bug.
+4. **Never conclude from a guess when a log or devtools can answer it.** Open devtools, enable
+   the log plugin, print the actual value. "Probably the path resolution" is not a finding;
+   the printed path is.
+5. **Match the symptom to its known cause class first.** The symptom table in `SKILL.md`
+   (§Routing → By symptom) resolves most Tauri-specific failures in one hop: blank window,
+   dev-vs-prod divergence, ACL denial, Linux+Nvidia rendering, console window on Windows,
+   stranded auto-update, HTML5 drag-and-drop dead.
+6. **Dev and prod differ in ways that are enumerable, not mysterious.** Asset protocol, CSP,
+   path resolution, bundled resources, and capabilities all change between `tauri dev` and a
+   built bundle. Walk that list rather than bisecting blind:
+   `playbooks/production-debugging.md`.
+7. **Reproduce on the platform that reports it.** A Linux-only bug is not debugged on Windows.
+   `references/cross-platform.md`.
+
+## Order of work
+
+Symptom → cause class → the one file that owns it → minimal fix → re-run the exact
+reproduction. State what you observed, not what should happen.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- You cannot reproduce and have no log, no console output, and no crash artifact. Ask for the
+  reproduction steps, the platform, and the app version instead of shipping a speculative fix.
+- The failure only occurs on a platform you cannot run — hand back the isolation you achieved
+  and name what needs verifying there.
+- The fix would require disabling CSP, widening a capability, or removing a validation to make
+  the symptom disappear. That converts a bug into a vulnerability; escalate to
+  `rules/security-keyword.mdc`.
+- The bug is in a dependency or in Tauri itself. Confirm with a minimal reproduction, then
+  report it upstream rather than building an unexplained workaround into the app.

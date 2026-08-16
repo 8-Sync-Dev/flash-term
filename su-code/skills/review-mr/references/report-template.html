@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Review MR — fix/fix_performace_copilot</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 18mm 18mm 18mm;
+    @bottom-left { content: "CloudGO · Review nội bộ"; font-size: 7.5pt; color: #8a94a6; }
+    @bottom-center { content: "Bảo mật — chỉ lưu hành nội bộ"; font-size: 7.5pt; color: #b0b7c3; }
+    @bottom-right { content: "Trang " counter(page) "/" counter(pages); font-size: 7.5pt; color: #8a94a6; }
+  }
+  @page :first { margin-top: 0; @bottom-left { content: ""; } @bottom-center { content: ""; } @bottom-right { content: ""; } }
+  * { box-sizing: border-box; }
+  body { font-family: "Liberation Sans","Arial",sans-serif; font-size: 9.7pt; line-height: 1.5; color: #1f2733; margin: 0; -weasy-hyphens: none; }
+  h1,h2,h3,h4 { color: #0f2b46; font-weight: 700; line-height: 1.2; }
+  p { margin: 0 0 6px; text-align: justify; }
+  a { color: #10618f; text-decoration: none; }
+  strong { color: #0f2b46; }
+  .muted { color: #5b6675; }
+  code { font-family: "Liberation Mono","DejaVu Sans Mono",monospace; font-size: 8.4pt; background:#f2f5f9; padding:0 3px; border-radius:3px; color:#294; }
+  code.k { color:#b03a2e; }
+
+  .cover { padding: 40mm 4mm 0; page-break-after: always; }
+  .cover .kicker { font-size: 9pt; letter-spacing: 3px; text-transform: uppercase; color: #d47a1e; font-weight: 700; }
+  .cover h1 { font-size: 25pt; margin: 14px 0 6px; letter-spacing: -0.5px; }
+  .cover .sub { font-size: 12.5pt; color: #3f4c5e; font-weight: 400; margin-bottom: 30px; }
+  .cover .rule { height: 4px; width: 66px; background: #d47a1e; margin: 0 0 26px; }
+  .cover .meta { font-size: 9.5pt; color: #3f4c5e; }
+  .cover .meta table { border-collapse: collapse; }
+  .cover .meta td { padding: 3px 0; vertical-align: top; }
+  .cover .meta td.k { color: #8a94a6; width: 140px; font-weight:700; text-transform:uppercase; font-size:7.8pt; letter-spacing:1px; padding-right:14px;}
+  .cover .tagbox { margin-top: 30px; border-left: 4px solid #0f2b46; background: #f4f7fb; padding: 14px 18px; font-size: 9.5pt; color:#2b3646;}
+
+  h2 { font-size: 14pt; margin: 22px 0 4px; padding-bottom: 5px; border-bottom: 2px solid #e4e9f1; }
+  h2 .n { color: #d47a1e; margin-right: 8px; }
+  h3 { font-size: 10.8pt; margin: 14px 0 3px; color:#173a5c;}
+  ul,ol { margin: 4px 0 8px; padding-left: 18px; }
+  li { margin: 2px 0; }
+
+  .callout { border-left: 4px solid #d47a1e; background: #fdf6ec; padding: 9px 14px; margin: 10px 0; font-size: 9.3pt; }
+  .callout.blue { border-color:#10618f; background:#eef5fb; }
+  .callout.green { border-color:#1c7c54; background:#eef7f2; }
+  .callout.red { border-color:#c0392b; background:#fbeeec; }
+  .callout .lbl { font-weight:700; text-transform:uppercase; letter-spacing:.6px; font-size:7.6pt; color:#b26414; display:block; margin-bottom:2px;}
+  .callout.blue .lbl { color:#0d5583; } .callout.green .lbl { color:#14603f; } .callout.red .lbl { color:#a5281b; }
+
+  .stats { display:flex; gap:8px; margin:12px 0; }
+  .stat { flex:1; border:1px solid #e4e9f1; border-radius:6px; padding:10px 10px 9px; text-align:center; background:#fafbfd;}
+  .stat .big { font-size:18pt; font-weight:700; color:#c1611a; line-height:1;}
+  .stat .cap { font-size:7.6pt; color:#5b6675; margin-top:5px; line-height:1.25;}
+
+  table.cmp { width:100%; border-collapse:collapse; margin:10px 0; font-size:8.5pt; }
+  table.cmp th, table.cmp td { border:1px solid #dbe2ec; padding:6px 8px; vertical-align:top; text-align:left; }
+  table.cmp thead th { background:#0f2b46; color:#fff; font-size:8.3pt; font-weight:700; }
+  table.cmp th.axis { background:#eef2f7; color:#0f2b46; width:16%; }
+  table.cmp tbody tr:nth-child(even) td { background:#f7f9fc; }
+  table.cmp td.win { background:#eef7f2 !important; }
+  .pill { display:inline-block; font-size:7pt; font-weight:700; padding:1px 6px; border-radius:8px; color:#fff; white-space:nowrap;}
+  .p-red { background:#c0392b;} .p-amber{ background:#d47a1e;} .p-green{ background:#1c7c54;} .p-gray{ background:#6b7683;}
+  .quote { font-style:italic; color:#3f4c5e; border-left:3px solid #cdd6e2; padding-left:12px; margin:8px 0; font-size:9.3pt;}
+  .avoid-break { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="kicker">Code Review · Merge Request</div>
+  <h1>Review MR: hiệu năng lane copilot</h1>
+  <div class="sub">Nhánh <code>fix/fix_performace_copilot</code> → đánh giá trước khi merge master</div>
+  <div class="rule"></div>
+  <div class="meta"><table>
+    <tr><td class="k">Chuẩn bị cho</td><td>Sếp (duyệt merge) · team CloudGO backend</td></tr>
+    <tr><td class="k">Người review</td><td>Agent (go-kit)</td></tr>
+    <tr><td class="k">Ngày</td><td>2026-08-07</td></tr>
+    <tr><td class="k">MR</td><td>1 commit <code>dace82c</code> · tác giả minh hieu · 2026-08-05</td></tr>
+    <tr><td class="k">Nhánh review</td><td><code>review/fix_performace_copilot</code> (go-kit cá nhân)</td></tr>
+    <tr><td class="k">Đã test trên</td><td>kufi DEV · revision <code>44f2723f</code> live</td></tr>
+    <tr><td class="k">Phạm vi</td><td>Chỉ lane stream (copilot + QA workbench). Lane khách production KHÔNG đụng.</td></tr>
+  </table></div>
+  <div class="tagbox"><strong>Câu hỏi review:</strong> MR này có đúng, an toàn, đủ điều kiện merge master + lên PROD chưa? Số đo hiệu năng có thật không?</div>
+</section>
+
+<h2><span class="n">§0</span>Kết luận</h2>
+<div class="callout green"><span class="lbl">Verdict</span>
+<strong>MR đúng hướng và nên nhận — SAU khi vá 3 chỗ chặn deploy (đã vá trên nhánh review, đã test kufi).</strong> Ý tưởng bỏ pre-ground cho lượt copilot ngắn là hợp lý; code sạch, có chú thích tốt. Nhưng bản gốc <em>không deploy được</em> và <em>không có test</em>.</div>
+<ul>
+  <li><strong>3 blocker deploy</strong> (đã vá): (1) <code>be/encore.app</code> bị xoá trắng app id → mọi lệnh encore gãy; (2) migration đánh số <code>79</code> trùng <code>79_copilot_no_dead_end_defer</code> đã có trên master → encore từ chối "duplicate migration identifier"; (3) không một unit test nào.</li>
+  <li><strong>Số đo của MR không tái hiện trên kufi</strong>: MR nói pre-ground kéo 4 doc KB thành prompt ~7k token cho câu "hi". Trên kufi copilot <strong>rag=0 mọi lượt</strong> vì con copilot <strong>sở hữu 0 node KB</strong> (3984 node tổng, chỉ 113 shared). Không có phình prompt.</li>
+  <li><strong>Nhưng cái lợi vẫn thật, chỉ khác cơ chế</strong>: bản thân lời gọi <code>kb.Retrieve</code> (embed + pgvector) tốn <strong>95–918ms mỗi lượt nhẹ</strong> mà trả về rỗng. Bỏ nó (skipGround) tiết kiệm đúng khoảng đó — không phải tiết kiệm token.</li>
+  <li><strong>An toàn</strong>: <code>skipGround</code> gated copilot-only + knob mặc định OFF → prompt byte-identical tới khi bật. Đã xác minh knob live = <code>false</code>.</li>
+  <li><strong>Đã bù 7 unit test</strong> cho <code>dropTools</code> + vị từ cổng; <strong>11/11 PASS</strong> (gồm 4 test cũ bấy lâu không chạy được — xem §4).</li>
+</ul>
+
+<h2><span class="n">§1</span>MR thay đổi gì</h2>
+<p>Một commit, 3 file, <code>+200 / −26</code>. Tất cả nằm trên <strong>lane stream</strong> (<code>ProcessTurnStream</code>) — phục vụ <code>/copilot/stream</code> (CRM gọi) và <code>/engine/stream</code> (QA workbench). Lane khách production (<code>ProcessTurn</code>) không bị chạm, nên <strong>không có rủi ro khách thật</strong>.</p>
+<ul>
+  <li><strong>Gộp pre-work song song</strong> (luôn bật): KB pre-ground + lesson + nén history + chọn tool trước đây chạy tuần tự, nay chạy trong goroutine → chi phí là <code>max()</code> thay vì tổng.</li>
+  <li><strong>skipGround</strong> (knob, copilot-only): lượt ngắn ≤40 ký tự, không "?", không hỏi giá → bỏ pre-ground KB. Tái dùng vị từ <code>routeLight</code>, bỏ miễn trừ lượt-đầu.</li>
+  <li><strong>dropTools + preGroundedNote</strong>: khi pre-ground CÓ doc → gỡ <code>searchProduct</code>/<code>searchFaq</code> (trùng), giữ <code>searchKnowledge</code> làm cửa thoát, thêm ghi chú "đã tra sẵn" cuối prompt.</li>
+  <li><strong>Instrument</strong>: log <code>stream turn timing</code> + <code>usage.timings</code> (pre/retrieve/lesson/main/tool/n_tool).</li>
+</ul>
+
+<h2><span class="n">§2</span>Ba chỗ chặn deploy <span class="pill p-red">BLOCKER</span></h2>
+<table class="cmp avoid-break">
+  <thead><tr><th class="axis">Vấn đề</th><th>Bằng chứng</th><th>Đã vá</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="pill p-red">1</span> <code>encore.app</code> id = <code>""</code></td>
+      <td>Mọi lệnh encore đọc id này. Tái hiện: id rỗng → codegen sập (<code class="k">rlog.Warn</code>, <code class="k">auth.Data</code>, <code class="k">__encore_secrets.Load</code> đều undefined); trả id đúng → <code>ok</code>. Đúng thứ commit <code>4055801</code> đã sửa một lần. VPS chạy thẳng từ source + suy tên container DB từ id → gãy nặng hơn cục bộ.</td>
+      <td class="win">Trả <code>"agentic-cloudgo-v1-kufi"</code></td>
+    </tr>
+    <tr>
+      <td><span class="pill p-red">2</span> Migration số <code>79</code> trùng</td>
+      <td>Master đã có <code>79_copilot_no_dead_end_defer</code>. Git merge sạch (khác tên file) nhưng deploy: binary encore chứa chuỗi <code>"duplicate migration identifier %q"</code>; bảng <code>schema_migrations</code> chỉ một cột <code>version</code>. Trùng ⇒ migration fail cả kufi lẫn PROD.</td>
+      <td class="win">Đổi số → <code>87</code></td>
+    </tr>
+    <tr>
+      <td><span class="pill p-red">3</span> Không có test</td>
+      <td><code>dropTools</code> là hàm thuần, dễ test, nhưng MR không kèm test nào.</td>
+      <td class="win">+7 test, 11/11 PASS</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2><span class="n">§3</span>Benchmark &amp; hiệu năng (đo thật trên kufi)</h2>
+<p>Copilot không có widget livechat → đo bằng harness nói SSE trực tiếp (<code>tools/qa/copilot_bench.py</code>), lấy <code>ttft</code> (chữ đầu tiên — thứ nhân viên thực sự chờ) tách khỏi <code>total</code>, cộng số đo server tự báo trong frame <code>done</code>.</p>
+<div class="stats">
+  <div class="stat"><div class="big">0</div><div class="cap">node KB copilot sở hữu<br>(trên 3984 node tổng)</div></div>
+  <div class="stat"><div class="big">rag=0</div><div class="cap">mọi lượt, kể cả<br>câu hỏi sản phẩm</div></div>
+  <div class="stat"><div class="big">95–918<span style="font-size:9pt">ms</span></div><div class="cap">pre-ground tốn/lượt<br>→ trả về rỗng</div></div>
+  <div class="stat"><div class="big">11/11</div><div class="cap">unit test<br>PASS · 0.022s</div></div>
+</div>
+<table class="cmp avoid-break">
+  <thead><tr><th class="axis">Lượt</th><th>ttft</th><th>total</th><th>main_ms</th><th>retrieve</th><th>tool</th><th>rag</th><th>Nhận xét</th></tr></thead>
+  <tbody>
+    <tr><td>"hi" ×3</td><td>4.8–5.5s</td><td>5.8–8.0s</td><td>4.1–4.9k</td><td>95–135ms</td><td>0</td><td>0</td><td>Chào đúng phong cách</td></tr>
+    <tr><td>"ok em" ×3</td><td>4.6–5.6s</td><td>5.9–7.1s</td><td>4.1–4.6k</td><td>95–849ms</td><td>0</td><td>0</td><td>1 lượt retr=849/less=781 (chạy song song)</td></tr>
+    <tr><td>hỏi sản phẩm ×3</td><td>13–22s</td><td>18–27s</td><td>16–25k</td><td>101–919ms</td><td>3–4</td><td>0</td><td>KB rỗng → bot phải gọi 3–4 tool, tự nói "tra 3 nguồn không thấy"</td></tr>
+    <tr><td>hỏi ngày</td><td>6.6s</td><td>7.7s</td><td>4.8k</td><td class="win">918ms</td><td>0</td><td>0</td><td>Trả đúng ngày; pre-ground tốn 918ms cho 0 doc</td></tr>
+    <tr><td>tra khách CRM</td><td>9.1s</td><td>12.1s</td><td>9.9k</td><td>816ms</td><td>1</td><td>0</td><td><code>globalSearch</code> chạy, báo "không tìm thấy" đúng</td></tr>
+  </tbody>
+</table>
+<div class="callout blue"><span class="lbl">Phát hiện then chốt — cơ chế của MR sai với môi trường này</span>
+MR mô tả cái lãng phí là <em>prompt phình 7k token vì 4 doc KB</em>. Trên kufi copilot điều đó <strong>không xảy ra</strong>: KB rỗng → 0 doc → 0 token thêm, và <code>dropTools</code>/<code>preGroundedNote</code> <strong>không bao giờ kích hoạt</strong> (cần <code>rag&gt;0</code>). Cái lãng phí THẬT là <strong>lời gọi embed+pgvector tốn 95–918ms mỗi lượt nhẹ trả về rỗng</strong>. Kết luận: <strong>cái lợi có thật, lý do ghi trong migration thì sai</strong>. Nên sửa chú thích cho khớp, hoặc chấp nhận vì lợi ích vẫn đúng.</div>
+<div class="callout"><span class="lbl">Nút thắt lớn hơn nhiều</span>
+<code>main_ms</code> (model tự sinh chữ) là <strong>70–90% thời gian</strong> mọi lượt (4–5k ms lượt chào, 16–25k ms lượt sản phẩm). skipGround gọt 0.1–0.9s ở rìa; muốn nhanh thật phải giảm số vòng model — nhưng đó ngoài phạm vi MR này.</div>
+
+<h2><span class="n">§4</span>Convention &amp; doctrine</h2>
+<table class="cmp avoid-break">
+  <thead><tr><th class="axis">Hạng mục</th><th>Kết quả</th><th>Chi tiết</th></tr></thead>
+  <tbody>
+    <tr><td>Knob DB-driven, default OFF</td><td class="win"><span class="pill p-green">ĐẠT</span></td><td>Đúng doctrine "no env flag, rollback = revert". Idempotent <code>ON CONFLICT</code>. Knob live xác minh = <code>false</code>.</td></tr>
+    <tr><td>Không regex/string post-process</td><td class="win"><span class="pill p-green">ĐẠT</span></td><td>Sửa qua eino primitive (đổi toolset + system prompt), không hậu xử lý chuỗi.</td></tr>
+    <tr><td><code>newReactAgent</code> thay AgentConfig tay</td><td class="win"><span class="pill p-green">ĐẠT</span></td><td>MR sửa cả nhánh rebuild khi xoay key — trước đó rơi mất <code>ExecuteSequentially</code>. Đúng.</td></tr>
+    <tr><td>Wire CRM đóng băng</td><td class="win"><span class="pill p-green">ĐẠT</span></td><td>Không đụng gateway/webhook/CRM client. Lane khách production không đổi.</td></tr>
+    <tr><td><code>dropTools</code> không gated theo knob</td><td><span class="pill p-amber">LƯU Ý</span></td><td>Kích hoạt cho MỌI agent trên lane stream khi <code>rag&gt;0</code> — gồm cả agent khách trong QA workbench. Workbench khi đó mất <code>searchProduct</code>/<code>searchFaq</code> để test (dù <code>searchKnowledge</code> còn). Nên document hoặc gate.</td></tr>
+    <tr><td><code>-tags localtest</code> phá codegen encore</td><td><span class="pill p-amber">NỢ SẴN</span></td><td>Không do MR, nhưng lộ ra khi test: tag này làm parser encore sinh sai tập package cho mọi package chạm runtime → cả thư mục <code>be/engine</code> không test được. 3 file test cũ nằm chết vì nó. Bỏ tag → 11/11 (7 mới + 4 cũ) xanh. Nên xử lý riêng.</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="n">§5</span>Unit test đã bù</h2>
+<p>7 case cho <code>dropTools</code> (hàm thuần) + vị từ cổng — tất cả trong <code>be/engine/pipeline_stream_test.go</code>:</p>
+<ul>
+  <li><strong>Giữ cửa thoát</strong>: <code>searchKnowledge</code> phải sống sót — pre-ground dùng chữ thô của khách ở TopK 4 còn tool dùng query model viết lại ở TopK 6 (hẹp hơn, không tương đương), nên lượt pre-ground bỏ sót vẫn cần đường tra.</li>
+  <li><strong>Tool CRM không bị đụng</strong>: <code>globalSearch</code>/<code>recordDetail</code>/<code>validateCustomer</code> giữ nguyên.</li>
+  <li><strong>Tập rỗng = identity</strong>: giữ nguyên thứ tự (thứ tự tool là tiền tố prompt-cache).</li>
+  <li><strong>Tool không tự mô tả được</strong>: giữ lại, không nuốt im lặng.</li>
+  <li><strong>Bất biến tập trùng</strong>: <code>searchKnowledge</code> không bao giờ trong tập drop.</li>
+  <li><strong>Vị từ cổng copilot</strong>: <code>routeLight</code> với miễn-trừ-lượt-đầu bị bỏ; và lane khách vẫn giữ miễn trừ (bất đối xứng — chính là lý do cổng copilot phải truyền <code>false</code>).</li>
+</ul>
+<div class="callout green"><span class="lbl">Kết quả</span><code>encore test</code> (bỏ tag localtest) → <strong>11/11 PASS trong 0.022s</strong>: 7 test mới + 4 test cũ (<code>compaction</code>, <code>recover</code>, <code>reply_metadata</code>) lần đầu chạy được.</div>
+
+<h2><span class="n">§6</span>Khuyến nghị</h2>
+<ol>
+  <li><strong>Nhận MR sau 3 vá blocker</strong> — đã vá trên nhánh review, đã deploy kufi (<code>44f2723f</code>, mig=87, healthz 200), không hồi quy trên lane copilot.</li>
+  <li><strong>Sửa chú thích migration 87</strong> cho khớp cơ chế thật (tiết kiệm round-trip embed+pgvector, không phải token) — hoặc chấp nhận vì lợi ích vẫn đúng.</li>
+  <li><strong>Cân nhắc gate <code>dropTools</code></strong> theo knob, hoặc ghi rõ nó làm workbench lệch production khi <code>rag&gt;0</code>.</li>
+  <li><strong>Xử lý riêng nợ <code>-tags localtest</code></strong> — nó khiến cả tầng test <code>be/engine</code> vô dụng bấy lâu.</li>
+  <li><strong>Chờ Sếp duyệt</strong> rồi mới: cập nhật MR → merge master → lên VPS PROD → merge về go-kit cá nhân. (Đúng thứ tự Sếp yêu cầu; hiện chưa đụng master/PROD.)</li>
+</ol>
+<div class="callout red"><span class="lbl">Trạng thái</span>Nhánh review đã sẵn sàng. <strong>CHƯA</strong> merge master, <strong>CHƯA</strong> lên PROD. Đợi Sếp duyệt.</div>
+
+</body>
+</html>

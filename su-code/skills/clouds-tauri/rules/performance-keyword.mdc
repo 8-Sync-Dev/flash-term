@@ -1,0 +1,60 @@
+---
+description: When the user reports slow startup, a freezing UI, growing memory, a large binary, or janky rendering, attribute and measure the layer before changing any code.
+alwaysApply: false
+---
+
+# Performance Keyword (clouds-tauri)
+
+Canonical source: `SKILL.md` in this skill root.
+
+Apply this rule when the request mentions `performance`, `slow`, `startup`, `boot`, `lag`,
+`freeze`, `hang`, `jank`, `memory`, `leak`, `RSS`, `binary size`, `bundle size`, `profile`,
+`optimise` — or when a user describes the app as "heavy" without naming a metric.
+
+## Non-negotiables
+
+1. **Measure before optimising, and name the number.** No change ships on a hunch. Produce a
+   before-number, change one thing, produce an after-number. `references/performance.md` §1
+   (measurement discipline) defines the attribution split; §8 lists the commands that produce
+   an actual number.
+2. **Attribute the layer first: WebView or Rust.** Startup, memory, IPC and rendering have
+   different tools and opposite fixes. Optimising the wrong layer is the standard wasted week.
+   Binary size is Rust; runtime memory is overwhelmingly the WebView process — they do not
+   trade against each other. `references/performance.md` §1, §3, §4.
+3. **Check the sync command first.** The #1 real cause of "Tauri is slow" is a non-`async`
+   `#[tauri::command]` doing IO or CPU work on the tao event loop thread, freezing every
+   window. Grep the handler list for sync commands with blocking bodies before profiling
+   anything else. Holding a `std::sync::MutexGuard` across an `.await` is the same defect in
+   async clothing. `references/ipc-and-commands.md` §threading;
+   `references/performance.md` §7.
+4. **`[profile.release]` in a workspace *member* is silently ignored.** Cargo only honours
+   profiles in the workspace root manifest. A member-level release profile is dead code that
+   looks like a tuned build — this is a real, observed failure. `references/case-studies.md`
+   §12.
+5. **State which platform you measured on.** WebView2, WKWebView and WebKitGTK have different
+   memory floors, different compositors, and different startup costs. A number without a
+   platform is not evidence. `references/cross-platform.md`.
+6. **Name the trade-off.** `opt-level = "z"` costs runtime speed; `lto = "fat"` costs build
+   time; `transparent: true` costs GPU and battery at idle on macOS. A perf change with no
+   stated cost is an incomplete change. `references/performance.md` §3, §6.
+
+## Order of work
+
+Route by symptom, not by topic: slow startup / white flash →
+`playbooks/startup-performance.md`; growing RSS → `playbooks/memory-and-leaks.md`; jank →
+`playbooks/rendering-performance.md`; large payloads crossing IPC →
+`references/performance.md` §5 and `references/ipc-and-commands.md` §Channels.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- You have no reproduction and no measurement, and the environment prevents you from
+  producing either. Report that instead of guessing at a fix.
+- The requested optimisation targets a layer the evidence does not implicate (e.g. shrinking
+  the binary to fix runtime memory) — say so and redirect before spending the effort.
+- The fix requires restructuring the command surface, swapping a plugin, or introducing a
+  cache with its own invalidation semantics; that is an architecture decision, not a tuning
+  pass.
+- The measurable win is on a platform you cannot run. State the platform gap explicitly rather
+  than claiming a verified improvement.

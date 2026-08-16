@@ -1,0 +1,50 @@
+---
+description: When the request touches threads, async, locks, or shared state, prove Send/Sync and lock ordering before changing code, and never hold a lock guard or non-Send value across an await.
+alwaysApply: false
+---
+
+# Concurrency Keyword (clouds-rust)
+
+Canonical source: `SKILL.md`, `references/concurrency.md`, and `references/async.md`.
+
+Apply when the request mentions `concurrency`, `parallel`, `async`, `await`, `thread`, `spawn`,
+`tokio`, `rayon`, `channel`, `Mutex`, `RwLock`, `Arc`, `atomic`, `Send`, `Sync`, `deadlock`, or
+`data race`. Also apply to any hang/deadlock bug report or a `is not Send`/`Sync` compiler error.
+
+## Non-negotiables
+
+1. **Prove Send/Sync at the boundary.** For anything crossing a thread or into a spawned task,
+   confirm the types are `Send` (and `Sync` if shared by `&`). `Rc`, `RefCell`, and
+   `MutexGuard` are deliberately not — that error is the compiler catching a real race.
+   `references/concurrency.md` §Send/Sync.
+2. **Never hold a guard/`Rc`/non-`Send` value across `.await`.** A `std::sync::MutexGuard` held
+   across a suspension point either fails to compile (non-`Send` future) or deadlocks. Drop it in
+   an inner scope, or use `tokio::sync::Mutex` only when a lock genuinely must span awaits.
+   `references/async.md`, `references/anti-patterns.md` §concurrency.
+3. **Lock ordering is a design decision.** Establish a global order for multiple locks; keep
+   critical sections minimal; prefer a single lock or a channel over nested locks.
+   `references/concurrency.md` §locks.
+4. **Pick the model deliberately.** Message-passing (channel) or data-parallel (`rayon`) is often
+   simpler and faster than `Arc<Mutex<_>>` shared state. Threads for CPU-bound + blocking; async
+   for IO-bound + high concurrency. Don't put blocking work on an async executor
+   (`spawn_blocking`). `references/concurrency.md`, `references/async.md`.
+5. **Atomics need the right ordering, and lock-free is usually premature.** Justify any
+   `Relaxed`/`Acquire`/`Release`/`SeqCst` choice; default to a `Mutex` until a benchmark proves
+   contention. `references/concurrency.md` §atomics.
+6. **Bound your concurrency.** Unbounded channels and unbounded task spawning are latent OOM /
+   backpressure failures. Prefer bounded channels and `JoinSet`/semaphores.
+
+## Order of work
+
+Identify the shared state and every task/thread that touches it. Decide the model (channel /
+rayon / shared-lock / atomic) and justify it. Check the await-boundary and lock-order gates. Then
+`references/concurrency.md` (threads) or `references/async.md` (async). Verify under a
+thread-sanitizer or Miri where feasible, and with a contended test.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- The fix for a data-race compiler error is to wrap in `unsafe impl Send`/`Sync` — that is
+  suppressing the proof; defer to `rules/unsafe-keyword.mdc` and justify soundness.
+- A deadlock fix would require an unclear global lock ordering you cannot establish from the code.

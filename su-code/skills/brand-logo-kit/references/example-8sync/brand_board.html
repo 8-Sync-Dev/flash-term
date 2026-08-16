@@ -1,0 +1,114 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  
+  @font-face { font-family:"Outfit"; src:url("fonts/Outfit-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"Outfit"; src:url("fonts/Outfit-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"Bricolage"; src:url("fonts/BricolageGrotesque-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"Bricolage"; src:url("fonts/BricolageGrotesque-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"InstrumentSans"; src:url("fonts/InstrumentSans-Bold.ttf"); font-weight:700; }
+  @font-face { font-family:"InstrumentSans"; src:url("fonts/InstrumentSans-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"GeistMono"; src:url("fonts/GeistMono-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"BigShoulders"; src:url("fonts/BigShoulders-Bold.ttf"); font-weight:700; }
+
+  * { margin:0; box-sizing:border-box }
+  body { width:1440px; height:1900px; background:#0a0a0b; color:#f5f4f1; position:relative; overflow:hidden;
+         font-family:"Outfit"; padding:90px 110px; display:flex; flex-direction:column; }
+  body::after { content:""; position:absolute; inset:0; background:url("data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22160%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%222%22/><feColorMatrix values=%220 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0%22/></filter><rect width=%22160%22 height=%22160%22 filter=%22url(%23n)%22/></svg>"); pointer-events:none; }
+  body::before { content:""; position:absolute; inset:0; background:radial-gradient(ellipse 60% 90% at 18% 40%, rgba(79,124,255,.14), transparent 60%),radial-gradient(ellipse 50% 80% at 85% 115%, rgba(168,85,247,.10), transparent 55%),radial-gradient(ellipse 40% 60% at 70% -20%, rgba(34,211,238,.07), transparent 60%); }
+  section, header, footer { position:relative; z-index:2; }
+  .mono { font-family:"GeistMono"; }
+  header { display:flex; justify-content:space-between; align-items:baseline;
+           border-bottom:1px solid rgba(245,244,241,.16); padding-bottom:26px; }
+  header h2 { font-size:20px; font-weight:700; letter-spacing:.02em; }
+  header span { font-size:13px; color:rgba(245,244,241,.45); letter-spacing:.22em; }
+  .hero { flex:none; display:flex; align-items:center; justify-content:center; height:420px; }
+  .hero-mk { width:340px; height:340px; filter:drop-shadow(0 0 60px rgba(79,124,255,.28)); }
+  .lockup { display:flex; align-items:center; gap:56px; justify-content:center; margin-bottom:64px; }
+  .lk-mk { width:150px; height:150px; }
+  .lockup h1 { font-size:110px; font-weight:700; letter-spacing:-0.03em; line-height:1; }
+  .lrow { display:flex; align-items:center; gap:26px; margin-top:22px; }
+  .badge { border:1.5px solid rgba(245,244,241,.85); font-size:19px; letter-spacing:.30em; font-weight:700; padding:8px 15px 8px 24px; }
+  .sub { color:rgba(245,244,241,.5); font-size:18px; letter-spacing:.10em; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:80px; margin-bottom:64px; }
+  h3 { font-family:"GeistMono"; font-size:13px; font-weight:400; color:rgba(245,244,241,.45);
+       letter-spacing:.26em; margin-bottom:34px; }
+  .chips { display:flex; gap:18px; }
+  .chip { flex:1; }
+  .sw { height:110px; border:1px solid rgba(245,244,241,.14); margin-bottom:14px; }
+  .cname { display:block; font-size:14px; font-weight:700; letter-spacing:.06em; }
+  .chex { display:block; font-family:"GeistMono"; font-size:12.5px; color:rgba(245,244,241,.45); margin-top:4px; }
+  .type .spec { border:1px solid rgba(245,244,241,.14); padding:30px 34px; margin-bottom:16px; }
+  .type .big { font-size:44px; font-weight:700; letter-spacing:-0.02em; }
+  .type .med { font-size:22px; font-weight:400; color:rgba(245,244,241,.8); }
+  .type .code { font-family:"GeistMono"; font-size:16px; color:rgba(245,244,241,.6); }
+  .tname { font-family:"GeistMono"; font-size:11.5px; color:rgba(245,244,241,.4); letter-spacing:.2em; margin-top:12px; }
+  .alts { display:flex; gap:18px; }
+  .alt { flex:1; height:300px; border:1px solid rgba(245,244,241,.14); display:flex; align-items:center; justify-content:center; }
+  .alt-mk { width:56%; height:56%; color:#f5f4f1; }
+  footer { margin-top:auto; display:flex; justify-content:space-between; border-top:1px solid rgba(245,244,241,.16); padding-top:26px; }
+  footer span { font-family:"GeistMono"; font-size:12.5px; color:rgba(245,244,241,.4); letter-spacing:.14em; }
+</style></head><body>
+  <header><h2>8 Sync — Brand Identity</h2><span>V1.0 · 2026</span></header>
+  <section class="hero"><svg class="hero-mk" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g8" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#4F7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs>
+  <g fill="none" stroke="url(#g8)" stroke-width="8" stroke-linecap="round">
+    <path d="M 50.62 51.99 A 16 16 0 1 1 63.22 45.01"/>
+    <path d="M 49.38 48.01 A 16 16 0 1 1 36.78 54.99"/>
+  </g>
+</svg>
+</section>
+  <section class="lockup"><svg class="lk-mk" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g8_lk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#4F7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs>
+  <g fill="none" stroke="url(#g8_lk)" stroke-width="8" stroke-linecap="round">
+    <path d="M 50.62 51.99 A 16 16 0 1 1 63.22 45.01"/>
+    <path d="M 49.38 48.01 A 16 16 0 1 1 36.78 54.99"/>
+  </g>
+</svg>
+
+    <div><h1>8 Sync</h1>
+      <div class="lrow"><span class="badge">DEV</span><span class="sub mono">GITHUB.COM/8-SYNC-DEV</span></div></div>
+  </section>
+  <section class="grid2">
+    <div><h3>COLOR</h3><div class="chips"><div class="chip"><div class="sw" style="background:#0A0A0B"></div><span class="cname">VOID</span><span class="chex">#0A0A0B</span></div>
+<div class="chip"><div class="sw" style="background:#F5F4F1"></div><span class="cname">BONE</span><span class="chex">#F5F4F1</span></div>
+<div class="chip"><div class="sw" style="background:#22D3EE"></div><span class="cname">CYAN</span><span class="chex">#22D3EE</span></div>
+<div class="chip"><div class="sw" style="background:#4F7CFF"></div><span class="cname">SYNC BLUE</span><span class="chex">#4F7CFF</span></div>
+<div class="chip"><div class="sw" style="background:#A855F7"></div><span class="cname">VIOLET</span><span class="chex">#A855F7</span></div></div></div>
+    <div class="type"><h3>TYPOGRAPHY</h3>
+      <div class="spec"><div class="big">Outfit Bold</div><div class="tname">WORDMARK / HEADLINES</div></div>
+      <div class="spec"><div class="med">Outfit Regular — interface & body copy</div>
+        <div class="code" style="margin-top:10px">GeistMono — handles, labels, code</div></div>
+    </div>
+  </section>
+  <section><h3>ALTERNATE MARKS</h3>
+    <div class="alts"><div class="alt"><svg class="alt-mk" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g8" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#4F7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs>
+  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round">
+    <path d="M 50.62 51.99 A 16 16 0 1 1 63.22 45.01"/>
+    <path d="M 49.38 48.01 A 16 16 0 1 1 36.78 54.99"/>
+  </g>
+</svg>
+</div><div class="alt"><svg class="alt-mk" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g8_bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.55" stop-color="#4F7CFF"/><stop offset="1" stop-color="#A855F7"/></linearGradient>
+    <mask id="mz_bb"><rect width="100" height="100" fill="white"/>
+      <path d="M 62 14 L 42 46 L 58 54 L 38 86 L 32 82 L 48 57 L 33 49 L 55 11 Z" fill="black"/>
+    </mask>
+  </defs>
+  <g fill="none" stroke="url(#g8_bb)" stroke-width="9.5" mask="url(#mz_bb)">
+    <circle cx="50" cy="34.5" r="15"/>
+    <circle cx="50" cy="65.5" r="17"/>
+  </g>
+</svg>
+</div><div class="alt"><svg class="alt-mk" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs><mask id="m8_bt">
+    <rect x="20" y="20" width="60" height="60" rx="18" fill="white"/>
+    <g fill="black" transform="rotate(-10 50 50)">
+      <circle cx="50" cy="40" r="9"/>
+      <circle cx="50" cy="60" r="11.5"/>
+    </g>
+  </mask></defs>
+  <rect x="20" y="20" width="60" height="60" rx="18" fill="currentColor" mask="url(#m8_bt)"/>
+</svg>
+</div></div>
+  </section>
+  <footer><span>8 SYNC DEV</span><span>SYNC IS A LOOP — TWO SYSTEMS, ONE LINK</span></footer>
+</body></html>

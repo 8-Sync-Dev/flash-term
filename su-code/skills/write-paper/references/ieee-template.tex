@@ -1,0 +1,86 @@
+%% IEEEtran paper template for the write-paper skill (standardized/camera-ready backend).
+%% Compile:  bash agents/skills/write-paper/scripts/build_latex.sh <this>.tex <out-dir> [pages]
+%% Engine:   tectonic (XeTeX) is auto-provisioned by build_latex.sh; latexmk/xelatex also work.
+%% US-letter two-column is the IEEE standard (do not force A4 for a real IEEE submission).
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath,amssymb}   % math
+\usepackage{graphicx}          % figures
+\usepackage{booktabs}          % clean tables
+\usepackage{cite}              % [1],[2]-[4] citation compression
+\usepackage[hidelinks]{hyperref}
+
+%% ---- Vietnamese / Unicode (XeTeX only) --------------------------------------------------
+%% For Vietnamese or any non-Latin text, uncomment fontspec and point it at a Unicode font.
+%% The repo bundles DejaVu at assets/fonts/ — reference it with an ABSOLUTE Path=… , e.g.:
+%   \usepackage{fontspec}
+%   \setmainfont{DejaVuSerif.ttf}[Path=/abs/path/to/report-github-md2pdf/assets/fonts/,
+%     BoldFont=DejaVuSerif-Bold.ttf, ItalicFont=DejaVuSerif-Italic.ttf]
+%% (Plain English papers need none of this; the default Latin Modern is fine.)
+%% ----------------------------------------------------------------------------------------
+
+\begin{document}
+
+\title{<Paper Title — concise, specific, no hype>}
+
+\author{\IEEEauthorblockN{<Author Name>}
+\IEEEauthorblockA{<Affiliation>\\ <email>}}
+
+\maketitle
+
+\begin{abstract}
+<150--250 words, self-contained, no citations. Problem, approach, key result, contribution.>
+\end{abstract}
+
+\begin{IEEEkeywords}
+<term one>, <term two>, <term three>, <term four>
+\end{IEEEkeywords}
+
+\section{Introduction}
+<Motivate the problem; state the gap; list contributions; end with a paper map.> Prior
+context is well established~\cite{ref1}, yet a gap remains~\cite{ref2}.
+
+\section{Related Work}
+<Group by theme; cite every borrowed claim~\cite{ref1,ref3}. Position your work.>
+
+\section{Method / System}
+<Mode B: describe the built system. Mode A: the proposed approach + methodology.>
+\begin{equation}
+\label{eq:model}
+y = f(x;\theta)
+\end{equation}
+where <define symbols>.
+
+% \begin{figure}[t]\centering\includegraphics[width=\columnwidth]{fig1.pdf}
+%   \caption{<caption>.}\label{fig:arch}\end{figure}
+
+\section{Experiments and Results}
+<Setup, metrics, honest numbers. Mode A: the evaluation plan.>
+\begin{table}[t]
+\caption{<Table caption>.}
+\label{tab:results}
+\centering
+\begin{tabular}{lcc}
+\toprule
+Method & Metric A & Metric B \\
+\midrule
+Baseline~\cite{ref3} & <val> & <val> \\
+Ours & <val> & <val> \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+<Interpretation, tradeoffs, threats to validity, limitations.>
+
+\section{Conclusion}
+<Restate the contribution and one future-work direction.>
+
+%% References — IEEE numeric. Use \cite{key}. Real metadata only (see ieee-format.md).
+\begin{thebibliography}{1}
+\bibitem{ref1} <A. Author, ``Title,'' \emph{Venue}, vol.~x, no.~x, pp.~x--x, year.>
+\bibitem{ref2} <A. Author, ``Title,'' in \emph{Proc. Conf.}, City, Country, year, pp.~x--x.>
+\bibitem{ref3} <A. Author, \emph{Book Title}, xth~ed. City, Country: Publisher, year.>
+\end{thebibliography}
+
+\end{document}

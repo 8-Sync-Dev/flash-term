@@ -1,0 +1,63 @@
+---
+description: When the user is shipping, packaging, signing, versioning, or wiring the updater, treat every irreversible decision as a design review before the build runs.
+alwaysApply: false
+---
+
+# Release Keyword (clouds-tauri)
+
+Canonical source: `SKILL.md` in this skill root.
+
+Apply this rule when the request mentions `release`, `ship`, `publish`, `package`, `bundle`,
+`installer`, `MSI`, `NSIS`, `DMG`, `AppImage`, `sign`, `notarize`, `staple`, `updater`,
+`version bump`, `distribute`, `store submission`, or CI that produces artifacts users install.
+
+## Non-negotiables
+
+1. **Signing keys and the updater public key are one-way doors.** The minisign private key
+   signs every update; lose it and every installed copy is permanently orphaned — the pubkey
+   is compiled into the shipped binary and can only be replaced by an update those users can
+   no longer receive. Back it up out-of-band before the first release, and treat rotation as a
+   migration, not a config edit. `references/build-and-distribution.md` §Updater: keys,
+   artifacts, configuration.
+2. **At least two update endpoints, on different infrastructure, from release #1.** Endpoints
+   are compiled in. One endpoint is one permanent point of failure for the only mechanism that
+   can repair a shipped mistake. `references/build-and-distribution.md` §Updater;
+   `references/case-studies.md` §6 for a real app carrying exactly this exposure.
+3. **A `204` from the primary endpoint freezes the install base.** `204 No Content` means "you
+   are up to date" — it is a *successful* response, so the fallback endpoints are never
+   consulted. A misconfigured or hijacked primary that answers 204 silently stops all updates
+   forever. Only a hard failure (DNS, connection, 5xx) advances to the next endpoint.
+4. **Verify the artifact on a clean machine, not the build machine.** The build machine has
+   your toolchain, your certificates, your WebView2 runtime, and your dev keychain. Gatekeeper,
+   SmartScreen, missing runtime prerequisites and unstapled notarization are only observable
+   elsewhere. `references/build-and-distribution.md` §macOS: sign, notarize, staple, and
+   §Windows code signing.
+5. **The one-way-door set is bigger than the keypair.** Bundle identifier, Windows
+   `upgradeCode`, product name, install path semantics, and the version source of truth all
+   become permanent once users install. Run
+   `references/build-and-distribution.md` §Release one-way-door checklist before the first
+   release, and re-run the marked lines whenever naming, signing, or update infrastructure
+   changes.
+6. **All target platforms, or say which ones you did not build.** A release is not "done" on
+   one OS. `playbooks/cross-platform-validation.md`.
+
+## Order of work
+
+`playbooks/release-preparation.md` drives the sequence; it gates on
+`playbooks/security-review.md` and `playbooks/cross-platform-validation.md`. Command-level
+lookups: `cheatsheets/build-sign-ship.md`.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- No backup of the updater private key exists, or nobody can say where it lives. Do not build
+  a signed release until that is answered.
+- You are asked to change the bundle identifier, `upgradeCode`, or updater pubkey on an app
+  that already has installs — surface the migration cost first.
+- Only one update endpoint is configured and the user wants to ship anyway. Record it as an
+  accepted risk in writing, do not silently proceed.
+- Signing credentials, an Apple Developer account, or notarization access are unavailable —
+  build unsigned and label the artifact as unsigned rather than pretending it is shippable.
+- You cannot test the installer on a clean target. Ship nothing you have only seen run from
+  `target/release`.

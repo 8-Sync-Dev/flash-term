@@ -1,0 +1,47 @@
+---
+description: When the request is about speed, allocation, or memory, measure before changing anything and attribute the cost to a specific layer — Rust performance intuition is frequently wrong.
+alwaysApply: false
+---
+
+# Performance Keyword (clouds-rust)
+
+Canonical source: `SKILL.md` and `references/performance.md` in this skill root.
+
+Apply when the request mentions `performance`, `slow`, `optimize`, `faster`, `latency`,
+`throughput`, `allocation`, `memory`, `cache`, `bench`, `benchmark`, or `profile`.
+
+## Non-negotiables
+
+1. **Measure first — no change on intuition.** Prove the problem with a benchmark
+   (`criterion`/`divan`, `black_box` to defeat dead-code elimination) or a profiler
+   (`perf`, `samply`, `cargo-flamegraph`, Instruments). A number, not a hunch.
+   `references/performance.md` §measurement.
+2. **Attribute the layer before touching it.** Is the cost allocation, indirection (`dyn`/`Box`),
+   bounds checks, cache misses, or lock contention? Each has a different fix; fixing the wrong
+   one is the standard wasted week. `references/performance.md`.
+3. **Change one thing, then re-measure.** Confirm the win and check it didn't regress elsewhere
+   (binary size, compile time, another benchmark).
+4. **Know what is actually zero-cost.** Iterators and generics monomorphize to hand-loop speed —
+   prefer them. `dyn`, `Box`, and un-elided bounds checks cost real cycles. Don't "optimize" a
+   zero-cost abstraction into unsafe.
+5. **Cheapest wins first.** `with_capacity`/buffer reuse, `&str`/slice over owned, `Cow`,
+   `SmallVec`, hoisting allocations out of loops — before `unsafe`, before lock-free, before a
+   rewrite. `references/performance.md` §allocation, and `references/anti-patterns.md` §perf.
+6. **Build profile is free performance.** `opt-level = 3`, `lto = "thin"`/`"fat"`,
+   `codegen-units = 1`, `panic = "abort"`, `-C target-cpu=native` (for non-portable builds), PGO
+   for hot binaries — try these before hand-optimizing code. `references/performance.md` §build.
+
+## Order of work
+
+Reproduce the slow path in a benchmark. Profile to find the real hot spot (not the guessed one).
+Read `references/performance.md` for the layer that dominates. Apply the cheapest fix, re-measure,
+report the before/after numbers.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- You are asked to optimize without any way to measure the result. State that the win is
+  unverifiable and propose adding a benchmark first.
+- The proposed fix is `unsafe`/`get_unchecked`/lock-free and no benchmark shows the safe version
+  is the bottleneck — defer to `rules/unsafe-keyword.mdc`.

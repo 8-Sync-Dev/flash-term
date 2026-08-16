@@ -1,0 +1,59 @@
+---
+description: When the user asks for a code review, architecture review, audit, or PR review, report every real finding with a severity and a file:line — never pre-filter to the important ones.
+alwaysApply: false
+---
+
+# Review Keyword (clouds-tauri)
+
+Canonical source: `SKILL.md` in this skill root.
+
+Apply this rule when the request mentions `review`, `PR`, `pull request`, `code review`,
+`architecture review`, `audit`, `sanity check`, `look over this`, or "is this correct". Also
+apply it when you are the second agent looking at another agent's diff.
+
+## Non-negotiables
+
+1. **Report every real finding, with a severity.** Do not pre-filter to what you judge
+   important — the reader decides priority, you supply the list. Use `blocker` / `major` /
+   `minor` / `nit`. A short review of a large diff is a failed review, not a concise one.
+2. **Every finding carries a `file:line` and a concrete fix.** "Consider validating input" is
+   not a finding. `src-tauri/src/commands/fs.rs:87 — path from the webview is joined without
+   canonicalisation; canonicalise and assert containment under the app data dir` is.
+3. **State which platforms were verified and which were not.** An unverified platform is a
+   finding in its own right, at least `minor`, not an omission you leave silent. Same for
+   "I did not run the build" and "I did not exercise this path".
+4. **Read the code before claiming behaviour.** No finding may rest on the name of a function,
+   a diff hunk without its surrounding context, or an assumption about what a plugin does.
+   Open the file. If a claim depends on a config value, read the config —
+   `SKILL.md` Rule 1 names the five files that decide security posture, platform matrix, and
+   command surface.
+5. **Review against the gates, in this order:** security and trust boundary
+   (`rules/security-keyword.mdc`), threading and the event loop, platform divergence,
+   then style. A clean-reading command that blocks the event loop is a `blocker`; a naming
+   inconsistency is a `nit`. Do not invert that.
+6. **Separate findings from preferences.** Label anything that is taste as taste. Reviewers
+   who mix the two get their real findings ignored.
+7. **Version-stamp claims.** "This is wrong in Tauri v2" needs the version you verified
+   against; v1-era patterns and 2.x-internal API moves are the two most common sources of
+   confidently wrong review comments.
+
+## Order of work
+
+Use the playbook that matches the scope: `playbooks/code-review.md` for a diff or PR,
+`playbooks/architecture-review.md` for structural review, `playbooks/security-review.md` for
+an audit, `playbooks/desktop-ux-review.md` for anything a user sees (which also loads
+`impeccable`). Then read the reference that owns each domain the change touched, rather than
+reasoning from memory.
+
+## Refuse / escalate
+
+Stop and ask rather than proceed when:
+
+- The diff is described but not available. Review nothing you have not read.
+- The change depends on config, capability files, or a plugin version you cannot inspect —
+  name the missing input rather than reviewing around it.
+- You are asked to approve, sign off, or "just check it looks fine" on a change touching
+  signing, the updater, capabilities, or the command surface without being able to verify it.
+  Return findings, not approval.
+- The right answer is a redesign rather than a set of line comments. Say that explicitly and
+  once, instead of burying it in twenty `minor` findings.
